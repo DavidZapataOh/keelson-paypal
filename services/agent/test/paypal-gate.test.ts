@@ -2,11 +2,12 @@ import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import type Anthropic from "@anthropic-ai/sdk";
 import { type CheckoutTotal, checkoutTotal, type FxReference, spreadBps } from "@keelson/core";
+import { type AmountCheck, orderIdHash } from "@keelson/mandate";
 import { type Browser, type BrowserContext, chromium, type Page } from "playwright";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { rateBetween } from "../src/amounts.ts";
 import { StoreBrowser } from "../src/driver.ts";
-import { PayGate } from "../src/gate.ts";
+import { type Authority, PayGate } from "../src/gate.ts";
 import {
   BUYERS,
   type Buyer,
@@ -213,6 +214,7 @@ describe("the pay-click gate on PayPal's review page", () => {
       payees?: readonly string[];
       /** The review page's query, `token=…` by default. */
       query?: string;
+      authority?: Authority;
     } = {},
   ) => {
     const tab: Page = await context.newPage();
@@ -221,6 +223,7 @@ describe("the pay-click gate on PayPal's review page", () => {
       convertHosts: ["127.0.0.1"],
       payees: o.payees ?? ["SANDBOXPAYEE01"],
       ...(o.maxSpreadBps !== undefined ? { maxSpreadBps: o.maxSpreadBps } : {}),
+      ...(o.authority ? { authority: o.authority, confirmWaitMs: 3_000 } : {}),
     });
     const driver = await StoreBrowser.attach(context, tab, { hosts: ["127.0.0.1"], gate });
     gate.allow(o.total ?? USD_295, o.reference === null ? undefined : (o.reference ?? reference()));
@@ -655,6 +658,123 @@ describe("the pay-click gate on PayPal's review page", () => {
       const r = await pay(order({ ...buyerCase(cop), plans: answer }));
       expect(r.clicked).toBe(false);
       expect(r.result).toMatch(reason);
+    });
+  });
+
+  describe("with an amount authority", () => {
+    /** Keelson deciding `token`'s amount from PayPal's Orders API, as `POST …/amount-check` answers. */
+    const decided =
+      (o: Partial<AmountCheck> = {}): Authority =>
+      async (token, crossCheck) => ({
+        check: {
+          v: "keelson.amount_check/1",
+          authority: "paypal_order",
+          via: "own",
+          read_by: "api",
+          order_id_hash: orderIdHash(token),
+          total: { currency: "USD", minor: 295 },
+          payee: "SANDBOXPAYEE01",
+          intent: "CAPTURE",
+          checked_at: new Date().toISOString(),
+          cross_check: crossCheck,
+          ...o,
+        },
+      });
+    const page = (o: Partial<Case> = {}): Case => ({
+      lines: () => ["Total $2.95 USD"],
+      lang: "en",
+      details: recorded("capture-usd"),
+      ...o,
+    });
+
+    test("pays on PayPal's Orders API when PayPal's checkout session does not answer", async () => {
+      const seen: string[] = [];
+      const authority: Authority = async (token, crossCheck, order) => {
+        seen.push(`${crossCheck} ${order ? "with" : "without"} the order`);
+        return decided()(token, crossCheck);
+      };
+      const r = await pay(order(page({ details: undefined })), { authority });
+      expect(r.clicked, r.result).toBe(true);
+      expect(seen).toEqual(["unavailable without the order"]);
+      expect(r.gate.paid?.check).toMatchObject({
+        authority: "paypal_order",
+        cross_check: "unavailable",
+      });
+      expect(r.gate.paid?.charge).toMatchObject({
+        currency: "USD",
+        value: "2.95",
+        payee: "SANDBOXPAYEE01",
+      });
+    });
+
+    test("pays with PayPal's checkout session agreeing, and records the authority", async () => {
+      const r = await pay(order(page()), { authority: decided() });
+      expect(r.clicked, r.result).toBe(true);
+      expect(r.gate.paid?.check?.cross_check).toBe("agrees");
+    });
+
+    test.each<[string, Partial<AmountCheck>]>([
+      ["amount", { total: { currency: "USD", minor: 296 } }],
+      ["currency", { total: { currency: "EUR", minor: 295 } }],
+      ["payee", { payee: "OTHERPAYEE0001" }],
+      ["intent", { intent: "AUTHORIZE" }],
+    ])("an authority that disagrees with PayPal's checkout on the %s holds", async (_, o) => {
+      const r = await pay(order(page()), { authority: decided(o) });
+      expect(r.clicked).toBe(false);
+      expect(r.gate.refused).toBe(1);
+      expect(r.result).toMatch(/does not match what Keelson countersigned/);
+    });
+
+    test("PayPal's checkout disagreeing with the countersign holds before Keelson is asked", async () => {
+      let asked = 0;
+      const authority: Authority = async (token, crossCheck) => {
+        asked++;
+        return decided()(token, crossCheck);
+      };
+      const r = await pay(order(page()), {
+        authority,
+        total: checkoutTotal("USD", { items: 296 }),
+      });
+      expect(r.clicked).toBe(false);
+      expect(asked).toBe(0);
+    });
+
+    test("an authority for another order than the page's holds", async () => {
+      const r = await pay(order(page()), {
+        authority: decided({ order_id_hash: orderIdHash("0FX99999999999999") }),
+      });
+      expect(r.clicked).toBe(false);
+      expect(r.result).toMatch(/different order than PayPal's API returned/);
+    });
+
+    test("waits while the user confirms on their phone, then pays what they confirmed", async () => {
+      let calls = 0;
+      const authority: Authority = async (token, crossCheck) =>
+        ++calls < 2
+          ? { needs: "user_confirmed" }
+          : decided({ authority: "user_confirmed" })(token, crossCheck);
+      const r = await pay(order(page()), { authority });
+      expect(r.clicked, r.result).toBe(true);
+      expect(r.gate.paid?.check?.authority).toBe("user_confirmed");
+    });
+
+    test("never pays on PayPal's checkout alone while the user has not confirmed", async () => {
+      const r = await pay(order(page()), { authority: async () => ({ needs: "user_confirmed" }) });
+      expect(r.clicked).toBe(false);
+      expect(r.result).toMatch(/confirming this amount with you on your phone/);
+    });
+
+    test("a refusal from Keelson, or no answer, holds", async () => {
+      const refused = await pay(order(page()), {
+        authority: async () => ({ refused: "You declined this amount on your phone." }),
+      });
+      expect(refused.result).toMatch(/You declined this amount/);
+      const down = await pay(order(page()), {
+        authority: async () => {
+          throw new Error("offline");
+        },
+      });
+      expect(down.clicked).toBe(false);
     });
   });
 

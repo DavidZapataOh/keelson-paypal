@@ -1,4 +1,6 @@
+import type { AmountCheck } from "@keelson/mandate";
 import type { Keelson } from "./checkout.ts";
+import type { Authority } from "./gate.ts";
 
 /** RFC 8707 resource of Keelson's API: the audience of every access token it accepts. */
 const AUDIENCE = "https://api.keelson.finance";
@@ -106,4 +108,41 @@ export async function announceRun(
     body: JSON.stringify({ state, ...(liveViewUrl ? { liveViewUrl } : {}) }),
   });
   if (res.status !== 202) throw new Error(`run not announced: HTTP ${res.status}`);
+}
+
+/** Why Keelson's amount check holds the payment, by its problem type. */
+const HELD: Readonly<Record<string, string>> = {
+  "amount-declined":
+    "You declined this amount on your phone. Do not pay: call finish with blocked.",
+  "amount-confirmation-expired":
+    "You did not confirm this amount in time. Do not pay: call finish with blocked.",
+  "amount-order-changed":
+    "PayPal's checkout shows a different order than PayPal's API returned. Paying waits.",
+};
+
+/**
+ * The pay-click gate's {@link Authority}: `POST /v1/purchases/{id}/amount-check` for the purchase
+ * `purchase()` names, the countersign's or the last re-quote's.
+ */
+export function amountAuthority(keelson: Keelson, purchase: () => string): Authority {
+  return async (orderId, crossCheck, order) => {
+    const res = await keelson.request(`/v1/purchases/${purchase()}/amount-check`, {
+      method: "POST",
+      headers: { "content-type": "application/json", "idempotency-key": crypto.randomUUID() },
+      body: JSON.stringify({ orderId, crossCheck, ...(order ? { order } : {}) }),
+    });
+    if (res.status === 200) return { check: (await res.json()) as AmountCheck };
+    if (res.status === 202) return { needs: "user_confirmed" };
+    const p = (await res.json().catch(() => ({}))) as { type?: string; field?: string };
+    const type = p.type?.split("/").pop() ?? "";
+    if (type === "amount-mismatch") {
+      return {
+        refused: `PayPal's order does not match what Keelson countersigned (${p.field ?? "order"}). Paying waits.`,
+      };
+    }
+    return {
+      refused:
+        HELD[type] ?? `Keelson could not decide this amount (HTTP ${res.status}). Paying waits.`,
+    };
+  };
 }

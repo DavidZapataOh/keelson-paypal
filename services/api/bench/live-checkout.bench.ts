@@ -4,6 +4,7 @@ import { appendFileSync } from "node:fs";
 import Anthropic from "@anthropic-ai/sdk";
 import {
   ALFRED,
+  amountAuthority,
   apiClient,
   checkout,
   decimal,
@@ -177,15 +178,17 @@ try {
       live: { store: ALFRED.origin },
     });
     const allowed = result.status < 300 && result.body.decision === "allow";
+    // The purchase the payment is for: the first countersign, or the last re-quote Keelson allowed.
+    let paid = result.requestId;
     const gate = new PayGate({
       checkoutHosts: ALFRED.checkoutHosts,
       cart: shopifyCart(session.context, ALFRED.origin),
       maxSpreadBps: maxSpreadBps(signed),
       payees: allowedPayees(signed),
+      // PayPal's Orders API or the user's passkey decides the amount; the checkout cross-checks.
+      authority: amountAuthority(agentApi, () => paid),
     });
     if (allowed) gate.allow(quote.total, result.reference);
-    // The purchase the payment is for: the first countersign, or the last re-quote Keelson allowed.
-    let paid = result.requestId;
     const requotes: Record<string, unknown>[] = [];
     // A re-quoted total is countersigned on evidence captured in a tab of its own on the product
     // page, so nothing of the checkout's pages, which show the buyer's address, is sealed.
@@ -321,6 +324,12 @@ try {
           payee: gate.paid.charge.payee,
         },
         conversion: gate.paid?.conversion,
+        // What decided the amount: PayPal's Orders API or the user's passkey.
+        amountAuthority: gate.paid?.check && {
+          authority: gate.paid.check.authority,
+          via: gate.paid.check.via,
+          crossCheck: gate.paid.check.cross_check,
+        },
         // Where PayPal's charge to the buyer was read, the rate it gives and the rate PayPal shows.
         funding: gate.paid?.funding,
         // Only the amounts read on each page where a pay action was held.
