@@ -59,5 +59,7 @@ describe("CMW collection of the legs' evidence (RFC 9999)", () => {
     const json = enc.encode(JSON.stringify(teeCollection({ tdx, nitro })));
     expect(validateCddl("rfc9999.cddl", "json-collection", json, "json")).toBe(true);
     expect(validateCddl("rfc9999.cddl", "json-collection", enc.encode("{}"), "json")).toBe(false);
+    const record = enc.encode(JSON.stringify([TEE_EVIDENCE_TYPE, "AA", 4]));
+    expect(validateCddl("rfc9999.cddl", "json-collection", record, "json")).toBe(false);
   });
 });

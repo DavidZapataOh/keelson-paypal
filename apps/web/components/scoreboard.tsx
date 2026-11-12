@@ -20,6 +20,7 @@ import {
   type CampaignItem,
   campaigns,
   campaignUrl,
+  featuredCampaign,
   percent,
   type Rate,
   type Row,
@@ -273,7 +274,7 @@ node services/redteam/scripts/scoreboard.ts ledger.jsonl \\
   );
 }
 
-/** The scoreboard of `?campaign=`, or of the latest campaign; live while it runs. */
+/** The scoreboard of `?campaign=`, or of the featured campaign; live while it runs. */
 export function ScoreboardPage() {
   const asked = useSearchParams().get("campaign");
   const [list, setList] = useState<CampaignItem[]>();
@@ -286,7 +287,7 @@ export function ScoreboardPage() {
       .catch(() => setError("The scoreboard could not be loaded. Try again in a moment."));
   }, []);
 
-  const id = asked ?? list?.find((c) => c.attacks > 0)?.id;
+  const id = asked ?? (list ? featuredCampaign(list) : undefined);
 
   useEffect(() => {
     if (!id) return;

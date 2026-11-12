@@ -190,11 +190,11 @@ export function createContextServer(): McpServer {
       const py = language === "python";
       const install = py
         ? "pip install keelson-finance\nkeelson login"
-        : "npm install @keelson-finance/sdk @keelson-finance/verifier\nnpx keelson login";
+        : "npm install @keelson-finance/sdk @keelson-finance/verifier\nnpx @keelson-finance/sdk login";
       const auth =
         role === "operator"
           ? "Set KEELSON_CLIENT_ID, KEELSON_CLIENT_SECRET (client credentials) and KEELSON_AGENT_KEY (the agent's private P-256 JWK): the client closes every mandate with that key."
-          : `Sign in once with \`${py ? "keelson login" : "npx keelson login"}\`; ${py ? "Keelson()" : "new Keelson()"} reads the saved sign-in. Keelson's hosted operator closes mandates for you, up to $100 per user for an app it does not know.`;
+          : `Sign in once with \`${py ? "keelson login" : "npx @keelson-finance/sdk login"}\`; ${py ? "Keelson()" : "new Keelson()"} reads the saved sign-in. Keelson's hosted operator closes mandates for you, up to $100 per user for an app it does not know.`;
       const quickstart = docs.find(
         (d) => d.title === (py ? "Quickstart (Python)" : "Quickstart (TypeScript)"),
       );
