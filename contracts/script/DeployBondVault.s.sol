@@ -9,7 +9,7 @@ import {AccessManager} from "@openzeppelin/contracts/access/manager/AccessManage
 import {TimelockController} from "@openzeppelin/contracts/governance/TimelockController.sol";
 import {stdJson} from "forge-std/StdJson.sol";
 
-/// @notice Deploys a `KeelsonBondVault` at the CREATE3 address of `name` and wires its roles through the timelock:
+/// @notice Deploys a `KeelsonBondVault` at the CREATE3 address of `name` in the current contracts release and wires its roles through the timelock:
 /// `setParams` and `setRateLimit` take `PARAMETERS_ROLE`; `pause`, `unpause` and `vetoSlash` take `GUARDIAN_ROLE`.
 /// @dev `run(name)` deploys and schedules the wiring; `wire(name)` executes it once the timelock delay has passed. Both
 /// are idempotent. A CREATE3 address depends only on the salt, so a vault deployed under another name leaves the
@@ -20,7 +20,7 @@ contract DeployBondVault is KeelsonDeploy {
     function run(string calldata name) external returns (KeelsonBondVault vault) {
         vm.startBroadcast(_owner());
         _ensureDeployer();
-        vault = KeelsonBondVault(_deploy(name, type(KeelsonBondVault).creationCode, constructorArgs()));
+        vault = KeelsonBondVault(_deploy(versioned(name), type(KeelsonBondVault).creationCode, constructorArgs()));
         if (!wired(address(vault))) {
             (address[] memory targets, uint256[] memory values, bytes[] memory payloads) = wiring(address(vault));
             TimelockController timelock = _timelock();
@@ -33,7 +33,7 @@ contract DeployBondVault is KeelsonDeploy {
     }
 
     function wire(string calldata name) external {
-        address vault = predict(name);
+        address vault = predict(versioned(name));
         if (wired(vault)) return;
         (address[] memory targets, uint256[] memory values, bytes[] memory payloads) = wiring(vault);
         vm.broadcast(_owner());
@@ -49,10 +49,10 @@ contract DeployBondVault is KeelsonDeploy {
         (uint48 window, uint208 capacity) = rateLimit();
         return abi.encode(
             json.readAddress(".external.pyusd"),
-            predict("VerdictVerifier"),
-            predict("CheckpointAnchor"),
+            predict(versioned("VerdictVerifier")),
+            predict(versioned("CheckpointAnchor")),
             json.readAddress(".external.erc8004Identity"),
-            predict("KeelsonReserve"),
+            predict(versioned("KeelsonReserve")),
             keccak256(bytes(json.readString(".params.logOrigin"))),
             sha256("keelson.finance"),
             json.readAddress(".contracts.AccessManager"),

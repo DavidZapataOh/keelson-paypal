@@ -17,6 +17,19 @@ abstract contract KeelsonDeploy is Script {
 
     error DeployerOwnerMismatch(address expected, address actual);
 
+    /// @notice The salt suffix of the contracts that hold the `VerdictVerifier` or the `KeelsonBondVault` address
+    /// immutably, from `KEELSON_CONTRACTS_RELEASE`: empty for the first release, then one per release. A release lands
+    /// beside the earlier ones, which keep their addresses and keep settling what they hold. Governance, the circuit
+    /// verifiers and the log bonds keep their own salts.
+    function contractsRelease() public view returns (string memory) {
+        return vm.envOr("KEELSON_CONTRACTS_RELEASE", string(""));
+    }
+
+    /// @notice `name` in the current contracts release: its CREATE3 salt name and its registry name.
+    function versioned(string memory name) public view returns (string memory) {
+        return string.concat(name, contractsRelease());
+    }
+
     function salt(string memory name) public pure returns (bytes32) {
         return keccak256(abi.encodePacked(RELEASE, "/", name));
     }
