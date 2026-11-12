@@ -152,18 +152,21 @@ export function registerJudge(
   >,
 ): void {
   const { db, auth } = deps;
-  app.on(
-    "POST",
-    "/v1/judge/sessions",
-    rateLimit(deps.kv, {
-      name: "judge",
-      limit: 5,
-      anonymousLimit: 5,
-      windowSec: 3600,
-      failClosed: true,
-      trustProxy: deps.rateLimit?.trustProxy ?? false,
-    }),
-  );
+  // Twenty new judges an hour per address, so a panel behind one NAT gets in; a valid invite is
+  // not held by it, only by the invited judges' daily cap.
+  const perAddress = rateLimit(deps.kv, {
+    name: "judge",
+    limit: 20,
+    anonymousLimit: 20,
+    windowSec: 3600,
+    failClosed: true,
+    trustProxy: deps.rateLimit?.trustProxy ?? false,
+  });
+  app.on("POST", "/v1/judge/sessions", async (c, next) => {
+    const body = (await c.req.json().catch(() => undefined)) as { invite?: unknown } | undefined;
+    const invite = typeof body?.invite === "string" ? body.invite : undefined;
+    return isInvite(deps.judgeInvite, invite) ? next() : perAddress(c, next);
+  });
   app.use("/v1/judge/tour", requireJudge(deps));
 
   app.openapi(start, async (c) => {

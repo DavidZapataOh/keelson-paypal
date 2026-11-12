@@ -37,6 +37,7 @@ import { MERCHANTS } from "../merchants.ts";
 import { requireAgent, requireClient, requireSession } from "../middleware/auth.ts";
 import { rateLimit } from "../middleware/rate-limit.ts";
 import { decidedAlert, notify, requestAlert } from "../notify/notifier.ts";
+import { ClientIdentitySchema, verifiedClient } from "../oauth/cimd-trust.ts";
 import { type Principal, principalChannel } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
 import { signingContext } from "./compile.ts";
@@ -153,6 +154,7 @@ export const ConnectionView = z
       operator: z.string(),
       bond: z.object({ asset: z.string(), min: z.number(), vault: z.string() }).nullable(),
     }),
+    identity: ClientIdentitySchema,
     limits: z.object({
       currency: z.string(),
       perPurchaseMinor: z.string(),
@@ -514,6 +516,7 @@ export async function connectionView(
       operator: operator.name,
       bond: bond ? { asset: bond.asset, min: bond.min, vault: bond.vault } : null,
     },
+    identity: await verifiedClient(db, request.clientId),
     limits: {
       currency: request.currency,
       perPurchaseMinor: request.perPurchaseMinor.toString(),

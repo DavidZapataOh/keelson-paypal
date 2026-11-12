@@ -226,6 +226,8 @@ describe("an agent asks for a mandate (RFC 8628)", () => {
       name: "Claude Code",
       reason: REASON,
       agent: { agentId: op.agentId.toString(), operator: "Test operator" },
+      // The operator's own client asked: it is the registered agent's.
+      identity: { kind: "operator", agentId: op.agentId.toString(), operator: "Test operator" },
       limits: {
         currency: "USD",
         perPurchaseMinor: "5000",

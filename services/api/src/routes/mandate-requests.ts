@@ -152,7 +152,7 @@ const check = createRoute({
  * The mandate if an operator this client linked holds it or, for an app acting for a user, if
  * that user approved it for the app.
  */
-async function clientMandate(c: Context, db: Deps["db"], id: string) {
+export async function clientMandate(c: Context, db: Deps["db"], id: string) {
   const principal = c.get("principal") as Principal;
   if (isDelegated(principal)) return approvedMandate(db, principal, id);
   const [found] = await db
@@ -286,59 +286,65 @@ export function registerMandateRequests(
   app.openapi(check, async (c) => {
     const mandate = await clientMandate(c, db, c.req.valid("param").id);
     if (!mandate) return problem(c, 404, "not-found", "Not found");
-    const cart = c.req.valid("json").cart as Cart;
-    const blockers: z.infer<typeof Blocker>[] = [];
-    if (mandate.state !== "ACTIVE" || mandate.revokeRequestedAt !== null) {
-      blockers.push({
-        code: "mandate-not-active",
-        field: null,
-        message:
-          mandate.state === "SIGNED" || mandate.state === "HOLD_PENDING"
-            ? "The mandate is signed and its PayPal hold is not approved yet."
-            : `The mandate is ${mandate.revokeRequestedAt ? "revoked" : mandate.state.toLowerCase()}.`,
-        next:
-          mandate.state === "SIGNED" || mandate.state === "HOLD_PENDING"
-            ? "Call keelson.confirm_mandate and wait for the hold."
-            : "Stop. Ask the user for a new mandate with keelson.request_mandate.",
-      });
-    }
-    if (await stoppedSince(db, mandate.userId, mandate.createdAt)) {
-      blockers.push({
-        code: "agents-stopped",
-        field: null,
-        message: "The user stopped all agents.",
-        next: "Stop. Do not buy or ask again unless the user tells you to.",
-      });
-    }
-    const checks = cartChecks(mandate, cart);
-    const onboarded = MERCHANTS.some((x) => x.id === cart.merchant);
-    for (const f of checks.filter((x) => !x.pass)) {
-      const liftable = LIFTABLE.has(f.field) && onboarded;
-      blockers.push({
-        code: `field:${f.field}`,
-        field: f.field,
-        message: `${f.field}: the mandate allows ${f.mandate ?? "nothing"}, the cart has ${f.cart ?? "nothing"}.`,
-        next: liftable
-          ? "The countersign pauses this cart for the user's one-time approval, or ask for more room with keelson.request_mandate_change."
-          : "Change the cart: one approval cannot lift this field.",
-      });
-    }
-    const [answered] = await db
-      .select({ askAbove: agentConnections.askAboveMinor })
-      .from(agentConnections)
-      .where(
-        and(eq(agentConnections.mandateId, mandate.id), eq(agentConnections.state, "APPROVED")),
-      );
-    const total = cart.lines.reduce((s, l) => s + BigInt(l.qty) * BigInt(l.unit_minor), 0n);
-    const canAttempt = blockers.length === 0;
-    return c.json(
-      {
-        canAttempt,
-        needsApproval: canAttempt && answered?.askAbove != null && total > answered.askAbove,
-        blockers,
-        checks,
-      },
-      200,
-    );
+    return c.json(await checkCart(db, mandate, c.req.valid("json").cart as Cart), 200);
   });
+}
+
+/**
+ * What a countersign of `cart` would find under `mandate` now, field by field, from the policy set
+ * the TEE legs run: nothing is signed, reserved or logged.
+ */
+export async function checkCart(
+  db: Deps["db"],
+  mandate: typeof mandates.$inferSelect,
+  cart: Cart,
+): Promise<z.infer<typeof CheckResult>> {
+  const blockers: z.infer<typeof Blocker>[] = [];
+  if (mandate.state !== "ACTIVE" || mandate.revokeRequestedAt !== null) {
+    blockers.push({
+      code: "mandate-not-active",
+      field: null,
+      message:
+        mandate.state === "SIGNED" || mandate.state === "HOLD_PENDING"
+          ? "The mandate is signed and its PayPal hold is not approved yet."
+          : `The mandate is ${mandate.revokeRequestedAt ? "revoked" : mandate.state.toLowerCase()}.`,
+      next:
+        mandate.state === "SIGNED" || mandate.state === "HOLD_PENDING"
+          ? "Call keelson.confirm_mandate and wait for the hold."
+          : "Stop. Ask the user for a new mandate with keelson.request_mandate.",
+    });
+  }
+  if (await stoppedSince(db, mandate.userId, mandate.createdAt)) {
+    blockers.push({
+      code: "agents-stopped",
+      field: null,
+      message: "The user stopped all agents.",
+      next: "Stop. Do not buy or ask again unless the user tells you to.",
+    });
+  }
+  const checks = cartChecks(mandate, cart);
+  const onboarded = MERCHANTS.some((x) => x.id === cart.merchant);
+  for (const f of checks.filter((x) => !x.pass)) {
+    const liftable = LIFTABLE.has(f.field) && onboarded;
+    blockers.push({
+      code: `field:${f.field}`,
+      field: f.field,
+      message: `${f.field}: the mandate allows ${f.mandate ?? "nothing"}, the cart has ${f.cart ?? "nothing"}.`,
+      next: liftable
+        ? "The countersign pauses this cart for the user's one-time approval, or ask for more room with keelson.request_mandate_change."
+        : "Change the cart: one approval cannot lift this field.",
+    });
+  }
+  const [answered] = await db
+    .select({ askAbove: agentConnections.askAboveMinor })
+    .from(agentConnections)
+    .where(and(eq(agentConnections.mandateId, mandate.id), eq(agentConnections.state, "APPROVED")));
+  const total = cart.lines.reduce((s, l) => s + BigInt(l.qty) * BigInt(l.unit_minor), 0n);
+  const canAttempt = blockers.length === 0;
+  return {
+    canAttempt,
+    needsApproval: canAttempt && answered?.askAbove != null && total > answered.askAbove,
+    blockers,
+    checks,
+  };
 }

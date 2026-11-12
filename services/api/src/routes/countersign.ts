@@ -1495,7 +1495,10 @@ export function registerCountersign(
       if (err instanceof LegError && err.kind === "problem") {
         await failPurchase(db, purchaseId, err.code ?? "leg-refused");
         const status = legStatus(err.code, err.status);
-        return problem(c, status, err.code ?? "leg-refused", "A leg refused the request");
+        // The leg's own code rides as an extension; the type is one page for every leg refusal.
+        return problem(c, status, "leg-refused", "A leg refused the request", undefined, {
+          code: err.code ?? null,
+        });
       }
       await failPurchase(db, purchaseId, "internal");
       throw err;

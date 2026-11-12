@@ -181,7 +181,7 @@ export async function judge(o: { cache?: string } = {}): Promise<User> {
       const until = Date.now() + 120_000;
       while (!(await approved.isVisible())) {
         if (Date.now() > until)
-          throw new Error(`not approved: ${await page.locator("main").innerText()}`);
+          throw new Error(`not approved: ${await page.locator("main").textContent()}`);
         const step = await Promise.any(
           steps.map(async (b) => {
             await b.waitFor({ timeout: 5_000 });

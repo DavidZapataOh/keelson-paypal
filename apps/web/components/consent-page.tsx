@@ -1,19 +1,26 @@
 "use client";
 
 import { Button } from "@keelson/ui/components/button";
-import { Ban, Check, Fingerprint, Loader2, ShieldCheck, TriangleAlert } from "lucide-react";
+import { Ban, Fingerprint, Loader2, ShieldCheck, TriangleAlert } from "lucide-react";
 import { useEffect, useState } from "react";
 import { get, post } from "../lib/api";
 import { authClient } from "../lib/auth";
-import type { ConnectionView } from "../lib/connections";
+import type { ClientIdentity, ConnectionView } from "../lib/connections";
 import { money } from "../lib/format";
-import { Approval, Chip } from "./approval";
+import { Approval } from "./approval";
 import { SplitK } from "./brand";
+import { IdentityRow } from "./identity-row";
 import { ErrorNotice } from "./notice";
 import { OnboardingFrame } from "./onboarding/frame";
 
 interface Consent {
-  client: { id: string; name: string; uri: string | null; verified: boolean };
+  client: {
+    id: string;
+    name: string;
+    uri: string | null;
+    verified: boolean;
+    identity?: ClientIdentity;
+  };
   agent: { agentId: string; operator: string; hosted: boolean } | null;
   scopes: string[];
   /** For an app Keelson does not know acting through its own agent: what its bond backs per user. */
@@ -183,7 +190,9 @@ export function ConsentPage() {
             <p className="grid gap-0.5">
               <span className="font-semibold text-lg">{consent.client.name}</span>
               <span className="truncate text-muted-foreground text-sm">
-                {consent.client.uri ?? consent.client.id}
+                {consent.client.identity?.kind === "cimd"
+                  ? consent.client.identity.host
+                  : (consent.client.uri ?? consent.client.id)}
               </span>
             </p>
             <p className="flex max-w-[34ch] items-start gap-2 text-left text-pretty text-sm">
@@ -223,26 +232,16 @@ export function ConsentPage() {
       {consent ? (
         <>
           <div className="grid gap-3">
-            <div className="flex flex-wrap gap-1.5">
-              {consent.client.verified ? (
-                <Chip>
-                  <Check className="size-3.5" aria-hidden="true" />
-                  Registered agent #{consent.agent?.agentId}
-                </Chip>
-              ) : (
-                <Chip>
-                  <TriangleAlert className="size-3.5 text-warn" aria-hidden="true" />
-                  Unverified client
-                </Chip>
-              )}
-            </div>
+            <IdentityRow identity={consent.client.identity} name={consent.client.name} />
             <h1 className="text-balance font-semibold text-[1.75rem] leading-[1.1] tracking-[-0.025em] sm:text-[2rem]">
               {consent.client.name} wants to connect
             </h1>
             <p className="text-pretty text-muted-foreground leading-snug">
-              {consent.client.verified
-                ? `Run by ${consent.agent?.operator}. It acts for you only within what you allow.`
-                : "Keelson has not linked this app to a registered agent. Only continue if you started this."}
+              {consent.client.identity?.kind === "cimd"
+                ? `Keelson confirmed it is ${consent.client.identity.host}'s app. It acts for you only within what you allow.`
+                : consent.client.identity?.kind === "operator"
+                  ? `Run by ${consent.client.identity.operator}. It acts for you only within what you allow.`
+                  : "This app named itself. Only continue if you started this."}
             </p>
           </div>
 

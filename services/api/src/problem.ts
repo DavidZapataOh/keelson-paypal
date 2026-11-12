@@ -2,6 +2,7 @@ import { z } from "@hono/zod-openapi";
 import type { Context, TypedResponse } from "hono";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import type { JSONParsed } from "hono/utils/types";
+import type { ProblemSlug } from "./problem-types.ts";
 
 const problemBase = "https://api.keelson.finance/problems/";
 
@@ -22,7 +23,7 @@ type ProblemBody = JSONParsed<z.infer<typeof ProblemSchema>>;
 export function problem<S extends ContentfulStatusCode>(
   c: Context,
   status: S,
-  slug: string,
+  slug: ProblemSlug,
   title: string,
   detail?: string,
   extra?: Record<string, unknown>,
