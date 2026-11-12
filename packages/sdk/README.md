@@ -60,7 +60,7 @@ The same file is [`examples/quickstart.mjs`](examples/quickstart.mjs).
 
 | Who                      | How                                                                                                                                                       |
 | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| You, building an app     | `npx @keelson-finance/sdk login`; `new Keelson()` reads the saved sign-in and refreshes it                                                                             |
+| You, building an app     | `npx @keelson-finance/sdk login`; `new Keelson()` reads the saved sign-in and refreshes it                                                                |
 | An operator's own agent  | `KEELSON_CLIENT_ID`, `KEELSON_CLIENT_SECRET` (client credentials) and `KEELSON_AGENT_KEY`, its private P-256 JWK, which closes each mandate it buys under |
 | A token you already hold | `KEELSON_TOKEN`, or `new Keelson({ auth: staticToken(token) })`                                                                                           |
 
@@ -95,7 +95,7 @@ attempt times out after 60 s.
 
 | Error                                   | When                                                   | What to do                                              |
 | --------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------- |
-| `AuthenticationError`                   | No sign-in, or it was revoked                          | Run `npx @keelson-finance/sdk login` again                           |
+| `AuthenticationError`                   | No sign-in, or it was revoked                          | Run `npx @keelson-finance/sdk login` again              |
 | `PermissionDeniedError`                 | The token lacks the scope                              | Sign in with the scope the method needs                 |
 | `UnprocessableEntityError`              | `invalid-limits`, `hosted-cap`, `evidence-pii`...      | Read `err.type` and `err.detail`, fix the input         |
 | `ConflictError`                         | `purchase-exists` is answered for you by `countersign` | Nothing                                                 |
