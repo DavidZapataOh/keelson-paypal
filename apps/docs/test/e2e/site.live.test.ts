@@ -94,7 +94,7 @@ describe(`the deployed site at ${SITE}`, () => {
   test("search finds the Alibi pages", async () => {
     const page = await browser.newPage();
     await page.goto(`${SITE}/`);
-    await page.keyboard.press("ControlOrMeta+K");
+    await page.keyboard.press("ControlOrMeta+k");
     await page.getByRole("searchbox", { name: "Search the docs" }).fill("Alibi");
     await expect
       .poll(() => page.locator(".search-results li").count(), { timeout: 10_000 })
