@@ -1,4 +1,4 @@
-import type { AlibiBundle, AlibiReceipt } from "@keelson/alibi";
+import type { AnyAlibi } from "@keelson/alibi";
 import { useEffect, useState } from "react";
 import { verifier } from "./verifier.ts";
 
@@ -40,13 +40,7 @@ const short = (h: string) => `${h.slice(0, 10)}…${h.slice(-6)}`;
  * proof is verified in an `eth_call` to `EngineProofVerifier`, which goes through Succinct's SP1
  * verifier gateway, and what it commits to is compared with the Alibi itself.
  */
-export function EngineProof({
-  alibi,
-  rpc,
-}: {
-  alibi: AlibiBundle | AlibiReceipt;
-  rpc: string | undefined;
-}) {
+export function EngineProof({ alibi, rpc }: { alibi: AnyAlibi; rpc: string | undefined }) {
   const [state, setState] = useState<State>({ kind: "none" });
   useEffect(() => {
     let live = true;
@@ -66,11 +60,12 @@ export function EngineProof({
       const p = e.proof;
       set({ kind: "checking" });
       // A full Alibi states its own countersign; a public receipt leaves the API's word.
-      const tee = "tee" in alibi ? alibi.tee : undefined;
+      const { v1Shape, verifyEngineProof } = await verifier;
+      const shaped = v1Shape(alibi);
+      const tee = "tee" in shaped ? shaped.tee : undefined;
       const evalHash = (tee?.countersign.evalHash ?? e.countersign_eval_hash).toLowerCase();
       const digest = (tee?.digest ?? e.countersign_digest).toLowerCase();
       const started = performance.now();
-      const { verifyEngineProof } = await verifier;
       const answer = await verifyEngineProof(
         p.verifier.chain_id,
         p.public_values,

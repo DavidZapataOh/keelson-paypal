@@ -80,6 +80,38 @@ async fn health_is_open() {
         health["issuer"],
         json!({ "kty": "EC", "crv": "P-256", "x": issuer.x, "y": issuer.y })
     );
+    for (field, value) in [("statements", 1), ("decoys", 1), ("status_list", 1)] {
+        assert_eq!(health[field], value, "{field}");
+    }
+    assert_eq!(health["clock"], "unverified");
+    let hex = |b: &[u8]| -> String { b.iter().map(|x| format!("{x:02x}")).collect() };
+    assert_eq!(
+        health["kms"],
+        json!({
+            "chain_id": keelson_tee::kms::KMS_CHAIN_ID,
+            "app_id": hex(&keelson_tee::kms::APP_ID),
+            "root": hex(&keelson_tee::kms::KMS_ROOT),
+        })
+    );
+}
+
+#[tokio::test]
+async fn health_says_the_tdx_clock_is_verified_with_secure_time() {
+    let hash = Sha256::digest(TOKEN).into();
+    let secure = router(Arc::new(
+        AppState::new(leg_a(), hash)
+            .with_clock(clock)
+            .with_secure_time(true),
+    ));
+    let (_, body) = send(
+        &secure,
+        Request::get("/v1/health").body(Body::empty()).unwrap(),
+    )
+    .await;
+    assert_eq!(
+        serde_json::from_slice::<Value>(&body).unwrap()["clock"],
+        "verified"
+    );
 }
 
 #[tokio::test]

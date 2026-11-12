@@ -61,7 +61,7 @@ services:
         sync: false
       - key: KEELSON_TEE_TOKEN
         sync: false
-      - key: KEELSON_ISSUER_THUMBPRINT
+      - key: KEELSON_ISSUER_THUMBPRINTS
         sync: false
       - key: LOG_URL
         value: http://keelson-log:8081

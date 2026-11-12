@@ -59,6 +59,13 @@ components:
         - status
         - instance
       additionalProperties: {}
+    Capabilities:
+      type: object
+      properties:
+        decoys:
+          type: boolean
+      required:
+        - decoys
     CreatedMandate:
       type: object
       properties:
@@ -98,10 +105,25 @@ components:
             type: string
           maxItems: 1024
           description: Every disclosure of the payload; each digest must resolve.
+        decoySalts:
+          type: array
+          items:
+            type: string
+            pattern: ^[A-Za-z0-9_-]{22}$
+          maxItems: 512
+          description: The salts of the payload's decoy digests (RFC 9901 section 4.2.5);
+            every other digest resolves to a disclosure. Accepted once both TEEs
+            resolve decoys.
         commitment:
           type: string
           pattern: ^0x[0-9a-f]{64}$
           description: "`C_m`; must equal the payload's `zk.commitment`."
+        renews:
+          type: string
+          minLength: 26
+          maxLength: 26
+          description: "A mandate of yours that `needsRenewal`, which this one replaces:
+            it is revoked, and its PayPal hold voided, once this one is stored."
         salt:
           type: string
           pattern: ^0x[0-9a-f]{32}$
@@ -262,6 +284,11 @@ components:
           items:
             $ref: "#/components/schemas/MandatePurchase"
           description: The mandate's latest 100 purchases, newest first.
+        c3Published:
+          type: boolean
+          description: Whether the mandate's C3 proof (its user is registered, without
+            saying who) is stored and its root is on chain. Its purchases'
+            Alibis wait for it.
         pendingHolds:
           type: array
           items:
@@ -269,6 +296,29 @@ components:
           description: Purchase holds of a several-store mandate still waiting for the
             buyer's PayPal approval, oldest first. Later changes arrive as
             `mandate.purchase_hold` events.
+        status:
+          anyOf:
+            - type: object
+              properties:
+                uri:
+                  type: string
+                idx:
+                  type: integer
+                revoked:
+                  type: boolean
+              required:
+                - uri
+                - idx
+                - revoked
+            - type: "null"
+          description: "The mandate's entry in the public status list
+            (draft-ietf-oauth-status-list-21): `revoked` once its revocation is
+            requested, which the list carries from its next signing."
+        needsRenewal:
+          type: boolean
+          description: "`true` when leg A no longer holds the credential issuer key the
+            mandate was issued with: countersigns answer `mandate-needs-renewal`
+            until the user signs a new mandate with `renews`."
       required:
         - id
         - state
@@ -279,7 +329,10 @@ components:
         - hold
         - card
         - purchases
+        - c3Published
         - pendingHolds
+        - status
+        - needsRenewal
     MandateHold:
       type: object
       properties:
@@ -1732,6 +1785,11 @@ components:
           type: boolean
         createdAt:
           type: string
+        statusListed:
+          type: integer
+          description: "On the stop's own answer: how many of the stopped mandates the
+            public status list (`GET /status/v1/mandates/2026-1`) now marks
+            revoked."
       required:
         - id
         - revoked
@@ -4094,6 +4152,9 @@ components:
         - unbound
         - changed
         - ms
+    AlibiEar:
+      type: object
+      additionalProperties: {}
     AlibiReceipt:
       type: object
       properties:
@@ -6861,6 +6922,45 @@ paths:
                       - ok
                 required:
                   - status
+  /v1/engine/capabilities:
+    get:
+      operationId: getEngineCapabilities
+      tags:
+        - system
+      summary: What both TEEs do
+      description: "The features both TEE legs run, which a client may use: `decoys`,
+        a mandate padded with decoy digests (RFC 9901 section 4.2.5)."
+      responses:
+        "200":
+          description: The features both legs report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Capabilities"
+  /status/v1/mandates/2026-1:
+    get:
+      operationId: getMandateStatusList
+      tags:
+        - mandates
+      summary: The mandate status list
+      description: "The Token Status List (draft-ietf-oauth-status-list-21) of every
+        mandate that carries a `status` claim: one bit per mandate, set once it
+        is revoked or its user stopped their agents. Signed by the TEE that
+        issues mandates, with the issuer key the open mandates name; it never
+        clears a bit. Both TEEs check it on every countersign."
+      responses:
+        "200":
+          description: The current status list token
+          content:
+            application/statuslist+jwt:
+              schema:
+                type: string
+        "404":
+          description: No list is published yet
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
   /status:
     get:
       operationId: getStatus
@@ -9017,10 +9117,26 @@ paths:
                     type: string
                   maxItems: 1024
                   description: Every disclosure of the payload; each digest must resolve.
+                decoySalts:
+                  type: array
+                  items:
+                    type: string
+                    pattern: ^[A-Za-z0-9_-]{22}$
+                  maxItems: 512
+                  description: The salts of the payload's decoy digests (RFC 9901 section 4.2.5);
+                    every other digest resolves to a disclosure. Accepted once
+                    both TEEs resolve decoys.
                 commitment:
                   type: string
                   pattern: ^0x[0-9a-f]{64}$
                   description: "`C_m`; must equal the payload's `zk.commitment`."
+                renews:
+                  type: string
+                  minLength: 26
+                  maxLength: 26
+                  description: "A mandate of yours that `needsRenewal`, which this one replaces:
+                    it is revoked, and its PayPal hold voided, once this one is
+                    stored."
                 salt:
                   type: string
                   pattern: ^0x[0-9a-f]{32}$
@@ -10654,6 +10770,40 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+  /v1/alibis/{id}.cose:
+    get:
+      operationId: getAlibiStatement
+      tags:
+        - alibis
+      summary: An Alibi as an IETF SCITT transparent statement
+      description: The Alibi's COSE_Sign1 signed statement (RFC 9943) with its log
+        receipt (RFC 9942, label 394) and, once stamped, its RFC 3161 token (RFC
+        9921, label 270). A v1 Alibi's is the bridge statement that carries its
+        countersigned facts, once there is one. The statement holds no personal
+        data; anyone may read it.
+      parameters:
+        - schema:
+            type: string
+            pattern: ^[0-7][0-9A-HJKMNP-TV-Z]{25}$
+            description: "The Alibi id: the purchase's ULID."
+          required: true
+          description: "The Alibi id: the purchase's ULID."
+          name: id
+          in: path
+      responses:
+        "200":
+          description: The transparent statement
+          content:
+            application/scitt-statement+cose:
+              schema:
+                type: string
+                format: binary
+        "404":
+          description: No Alibi with this id that the caller may read
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
   /v1/alibis/{id}:
     get:
       operationId: getAlibi
@@ -10677,11 +10827,29 @@ paths:
           description: "The Alibi id: the purchase's ULID."
           name: id
           in: path
+        - schema:
+            type: string
+            enum:
+              - "1"
+              - "2"
+            description: "`2`: the Alibi as an IETF SCITT transparent statement (RFC 9943).
+              A v1 Alibi is served as the bridge statement that carries its
+              countersigned facts, once there is one."
+          required: false
+          description: "`2`: the Alibi as an IETF SCITT transparent statement (RFC 9943).
+            A v1 Alibi is served as the bridge statement that carries its
+            countersigned facts, once there is one."
+          name: version
+          in: query
       responses:
         "200":
           description: The bundle
           content:
             application/vnd.keelson.alibi.v1+json:
+              schema:
+                type: string
+                format: binary
+            application/vnd.keelson.alibi.v2+json:
               schema:
                 type: string
                 format: binary
@@ -10709,13 +10877,25 @@ paths:
             schema:
               type: string
               format: binary
+          application/vnd.keelson.alibi.v2+json:
+            schema:
+              type: string
+              format: binary
+          application/scitt-statement+cose:
+            schema:
+              type: string
+              format: binary
       responses:
         "200":
-          description: The report
+          description: "The report; with `Accept: application/eat-ucs+json`, the same
+            appraisal as an EAT Attestation Result (draft-ietf-rats-ear)"
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/AlibiReport"
+            application/eat-ucs+json:
+              schema:
+                $ref: "#/components/schemas/AlibiEar"
         "400":
           description: Not an Alibi bundle; `pointer` names the failing value
           content:

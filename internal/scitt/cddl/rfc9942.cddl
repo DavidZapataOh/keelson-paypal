@@ -1,0 +1,103 @@
+Signature_With_Receipt = #6.18(COSE_Sign1)
+
+cose-label = int / text
+cose-values = any
+
+Protected_Header = {
+  * cose-label => cose-values
+}
+
+Unprotected_Header = {
+  &(receipts: 394)  => [+ bstr .cbor Receipt]
+  * cose-label => cose-values
+}
+
+COSE_Sign1 = [
+  protected   : bstr .cbor Protected_Header
+  unprotected : Unprotected_Header
+  payload     : bstr / nil
+  signature   : bstr
+]
+
+Receipt = Receipt_For_Inclusion / Receipt_For_Consistency
+
+; Note the proof formats shown here are for RFC9162_SHA256.
+; Other VDSs may have different proof formats.
+
+
+Receipt_For_Inclusion = #6.18(Signed_Inclusion_Proof)
+
+Signed_Inclusion_Proof = [
+  protected   :
+    bstr .cbor RFC9162_SHA256_Inclusion_Protected_Header,
+  unprotected : RFC9162_SHA256_Inclusion_Unprotected_Header,
+  payload     : bstr / nil,
+  signature   : bstr
+]
+
+RFC9162_SHA256_Inclusion_Protected_Header = {
+  &(alg: 1) => int
+  &(vds: 395) => int
+  * cose-label => cose-values
+}
+
+RFC9162_SHA256_Inclusion_Unprotected_Header = {
+  &(vdp: 396) => RFC9162_SHA256_Verifiable_Inclusion_Proofs
+  * cose-label => cose-values
+}
+
+RFC9162_SHA256_Verifiable_Inclusion_Proofs = {
+  &(inclusion-proof: -1) => RFC9162_SHA256_Inclusion_Proofs
+}
+
+RFC9162_SHA256_Inclusion_Proofs = [
+  + RFC9162_SHA256_Inclusion_Proof
+]
+
+RFC9162_SHA256_Inclusion_Proof =
+  bstr .cbor RFC9162_SHA256_Inclusion_Proof_Content
+
+RFC9162_SHA256_Inclusion_Proof_Content = [
+  tree_size: uint,
+  leaf_index: uint,
+  inclusion_path:[ + bstr ]
+]
+
+
+Receipt_For_Consistency = #6.18(Signed_Consistency_Proof)
+
+Signed_Consistency_Proof = [
+  protected   :
+    bstr .cbor RFC9162_SHA256_Consistency_Protected_Header,
+  unprotected : RFC9162_SHA256_Consistency_Unprotected_Header,
+  payload     : bstr / nil, ; Newer Merkle Tree root
+  signature   : bstr
+]
+
+RFC9162_SHA256_Consistency_Protected_Header = {
+  &(alg: 1) => int,
+  &(vds: 395) => int,
+  * cose-label => cose-values
+}
+
+RFC9162_SHA256_Consistency_Unprotected_Header = {
+  &(vdp: 396) => RFC9162_SHA256_Verifiable_Consistency_Proofs
+  * cose-label => cose-values
+}
+
+RFC9162_SHA256_Verifiable_Consistency_Proofs = {
+  &(consistency-proof: -2) => RFC9162_SHA256_Consistency_Proofs
+}
+
+RFC9162_SHA256_Consistency_Proofs = [
+  + RFC9162_SHA256_Consistency_Proof
+]
+
+RFC9162_SHA256_Consistency_Proof =
+  bstr .cbor RFC9162_SHA256_Consistency_Proof_Content
+
+RFC9162_SHA256_Consistency_Proof_Content = [
+  tree_size_1: uint,
+  tree_size_2: uint,
+  consistency_path: [ + bstr ]
+]

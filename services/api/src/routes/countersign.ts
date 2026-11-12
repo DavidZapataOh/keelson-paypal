@@ -50,6 +50,7 @@ import { deviceAuthorization, grantOf, requestOnce } from "../connections.ts";
 import { approvedMandate, closeForHost, isDelegated, notAnotherApps } from "../delegated.ts";
 import { issuedReference } from "../fx.ts";
 import { capturable, merchantWebsite } from "../hold/state.ts";
+import { currentIssuer, needsRenewal } from "../issuer.ts";
 import { MERCHANTS } from "../merchants.ts";
 import { requireAgent } from "../middleware/auth.ts";
 import { money, notify, purchaseAlert, requestAlert } from "../notify/notifier.ts";
@@ -65,6 +66,7 @@ import { logStep } from "../pipeline/log-step.ts";
 import { principalKey } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
 import { purchaseTimings, serverTiming, timings } from "../server-timing.ts";
+import { currentStatusToken } from "../status-list.ts";
 import { stoppedSince } from "../stop.ts";
 import { LegError } from "../tee/client.ts";
 import { VERIFYING_CONTRACT } from "../tee/config.ts";
@@ -347,7 +349,7 @@ export async function latestOfCart(
   return latest?.id;
 }
 /** Failures that say nothing about the request, so the same request id may be driven again. */
-const RETRYABLE = new Set(["tee-unavailable", "paypal-unavailable", "stale"]);
+const RETRYABLE = new Set(["tee-unavailable", "paypal-unavailable", "paypal-disagree", "stale"]);
 
 const b64json = (segment: string | undefined): unknown => {
   if (!segment) throw new Error("empty segment");
@@ -525,7 +527,9 @@ function outsideMandate(
   try {
     const grant =
       m.payloadSd && m.disclosures
-        ? grantOf(decodeMandate(m.payloadSd as Record<string, unknown>, m.disclosures))
+        ? grantOf(
+            decodeMandate(m.payloadSd as Record<string, unknown>, m.disclosures, m.decoySalts),
+          )
         : undefined;
     if (grant && grant.perPurchaseMinor < cap) cap = grant.perPurchaseMinor;
   } catch {
@@ -727,6 +731,15 @@ export function registerCountersign(
             found?.clientId && found.clientId === principal.subject ? found.mandate : undefined,
           );
     if (!mandate) return problem(c, 404, "not-found", "Not found");
+    if (needsRenewal(mandate.issuerThumbprint, await currentIssuer(db))) {
+      return problem(
+        c,
+        409,
+        "mandate-needs-renewal",
+        "Mandate needs renewal",
+        "Keelson moved its TEE keys under on-chain governance: the user signs this mandate again.",
+      );
+    }
     // Keelson closes only mandates of its hosted operator, with that operator's key.
     const hostedKey =
       body.mandateId !== undefined && mandate.operatorAgentId === deps.demoAgentId
@@ -1372,8 +1385,13 @@ export function registerCountersign(
             ...(mandate.sealedSalt
               ? { sealed_salt: Buffer.from(mandate.sealedSalt).toString("base64") }
               : {}),
+            ...(mandate.decoySalts.length > 0 ? { decoy_salts: mandate.decoySalts } : {}),
+            ...(mandate.statusIdx !== null && tee
+              ? { status_list: await currentStatusToken({ db, log, tee }) }
+              : {}),
           },
           want,
+          await paypalRefSaltOf(db, purchaseId),
         );
         s.setAttribute("countersign.mode", out.mode);
         if (out.countersign.decision !== "1") s.updateName("purchase.DENIED");
@@ -1386,6 +1404,7 @@ export function registerCountersign(
         decision: Number(out.countersign.decision),
         failedFieldsMask: Number(out.countersign.failedFieldsMask),
         countersignMode: out.mode,
+        statement: out.statement ? Buffer.from(out.statement, "base64") : null,
         evalTrace: out.trace,
         engineInput: {
           cart: body.cart,
@@ -1482,4 +1501,15 @@ export function registerCountersign(
       throw err;
     }
   });
+}
+
+/** The salt of a PayPal purchase's payment reference; a card purchase commits through its card statements. */
+async function paypalRefSaltOf(db: Db, purchaseId: string): Promise<`0x${string}` | undefined> {
+  const [p] = await db
+    .select({ salt: purchases.paypalRefSalt, rail: purchases.rail })
+    .from(purchases)
+    .where(eq(purchases.id, purchaseId));
+  return p?.salt && p.rail === "paypal"
+    ? (`0x${Buffer.from(p.salt).toString("hex")}` as const)
+    : undefined;
 }

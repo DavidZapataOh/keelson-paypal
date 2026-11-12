@@ -50,6 +50,7 @@ export const inclusion: CheckDef = {
   step: 6,
   reads: ["/tlog_proof", "/leaf"],
   run(input) {
+    if (!input.tlog_proof) return UNDISCLOSED;
     const origin = pinnedOrigin(proofCheckpoint(input.tlog_proof));
     let out: ReturnType<typeof verifyProof>;
     try {
@@ -67,6 +68,7 @@ export const witnesses: CheckDef = {
   step: 6,
   reads: ["/tlog_proof"],
   run(input, { now }) {
+    if (!input.tlog_proof) return UNDISCLOSED;
     const checkpoint = proofCheckpoint(input.tlog_proof);
     const set = LOG_WITNESSES[pinnedOrigin(checkpoint)];
     expect(set, "no witnesses are pinned for this origin", ["/tlog_proof"]);

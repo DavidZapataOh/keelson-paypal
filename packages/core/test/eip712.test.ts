@@ -64,6 +64,10 @@ describe("eip712", () => {
       "CoverageBatch(uint256 agentId,bytes32 root,uint128 total,uint96 premium,uint40 expiresAt,bytes32 checkpointRoot,uint64 treeSize)",
     ],
     ["Claim", "Claim(address account,address to,uint256 nonce,uint256 deadline)"],
+    [
+      "CardSettlement",
+      "CardSettlement(bytes32 requestId,bytes32 cardRef,bytes32 transactionHash,uint64 settledMinor,uint16 currency,uint8 status,uint40 settledAt,uint40 observedAt)",
+    ],
   ] as const)("encodes %s as the vault expects", (primaryType, typeString) => {
     const fields = KEELSON_TYPES[primaryType].map(({ name, type }) => `${type} ${name}`);
     expect(`${primaryType}(${fields.join(",")})`).toBe(typeString);

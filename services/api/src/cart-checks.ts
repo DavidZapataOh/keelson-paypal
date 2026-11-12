@@ -24,7 +24,11 @@ export function cartChecks(mandate: typeof mandates.$inferSelect, cart: Cart): F
   if (!mandate.payloadSd || !mandate.disclosures || !mandate.mandateHash) return [];
   let m: ReturnType<typeof decodeMandate>;
   try {
-    m = decodeMandate(mandate.payloadSd as Record<string, unknown>, mandate.disclosures);
+    m = decodeMandate(
+      mandate.payloadSd as Record<string, unknown>,
+      mandate.disclosures,
+      mandate.decoySalts,
+    );
   } catch {
     return [];
   }

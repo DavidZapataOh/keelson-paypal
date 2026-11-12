@@ -44,5 +44,5 @@ export {
   runCheckout,
   shopifyCart,
 } from "./live.ts";
-export { ALFRED, LIVE_ITEM, liveMandate } from "./live-store.ts";
+export { ALFRED, LIVE_ITEM, liveMandate, storePayPalMerchantId } from "./live-store.ts";
 export { isAllowed } from "./policy.ts";

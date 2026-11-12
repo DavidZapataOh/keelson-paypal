@@ -57,8 +57,10 @@ jobs:
             ts:
               - *shared
               - packages/**
+              - internal/scitt/**
               - services/api/**
               - services/agent/**
+              - services/redteam/**
               - services/mcp/**
               - services/monitor/**
               - apps/**
@@ -202,7 +204,15 @@ jobs:
           grep -rEn "paypalMockResponse|PayPal-Mock-Response" packages services apps --exclude-dir=node_modules --exclude-dir=dist || status=$?
           test "$status" -eq 1
       - run: pnpm --filter @keelson/timestamp exec playwright install chromium
-      - run: pnpm turbo run typecheck test build --filter='!./packages/db' --filter='!./packages/attest' --filter='!./packages/evidence' --filter='!./services/api' --filter='!./apps/store' --filter='!./services/monitor' --filter='!./packages/relayer' --filter='!./apps/landing' --concurrency=100% --cache-dir=.turbo
+      - name: Install the cddl CLI
+        run: |
+          curl -fsSL https://github.com/anweiss/cddl/releases/download/v0.10.7/cddl-linux-amd64.tar.gz -o /tmp/cddl.tar.gz
+          echo "08a68f7aae25d5781c82e64f8926ca4cad491bd5d2d2f47c72a848d3ff858b8a  /tmp/cddl.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/cddl.tar.gz -C /tmp cddl-linux-amd64
+          sudo install -m 0755 /tmp/cddl-linux-amd64 /usr/local/bin/cddl
+      - env:
+          KEELSON_REQUIRE_CDDL: "1"
+        run: pnpm turbo run typecheck test build --filter='!./packages/db' --filter='!./packages/attest' --filter='!./packages/evidence' --filter='!./services/api' --filter='!./apps/store' --filter='!./services/monitor' --filter='!./packages/relayer' --filter='!./apps/landing' --concurrency=100% --cache-dir=.turbo
       # On its own, after the fan-out: its e2e times a visitor's tamper flow against a 10 s budget.
       - name: Landing
         run: pnpm turbo run typecheck test build --filter=@keelson/landing --cache-dir=.turbo
@@ -218,6 +228,38 @@ jobs:
           pnpm --filter @keelson/policy vectors
           pnpm --filter @keelson/log vectors
           test -z "$(git status --porcelain)"
+
+  # Every checkout attack in the corpus against the real pay-click gate in Chromium; any attack the
+  # gate lets through fails the job, and the published scoreboard must match what this run measured.
+  red-team:
+    needs: changes
+    if: needs.changes.outputs.ts == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @keelson/agent exec playwright install --with-deps chromium
+      - run: pnpm turbo run build --filter=@keelson/agent^... --filter=@keelson/redteam^...
+      - name: Checkout-attack corpus
+        env:
+          ATTACK_RESULTS: ${{ runner.temp }}/attacks.jsonl
+        run: pnpm --filter @keelson/agent exec vitest run test/attacks.test.ts
+      - name: The published scoreboard is this run's
+        if: always()
+        run: |
+          node services/redteam/scripts/checkout-scoreboard.ts "$RUNNER_TEMP/attacks.jsonl" > "$RUNNER_TEMP/checkout-attacks.json"
+          { echo "### Checkout attacks"; echo '```json'; jq '{attacks, asr, through, controls, false_blocks, blocked_controls, classes: [.classes[] | {class, attacks, through}]}' "$RUNNER_TEMP/checkout-attacks.json"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          cmp "$RUNNER_TEMP/checkout-attacks.json" apps/web/public/redteam/checkout-attacks.json || {
+            echo "apps/web/public/redteam/checkout-attacks.json is not this run's scoreboard, which is:"
+            cat "$RUNNER_TEMP/checkout-attacks.json"
+            exit 1
+          }
 
   alibi-pdf:
     needs: changes

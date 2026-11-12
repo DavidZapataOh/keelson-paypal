@@ -1,0 +1,80 @@
+
+cmw = json-cmw / cbor-cmw
+
+json-cmw = json-record / json-collection
+cbor-cmw = cbor-record / cbor-collection / $cbor-tag
+
+json-record = [
+  type: media-type
+  value: base64url-string
+  ? ind: uint .bits cm-type
+]
+
+cbor-record = [
+  type: coap-content-format-type / media-type
+  value: bytes
+  ? ind: uint .bits cm-type
+]
+
+tag-cm-cbor<tn, fmt> = #6.<tn>(bytes .cbor fmt)
+
+tag-cm-data<tn> = #6.<tn>(bytes)
+
+json-collection = {
+  ? "__cmwc_t": ~uri / oid
+  + &(label: text) => json-cmw
+}
+
+cbor-collection = {
+  ? "__cmwc_t": ~uri / oid
+  + &(label: (int / text)) => cbor-cmw
+}
+
+media-type = text .abnf ("Content-Type" .cat Content-Type-ABNF)
+base64url-string = text .regexp "[A-Za-z0-9_-]+"
+
+coap-content-format-type = uint .size 2
+
+oid = text .regexp "([0-2])((\\.0)|(\\.[1-9][0-9]*))*"
+
+cm-type = &(
+  reference-values: 0
+  endorsements: 1
+  evidence: 2
+  attestation-results: 3
+  appraisal-policy: 4
+)
+
+Content-Type-ABNF = '
+
+Content-Type   = Media-Type-Name *( *SP ";" *SP parameter )
+parameter      = token "=" ( token / quoted-string )
+
+token          = 1*tchar
+tchar          = "!" / "#" / "$" / "%" / "&" / "\'" / "*"
+               / "+" / "-" / "." / "^" / "_" / "`" / "|" / "~"
+               / DIGIT / ALPHA
+quoted-string  = %x22 *( qdtext / quoted-pair ) %x22
+qdtext         = SP / %x21 / %x23-5B / %x5D-7E
+quoted-pair    = "\\" ( SP / VCHAR )
+
+Media-Type-Name = type-name "/" subtype-name
+
+type-name = restricted-name
+subtype-name = restricted-name
+
+restricted-name = restricted-name-first *126restricted-name-chars
+restricted-name-first  = ALPHA / DIGIT
+restricted-name-chars  = ALPHA / DIGIT / "!" / "#" /
+                         "$" / "&" / "-" / "^" / "_"
+restricted-name-chars =/ "." ; Characters before first dot always
+                             ; specify a facet name
+restricted-name-chars =/ "+" ; Characters after last plus always
+                             ; specify a structured syntax suffix
+
+DIGIT     =  %x30-39           ; 0 - 9
+POS-DIGIT =  %x31-39           ; 1 - 9
+ALPHA     =  %x41-5A / %x61-7A ; A - Z / a - z
+SP        =  %x20
+VCHAR     =  %x21-7E           ; printable ASCII (no SP)
+'

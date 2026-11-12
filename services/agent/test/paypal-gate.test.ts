@@ -210,7 +210,7 @@ describe("the pay-click gate on PayPal's review page", () => {
       total?: CheckoutTotal;
       reference?: FxReference | null;
       maxSpreadBps?: number;
-      payee?: string;
+      payees?: readonly string[];
       /** The review page's query, `token=…` by default. */
       query?: string;
     } = {},
@@ -219,7 +219,7 @@ describe("the pay-click gate on PayPal's review page", () => {
     const gate = new PayGate({
       checkoutHosts: ["127.0.0.1"],
       convertHosts: ["127.0.0.1"],
-      ...(o.payee ? { payee: o.payee } : {}),
+      payees: o.payees ?? ["SANDBOXPAYEE01"],
       ...(o.maxSpreadBps !== undefined ? { maxSpreadBps: o.maxSpreadBps } : {}),
     });
     const driver = await StoreBrowser.attach(context, tab, { hosts: ["127.0.0.1"], gate });
@@ -700,10 +700,14 @@ describe("the pay-click gate on PayPal's review page", () => {
     expect(r.result).toMatch(reason);
   });
 
-  test("PayPal's order for another payee than the mandate names is held", async () => {
+  test.each([
+    ["another merchant", ["OTHERPAYEE0001"]],
+    ["no merchant", []],
+    ["only a placeholder", ["unknown"]],
+  ])("PayPal's order is held when the mandate names %s", async (_, payees) => {
     const page = { lines: () => ["Total $2.95 USD"], lang: "en", details: recorded("capture-usd") };
-    expect((await pay(order(page), { payee: "SANDBOXPAYEE01" })).clicked).toBe(true);
-    const r = await pay(order(page), { payee: "OTHERPAYEE0001" });
+    expect((await pay(order(page), { payees: ["SANDBOXPAYEE01"] })).clicked).toBe(true);
+    const r = await pay(order(page), { payees });
     expect(r.clicked).toBe(false);
     expect(r.result).toMatch(/another merchant/);
   });

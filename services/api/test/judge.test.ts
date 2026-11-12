@@ -12,6 +12,7 @@ import {
   purchases,
   redTeamCampaigns,
   session,
+  teeSigners,
   user,
   verdicts,
 } from "@keelson/db";
@@ -428,6 +429,55 @@ describe("tour", () => {
     };
     expect(tour.anonymous_purchase?.id).toBe(capturedId);
     expect(tour.anonymous_purchase?.alibi_fragment).toMatch(/^[A-Za-z0-9_-]{43}\.758\.421614$/);
+  });
+
+  test("after the issuer key moved, shows a mandate issued with the current key", async () => {
+    const issuer = `0x${"a1".repeat(32)}`;
+    const signer = randomBytes(20);
+    await testDb.insert(teeSigners).values({
+      address: signer,
+      teeKind: 1,
+      measurement: `tdx:${"00".repeat(32)}`,
+      binding: { issuerJwkThumbprint: issuer },
+      attestation: {},
+      expiresAt: new Date(Date.now() + 3_600_000),
+    });
+    const buyer = ulid();
+    await testDb.insert(user).values({ id: buyer, name: "Buyer", email: `${buyer}@example.test` });
+    const renewed = ulid();
+    await testDb.insert(mandates).values({
+      id: renewed,
+      userId: buyer,
+      operatorAgentId: agentId,
+      state: "ACTIVE",
+      currency: "USD",
+      maxMinor: 100n,
+      remainingMinor: 0n,
+      merchantIds: ["mrc_runfast"],
+      expiresAt: new Date(Date.now() + 86_400_000),
+      issuerThumbprint: issuer,
+    });
+    const bought = ulid();
+    await testDb.insert(purchases).values({
+      id: bought,
+      mandateId: renewed,
+      merchantId: "mrc_runfast",
+      currency: "USD",
+      amountMinor: 100n,
+      cartHash: randomBytes(32),
+      state: "CAPTURED",
+    });
+    await testDb
+      .insert(alibis)
+      .values({ purchaseId: bought, leafHash: randomBytes(32), bundle: {} });
+    try {
+      const tour = (await (await call("/v1/judge/tour", judgeCookie)).json()) as {
+        mandate: { id: string };
+      };
+      expect(tour.mandate.id).toBe(renewed);
+    } finally {
+      await testDb.delete(teeSigners).where(eq(teeSigners.address, signer));
+    }
   });
 
   test("is for judges only", async () => {

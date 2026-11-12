@@ -148,17 +148,22 @@ export async function remaining(user: UserSession, mid: string): Promise<string>
   return `${m.budget?.remainingMinor}/${m.budget?.maxMinor}`;
 }
 
-const TERMINAL = new Set(["purchase.captured", "purchase.failed", "purchase.capture_denied"]);
+/** The events, and the states, after which a purchase has nothing left to do. */
+const ENDED_EVENTS = new Set(["purchase.captured", "purchase.failed", "purchase.capture_denied"]);
+const DRIVEN = new Set(["COUNTERSIGNED", "LOGGED", "COVERED"]);
 
 /**
- * Waits on the agent's event stream for the purchase `id` to end (captured, failed or capture
- * denied), at most `timeoutMs`. Subscribe before the countersign: `ready` resolves once the
- * stream is open.
+ * Watches purchase `purchaseId` until it ends, at most `timeoutMs`: on the agent's event stream
+ * `channel`, and by reading `GET /v1/purchases/{id}` every `pollMs`, whichever says so first.
+ * Open it before the countersign: `ready` resolves once the stream is open. `ended` resolves with
+ * the event type or the state that ended it, or `undefined` when the time ran out.
  */
-export function purchaseEnded(
+export function watchPurchase(
   agent: Api,
   channel: string,
+  purchaseId: string,
   timeoutMs: number,
+  pollMs = 1_000,
 ): { ready: Promise<void>; ended: Promise<string | undefined> } {
   const abort = new AbortController();
   const timer = setTimeout(() => abort.abort(), timeoutMs);
@@ -166,14 +171,14 @@ export function purchaseEnded(
   const ready = new Promise<void>((r) => {
     open = r;
   });
-  const ended = (async () => {
+  const stream = (async () => {
     try {
       const res = await agent.request(`/v1/events?channel=${encodeURIComponent(channel)}`, {
         headers: { accept: "text/event-stream" },
         signal: abort.signal,
       });
       open();
-      if (!res.ok || !res.body) return undefined;
+      if (!res.ok || !res.body) return new Promise<undefined>(() => {});
       const decoder = new TextDecoder();
       let buffer = "";
       for await (const chunk of res.body) {
@@ -185,17 +190,66 @@ export function purchaseEnded(
             .find((l) => l.startsWith("data:"));
           buffer = buffer.slice(end + 2);
           const type = data ? (JSON.parse(data.slice(5)) as { type?: string }).type : undefined;
-          if (type && TERMINAL.has(type)) return type;
+          if (type && ENDED_EVENTS.has(type)) return type;
         }
       }
-      return undefined;
+      return new Promise<undefined>(() => {});
     } catch {
       open();
-      return undefined;
-    } finally {
-      clearTimeout(timer);
-      abort.abort();
+      return new Promise<undefined>(() => {});
     }
   })();
+  // Reading the purchase does not depend on any one event arriving, and costs one request a pollMs.
+  const polled = (async () => {
+    await ready;
+    while (!abort.signal.aborted) {
+      await new Promise((r) => setTimeout(r, pollMs));
+      const res = await agent
+        .request(`/v1/purchases/${purchaseId}`, { signal: abort.signal })
+        .catch(() => undefined);
+      if (res?.ok) {
+        const { state } = (await res.json()) as { state: string };
+        if (!DRIVEN.has(state)) return state;
+      }
+    }
+    return undefined;
+  })();
+  const timedOut = new Promise<undefined>((r) =>
+    abort.signal.addEventListener("abort", () => r(undefined)),
+  );
+  const ended = Promise.race([stream, polled, timedOut]).finally(() => {
+    clearTimeout(timer);
+    abort.abort();
+  });
   return { ready, ended };
+}
+
+/** Revokes a mandate; one that already ended (spent or expired) has nothing left to release. */
+export async function revokeMandate(user: UserSession, mid: string): Promise<void> {
+  const { status, out } = await user.post(`/v1/mandates/${mid}/revoke`);
+  if (status < 300) return;
+  if (status === 409 && String(out.type).endsWith("/mandate-ended")) return;
+  throw new Error(`mandate ${mid} not revoked: ${status} ${JSON.stringify(out)}`);
+}
+
+/**
+ * Waits until mandate `mid`'s C3 proof is published, reading `GET /v1/mandates/{id}` every
+ * `pollMs`, at most `timeoutMs`. Returns how long it took from `signedAt` (epoch ms).
+ */
+export async function waitC3Published(
+  user: UserSession,
+  mid: string,
+  signedAt: number,
+  timeoutMs: number,
+  pollMs = 1_000,
+): Promise<number> {
+  const until = Date.now() + timeoutMs;
+  for (;;) {
+    const m = (await (await user.api.request(`/v1/mandates/${mid}`)).json()) as {
+      c3Published?: boolean;
+    };
+    if (m.c3Published) return Date.now() - signedAt;
+    if (Date.now() > until) throw new Error(`mandate ${mid}'s C3 not published in ${timeoutMs} ms`);
+    await new Promise((r) => setTimeout(r, pollMs));
+  }
 }

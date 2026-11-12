@@ -101,10 +101,10 @@ export async function registerLeg(
 ): Promise<RegisteredSigner> {
   const attestation = await client.attestation();
   let pinned = expect;
-  if (leg === "b" && !expect.issuerJwkThumbprint) {
+  if (leg === "b" && !expect.issuerJwkThumbprints) {
     const a = await activeSigner(db, TEE_KIND.a, now);
     if (!a) throw new RegistrationError("leg b has no issuer to attest: leg a has no signer");
-    pinned = { ...expect, issuerJwkThumbprint: a.binding.issuerJwkThumbprint };
+    pinned = { ...expect, issuerJwkThumbprints: [a.binding.issuerJwkThumbprint] };
   }
   const verified = await verifyAgainstBuilds(attestation, pinned, now);
   if (verified.teeKind !== TEE_KIND[leg]) {

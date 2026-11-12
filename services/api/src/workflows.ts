@@ -21,6 +21,7 @@ import { createKv } from "./kv.ts";
 import { relayerFromEnv } from "./onchain/relayer.ts";
 import { createPayPalDeps } from "./paypal.ts";
 import "./redteam.ts";
+import { resumeAwaitingC3 } from "./pipeline/drive.ts";
 import { calibrate, gradeOf } from "./risk.ts";
 import { createTee } from "./tee/config.ts";
 import { awaitingC3, proveAnonymousPurchase } from "./zk/c1c3.ts";
@@ -144,6 +145,9 @@ task(
     // A retry finds the proof stored and publishes again: the salt is kept until the root is on chain.
     if (relayer) await publishUserSetRoots({ db, relayer, log });
     await kv.del(key);
+    // The proof is published: purchases whose Alibi waited for it go on at the resumer's next pass.
+    const due = await resumeAwaitingC3(db, mandateId);
+    if (due > 0) log.info({ mandateId, due }, "purchases due after C3");
     // Purchases logged before this proof existed are composed now, on this instance.
     for (const purchaseId of await awaitingC3(db, mandateId)) {
       await proveAnonymousPurchase({ db, log }, purchaseId).catch((err: unknown) =>

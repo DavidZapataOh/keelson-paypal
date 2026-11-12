@@ -573,6 +573,28 @@ export async function resumePurchases(deps: PipelineDeps): Promise<number> {
   return rows.length;
 }
 
+/**
+ * Makes the purchases of mandate `mandateId` that no driver holds due at once, by giving them a
+ * lease that has run out: the resumer drives them on its next pass. Called once the mandate's C3
+ * proof is published, so a purchase whose Alibi waited for it goes on within a pass instead of
+ * after its lease and last update age. Returns how many it made due.
+ */
+export async function resumeAwaitingC3(db: Db, mandateId: string): Promise<number> {
+  const due = await db
+    .update(purchases)
+    // Not a change to the purchase: `updated_at` keeps its last real update.
+    .set({ leaseUntil: sql`now() - interval '1 second'`, updatedAt: sql`${purchases.updatedAt}` })
+    .where(
+      and(
+        eq(purchases.mandateId, mandateId),
+        inArray(purchases.state, [...DRIVEN]),
+        or(isNull(purchases.leaseUntil), lt(purchases.leaseUntil, sql`now()`)),
+      ),
+    )
+    .returning({ id: purchases.id });
+  return due.length;
+}
+
 /** Logs the DENY purchases whose leaf is not in the log yet. Returns how many it logged. */
 export async function logDenials(deps: PipelineDeps): Promise<number> {
   const rows = await deps.db

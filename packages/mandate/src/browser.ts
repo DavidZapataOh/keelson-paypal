@@ -28,6 +28,7 @@ export type { Evidence, FieldId } from "./colors.ts";
 export { ANY_MERCHANT, MCC_LABELS, onCardRail, storesFor } from "./mcc.ts";
 export type { Mandate } from "./schema.ts";
 export type { SpcDetails } from "./spc.ts";
+export { STATUS_URI } from "./status.ts";
 export { TERMS, TERMS_HASH } from "./terms.ts";
 
 /**
@@ -39,9 +40,10 @@ export async function prepareSigning(
   salt: Uint8Array,
   evidence: Omit<Evidence, "ambiguous">,
   ambiguous: readonly FieldId[],
+  opts: { decoys?: boolean } = {},
 ): Promise<Signing> {
   const card = await import("./card.ts");
-  return card.prepareSigning(m, salt, evidence, ambiguous);
+  return card.prepareSigning(m, salt, evidence, ambiguous, opts);
 }
 
 /** The WebAuthn assertion fields the server verifies, base64url-encoded as in `AuthenticationResponseJSON`. */
