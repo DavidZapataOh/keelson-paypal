@@ -582,7 +582,8 @@ test("the consent page shows the cap on Keelson's bond for the host's tier, and 
   const UNKNOWN = "https://unknown-host.example/oauth/callback";
   const CLAUDE = "https://claude.ai/api/mcp/auth_callback";
   const unknownHost = await registerHost(UNKNOWN);
-  const claudeHost = await registerHost(CLAUDE);
+  // Claude names itself by the metadata document claude.ai publishes, which the server fetches.
+  const claudeHost = "https://claude.ai/oauth/mcp-oauth-client-metadata";
   const user = await newUser();
   const consentFor = async (totalMinor: number, redirect = UNKNOWN) => {
     const host = redirect === UNKNOWN ? unknownHost : claudeHost;

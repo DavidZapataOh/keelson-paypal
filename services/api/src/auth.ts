@@ -1,3 +1,5 @@
+import { cimd } from "@better-auth/cimd";
+import { fetchClientMetadataResource } from "@better-auth/cimd/node";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { oauthProvider } from "@better-auth/oauth-provider";
 import { passkey } from "@better-auth/passkey";
@@ -18,6 +20,9 @@ import { ownsLinkedOperator } from "./operators/owners.ts";
 
 /** RFC 8707 resource identifier of this API; the `aud` of every access token it accepts. */
 export const apiAudience = "https://api.keelson.finance";
+
+/** Keelson's own hosts, which never name a client. */
+const isOwnHost = (host: string) => host === "keelson.finance" || host.endsWith(".keelson.finance");
 
 /** ES256 only: mandate signatures are verified with P-256 on chain. */
 export const pubKeyCredParams = [{ type: "public-key", alg: cose.COSEALG.ES256 }];
@@ -250,9 +255,10 @@ export function createAuth(
     plugins: [
       jwt(),
       // Agents act for themselves with client credentials. MCP clients act for a user with the
-      // authorization code grant and PKCE (S256 only, required of public clients), registering
-      // themselves (RFC 7591) as the MCP authorization spec asks; such a client gets the
-      // delegated scopes, and spends only under a mandate the user approves with a passkey.
+      // authorization code grant and PKCE (S256 only, required of public clients), named by a
+      // Client ID Metadata Document or else registering themselves (RFC 7591), as the MCP
+      // authorization spec asks; such a client gets the delegated scopes, and spends only under a
+      // mandate the user approves with a passkey.
       oauthProvider({
         loginPage: `${env.APP_ORIGIN}/sign-in`,
         consentPage: `${env.APP_ORIGIN}/consent`,
@@ -265,8 +271,18 @@ export function createAuth(
         clientRegistrationDefaultScopes: [...DELEGATED_SCOPES, "offline_access"],
         clientRegistrationDefaultApplicationType: "infer",
         clientRegistrationAllowedResources: [apiAudience],
+        // A client a metadata document names requests no resource, so every client gets the API.
+        clientRegistrationDefaultResources: [apiAudience],
         resources: [apiAudience],
         clientPrivileges: ({ user }) => user?.role === "admin",
+      }),
+      // The server fetches a client's metadata document itself, resolving its host once and
+      // pinning the address, so the host a consent page shows is proven, not claimed.
+      cimd({
+        fetchClientMetadataResource,
+        metadataProfile: "mcp-2026-07-28",
+        metadataRevalidationInterval: "60m",
+        isMetadataDocumentUrlAllowed: (url) => !isOwnHost(new URL(url).hostname),
       }),
       // The app origin is a subdomain of the RP ID, so WebAuthn accepts it without a
       // Related Origins `/.well-known/webauthn` document. Any authenticator may register; a

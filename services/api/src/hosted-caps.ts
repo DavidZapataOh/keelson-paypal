@@ -16,20 +16,16 @@ import { money } from "./notify/notifier.ts";
 import type { PayPalDeps } from "./paypal.ts";
 
 /**
- * The redirect URIs the MCP hosts Keelson knows register (RFC 7591), each from the host's own
- * documentation. A redirect URI says where codes go, not who registered, so an app whose every
- * redirect URI is one of these is still capped; it gets the higher tier (see {@link HostedCaps}).
- * A loopback URI (RFC 8252 §7.3) is never known: any local app can register one.
+ * The MCP hosts Keelson knows, by the host of the Client ID Metadata Document that names them. A
+ * host is proven only by a document the authorization server fetched, never by a registration
+ * (RFC 7591), whatever name or redirect URIs it claims; a known host's app gets the higher tier
+ * (see {@link HostedCaps}).
  */
-const KNOWN_REDIRECT_URIS: readonly string[] = [
-  // Claude (claude.ai, Claude Desktop)
-  "https://claude.ai/api/mcp/auth_callback",
-  "https://claude.com/api/mcp/auth_callback",
-  // ChatGPT
-  "https://chatgpt.com/connector_platform_oauth_redirect",
-  // Cursor
-  "cursor://anysphere.cursor-mcp/oauth/callback",
-  "https://www.cursor.com/agents/mcp/oauth/callback",
+export const KNOWN_CIMD_HOSTS: readonly string[] = [
+  "claude.ai",
+  "claude.com",
+  "chatgpt.com",
+  "cursor.com",
 ];
 
 /** The one currency an app acting through the hosted operator may ask for, so the caps add up. */
@@ -56,7 +52,7 @@ export const DISPUTE_WINDOW_DAYS = 180;
  * mandates have left plus what was captured under them within {@link DISPUTE_WINDOW_DAYS}.
  */
 export interface HostedCaps {
-  /** Most one user's exposure to apps whose redirect URIs are not a known host's may reach. */
+  /** Most one user's exposure to apps not proven to be a known host's may reach. */
   perUserMinor: bigint;
   /** Most one user's exposure to every such app, known hosts included, may reach. */
   knownPerUserMinor: bigint;
@@ -64,16 +60,22 @@ export interface HostedCaps {
   totalMinor: bigint;
 }
 
-/** `known`: every redirect URI is a known host's; `unknown`: any other self-registered app. */
+/** `known`: a known host's metadata document names the app; `unknown`: any other app. */
 export type HostTier = "known" | "unknown";
 
 /**
- * Whether every redirect URI the app registered is a known host's.
+ * Whether `clientId` is the URL of a metadata document on a known host. Only discovery stores a
+ * URL-shaped client id; registration mints opaque ones.
  *
  * @internal
  */
-export function knownHost(redirectUris: readonly string[]): boolean {
-  return redirectUris.length > 0 && redirectUris.every((u) => KNOWN_REDIRECT_URIS.includes(u));
+export function knownHost(clientId: string): boolean {
+  if (!clientId.startsWith("https://")) return false;
+  try {
+    return KNOWN_CIMD_HOSTS.includes(new URL(clientId).hostname);
+  } catch {
+    return false;
+  }
 }
 
 /** The cap tier of `clientId` acting through the hosted operator; none for its own client. */
@@ -84,10 +86,10 @@ export async function hostTier(
 ): Promise<HostTier | undefined> {
   if (clientId === hostedClientId) return undefined;
   const [client] = await db
-    .select({ redirectUris: oauthClient.redirectUris })
+    .select({ id: oauthClient.clientId })
     .from(oauthClient)
     .where(eq(oauthClient.clientId, clientId));
-  return client && knownHost(client.redirectUris) ? "known" : "unknown";
+  return client && knownHost(client.id) ? "known" : "unknown";
 }
 
 /** The most one user's exposure to apps of `tier` may reach. */
@@ -95,7 +97,7 @@ export const tierCap = (caps: HostedCaps, tier: HostTier) =>
   tier === "known" ? caps.knownPerUserMinor : caps.perUserMinor;
 
 const knownSql = sql`array[${sql.join(
-  KNOWN_REDIRECT_URIS.map((u) => sql`${u}`),
+  KNOWN_CIMD_HOSTS.map((h) => sql`${h}`),
   sql`, `,
 )}]::text[]`;
 
@@ -105,7 +107,7 @@ interface Scope {
   currency?: string;
   /** One user's exposure; all users' without it. */
   userId?: string;
-  /** Only apps whose redirect URIs are not a known host's. */
+  /** Only apps not named by a known host's metadata document. */
   unknownOnly?: boolean;
   /** Left out of what live mandates have left: a change replaces it. */
   replaces?: string | null;
@@ -114,10 +116,8 @@ interface Scope {
 /** Whether the row of `mandates` is the hosted operator's, approved for an app in `scope`. */
 function cappedMandate(scope: Scope): SQL {
   const unknown = scope.unknownOnly
-    ? sql`and (${oauthClient.redirectUris} is null
-        or cardinality(${oauthClient.redirectUris}) = 0
-        or exists (select 1 from unnest(${oauthClient.redirectUris}) as u(uri)
-          where not u.uri = any(${knownSql})))`
+    ? sql`and not (${agentConnections.clientId} like 'https://%'
+        and split_part(split_part(${agentConnections.clientId}, '://', 2), '/', 1) = any(${knownSql}))`
     : sql``;
   return sql`${mandates.operatorAgentId} = ${scope.hostedAgentId}
     ${scope.currency === undefined ? sql`` : sql`and ${mandates.currency} = ${scope.currency}`}
