@@ -1598,6 +1598,97 @@ components:
         - lines
         - return_days
         - returns_free
+    AccessEvaluationResponse:
+      type: object
+      properties:
+        decision:
+          type: boolean
+        context:
+          type: object
+          properties:
+            binding:
+              type: boolean
+              enum:
+                - false
+              description: "A preview: only the TEE countersign (`POST /v1/countersign`)
+                decides a purchase."
+            reason_admin:
+              type: object
+              properties:
+                en:
+                  type: string
+              required:
+                - en
+            checks:
+              type: array
+              items:
+                type: object
+                properties: {}
+                additionalProperties: {}
+            blockers:
+              type: array
+              items:
+                type: object
+                properties: {}
+                additionalProperties: {}
+          required:
+            - binding
+            - reason_admin
+            - checks
+            - blockers
+      required:
+        - decision
+        - context
+    AccessEvaluationRequest:
+      type: object
+      properties:
+        subject:
+          type: object
+          properties:
+            type:
+              type: string
+              enum:
+                - agent
+            id:
+              type: string
+              minLength: 1
+          required:
+            - type
+            - id
+        action:
+          type: object
+          properties:
+            name:
+              type: string
+              enum:
+                - purchase
+          required:
+            - name
+        resource:
+          type: object
+          properties:
+            type:
+              type: string
+              enum:
+                - mandate
+            id:
+              type: string
+              pattern: ^[0-7][0-9A-HJKMNP-TV-Z]{25}$
+            properties:
+              type: object
+              properties:
+                cart:
+                  $ref: "#/components/schemas/Cart"
+              required:
+                - cart
+          required:
+            - type
+            - id
+            - properties
+      required:
+        - subject
+        - action
+        - resource
     EmbedOrigins:
       type: object
       properties:
@@ -8744,6 +8835,175 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "404":
           description: No such mandate of an operator this client linked
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /access/v1/evaluation:
+    post:
+      operationId: accessEvaluation
+      tags:
+        - mandates
+      summary: Preview a cart against a mandate (OpenID AuthZEN)
+      description: "The Access Evaluation API of OpenID AuthZEN 1.0: would this
+        agent's purchase of this cart pass this mandate now? It answers from the
+        same policy set the TEE legs run, as `POST /v1/mandates/{id}/check`
+        does, and is never binding."
+      security:
+        - oauth2:
+            - countersign:write
+        - oauth2:
+            - purchases:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccessEvaluationRequest"
+      responses:
+        "200":
+          description: The decision
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessEvaluationResponse"
+        "401":
+          description: No valid access token
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /access/v1/evaluations:
+    post:
+      operationId: accessEvaluations
+      tags:
+        - mandates
+      summary: Preview several carts (OpenID AuthZEN boxcar)
+      description: Up to 20 evaluations in one request, in order. Each takes the
+        request's `subject`, `action` and `resource` for any it omits.
+      security:
+        - oauth2:
+            - countersign:write
+        - oauth2:
+            - purchases:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                subject:
+                  type: object
+                  properties:
+                    type:
+                      type: string
+                      enum:
+                        - agent
+                    id:
+                      type: string
+                      minLength: 1
+                  required:
+                    - type
+                    - id
+                action:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                      enum:
+                        - purchase
+                  required:
+                    - name
+                resource:
+                  type: object
+                  properties:
+                    type:
+                      type: string
+                      enum:
+                        - mandate
+                    id:
+                      type: string
+                      pattern: ^[0-7][0-9A-HJKMNP-TV-Z]{25}$
+                    properties:
+                      type: object
+                      properties:
+                        cart:
+                          $ref: "#/components/schemas/Cart"
+                      required:
+                        - cart
+                  required:
+                    - type
+                    - id
+                    - properties
+                evaluations:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      subject:
+                        type: object
+                        properties:
+                          type:
+                            type: string
+                            enum:
+                              - agent
+                          id:
+                            type: string
+                            minLength: 1
+                        required:
+                          - type
+                          - id
+                      action:
+                        type: object
+                        properties:
+                          name:
+                            type: string
+                            enum:
+                              - purchase
+                        required:
+                          - name
+                      resource:
+                        type: object
+                        properties:
+                          type:
+                            type: string
+                            enum:
+                              - mandate
+                          id:
+                            type: string
+                            pattern: ^[0-7][0-9A-HJKMNP-TV-Z]{25}$
+                          properties:
+                            type: object
+                            properties:
+                              cart:
+                                $ref: "#/components/schemas/Cart"
+                            required:
+                              - cart
+                        required:
+                          - type
+                          - id
+                          - properties
+                  minItems: 1
+                  maxItems: 20
+              required:
+                - evaluations
+      responses:
+        "200":
+          description: The decisions, in order
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  evaluations:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AccessEvaluationResponse"
+                required:
+                  - evaluations
+        "401":
+          description: No valid access token
           content:
             application/problem+json:
               schema:
