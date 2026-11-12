@@ -1085,6 +1085,10 @@ describe.each(Object.keys(VIEWPORTS) as (keyof typeof VIEWPORTS)[])("scoreboard 
       "https://api.keelson.finance/v1/redteam/campaigns/01M72AN4VSH4FYYT9X7RF01P3N/ledger",
     );
     expect(await page.getByText("≤ 1.55% at 95% · Clopper-Pearson").count()).toBeGreaterThan(0);
+    await page.getByRole("heading", { name: "Checkout attacks on the pay click" }).waitFor();
+    expect(
+      await page.getByRole("link", { name: "Download the scoreboard" }).getAttribute("href"),
+    ).toBe("/redteam/checkout-attacks.json");
     const { violations } = await new AxeBuilder({ page })
       .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-practice"])
       .analyze();
