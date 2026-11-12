@@ -14,8 +14,10 @@ import {
   checkoutDetails,
   convert,
   convertingCard,
+  ES_CO_CARD_PAGE,
   ES_CO_CARD_REVIEW,
   fundingSelection,
+  HIDDEN_FRAME,
   money,
   payForm,
   payPage,
@@ -45,9 +47,10 @@ interface Case {
   selectionStatus?: number;
   /** `xoos.getCheckoutSummary`'s total; the order's, by default. */
   summary?: { currencyCode: string; value: string };
-  /** Runs on the `/pay` page, and attributes of its Pay button. */
+  /** Runs on the `/pay` page, attributes of its Pay button, and markup after its form. */
   script?: string;
   button?: string;
+  after?: string;
   status?: number;
 }
 
@@ -185,6 +188,7 @@ describe("the pay-click gate on PayPal's review page", () => {
           ? payPage(c.lines(c.lang), c.lang, c.form, {
               ...(c.script ? { script: c.script } : {}),
               ...(c.button ? { button: c.button } : {}),
+              ...(c.after ? { after: c.after } : {}),
             })
           : reviewPage(c.lines(c.lang), c.lang),
       );
@@ -471,6 +475,48 @@ describe("the pay-click gate on PayPal's review page", () => {
       expect(r.clicked, r.result).toBe(true);
       expect(r.gate.paid?.conversion).toBeUndefined();
       expect(r.gate.paid?.funding.buyer).toBe("USD 2.95");
+    });
+  });
+
+  describe("a Colombian card on `/pay`, as the gate logged its page", () => {
+    /** PayPal's charge of COP 10,236, shown as 1 COP = 0.000288197 USD. */
+    const page = (o: Partial<Case> = {}) =>
+      copCard({
+        lines: () => [...ES_CO_CARD_PAGE],
+        selection: fundingSelection([
+          convertingCard({ buyer: "COP", value: "10236", rate: "0.000288197" }),
+        ]),
+        after: HIDDEN_FRAME,
+        ...o,
+      });
+
+    test("pays: the bare `$ 10.236` is PayPal's peso charge, and frames PayPal never shows are not read", async () => {
+      const r = await pay(order(page()));
+      expect(r.clicked, r.result).toBe(true);
+      expect(r.gate.paid?.funding).toMatchObject({
+        buyer: "COP 10236",
+        quote: "1 COP = 0.000288197 USD",
+      });
+    });
+
+    test("a number with no mark that is exactly PayPal's charge is that charge", async () => {
+      const r = await pay(order(page({ lines: () => [...ES_CO_CARD_PAGE, "Total 10.236"] })));
+      expect(r.clicked, r.result).toBe(true);
+    });
+
+    test.each<[string, string, RegExp]>([
+      ["another bare peso amount", "Comisión $ 10.300", /a larger amount in the buyer's currency/],
+      ["another number with no mark", "Total 10.300", /a larger amount that may be charged/],
+      [
+        "a rate line that is not PayPal's rate rounded",
+        "1 COP = 0,00031 USD",
+        /rate line that is not PayPal's rate|rates that disagree/,
+      ],
+    ])("holds for %s, and logs every number that may be dollars", async (_, line, reason) => {
+      const r = await pay(order(page({ lines: () => [...ES_CO_CARD_PAGE, line] })));
+      expect(r.clicked).toBe(false);
+      expect(r.result).toMatch(reason);
+      expect(r.gate.held.at(-1)?.loose).toBeDefined();
     });
   });
 

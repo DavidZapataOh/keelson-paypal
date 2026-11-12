@@ -1,5 +1,5 @@
 import { convertsTo, decimalParts, exceedsConversion } from "@keelson/core";
-import { partEnd, wordEnd } from "./requote.ts";
+import { partEnd, patternEnd, wordEnd, wordPatterns } from "./requote.ts";
 
 /** An amount in minor units of an ISO 4217 currency: cents of USD, yen of JPY, fils of KWD. */
 export interface Money {
@@ -25,9 +25,15 @@ const flat = (s: string) => s.replace(BIDI, "").replace(SPACES, " ");
 
 /** The minor units of `currency`: 2 for USD, 0 for JPY, 3 for KWD (ISO 4217, as CLDR has them). */
 export function minorDigits(currency: string): number {
-  return new Intl.NumberFormat("en", { style: "currency", currency }).resolvedOptions()
-    .maximumFractionDigits as number;
+  let digits = minor.get(currency);
+  if (digits === undefined) {
+    digits = new Intl.NumberFormat("en", { style: "currency", currency }).resolvedOptions()
+      .maximumFractionDigits as number;
+    minor.set(currency, digits);
+  }
+  return digits;
 }
+const minor = new Map<string, number>();
 
 /** How `locale` writes amounts of `currency`, read from CLDR through `Intl.NumberFormat`. */
 interface Shape {
@@ -45,16 +51,35 @@ interface Shape {
  * CA$, R$): each one names this currency alone, whatever locale the page is in.
  */
 function spelled(currency: string, any = false): string[] {
-  return ["en", "en-GB", "en-CA", "en-AU", "es", "fr", "pt", "de", "ja", "zh", "ko", "ar", "hi"]
-    .map((l) =>
+  let all = signsOf.get(currency);
+  if (!all) {
+    all = [
+      "en",
+      "en-GB",
+      "en-CA",
+      "en-AU",
+      "es",
+      "fr",
+      "pt",
+      "de",
+      "ja",
+      "zh",
+      "ko",
+      "ar",
+      "hi",
+    ].map((l) =>
       flat(
         new Intl.NumberFormat(l, { style: "currency", currency })
           .formatToParts(1)
           .find((p) => p.type === "currency")?.value ?? "",
       ).trim(),
-    )
-    .filter((m) => (any || /\p{L}/u.test(m)) && /\p{Sc}/u.test(m));
+    );
+    signsOf.set(currency, all);
+  }
+  return all.filter((m) => (any || /\p{L}/u.test(m)) && /\p{Sc}/u.test(m));
 }
+/** The symbol each of a few locales writes a currency with, by currency. */
+const signsOf = new Map<string, string[]>();
 
 const shapes = new Map<string, Shape>();
 
@@ -375,17 +400,11 @@ const ASIDE = [
   "qualifying",
 ];
 
-/** Where in `label` a total word last ends, or -1; "subtotal" and "sub-total" are no total. */
-function totalEnd(label: string): number {
-  let end = -1;
-  for (const word of TOTAL) {
-    const pattern = /^\p{Script=Latin}|^\p{Script=Cyrillic}/u.test(word)
-      ? new RegExp(`(?<![\\p{L}\\-])${escapeRegex(word)}(?!\\p{L})`, "giu")
-      : new RegExp(escapeRegex(word), "gu");
-    for (const m of label.matchAll(pattern)) end = Math.max(end, m.index + m[0].length);
-  }
-  return end;
-}
+/** The total words as patterns, compiled once; "subtotal" and "sub-total" are no total. */
+const TOTAL_PATTERNS = wordPatterns(TOTAL.map(escapeRegex), "\\p{L}\\-");
+
+/** Where in `label` a total word last ends, or -1. */
+const totalEnd = (label: string): number => patternEnd(label, TOTAL_PATTERNS);
 
 /** Where an amount sits on its page: the charge, money it is not charged, or another line. */
 export type Context = "total" | "aside" | "line";
@@ -640,9 +659,12 @@ export interface PageReading {
   loose: number[];
   /**
    * The numbers of `loose` that may be the currency only through a sign another currency on the
-   * page also writes (`$ 10.236` where COP and USD both write `$`), as written, with their marks.
+   * page also writes (`$ 10.236` where COP and USD both write `$`), or with no mark at all, as
+   * written, with their marks.
    */
   shared: { value: number; number: string; marks: string[] }[];
+  /** The values of `loose` that are the range a credit offer is eligible for: no charge where PayPal's order states it. */
+  looseOffers: number[];
   /**
    * Amounts in another currency, in that currency's whole units, and whether the page labels each
    * its total or charge (a conversion of the total, "Pagarás $10.231 COP") or money it is not
@@ -761,6 +783,9 @@ function read(text: string, locale: string, currency: string): Omit<PageReading,
   const rates: Record<string, string> = {};
   const inverse: Record<string, string> = {};
   const rated = new Set<Token>();
+  const looseOffers: number[] = [];
+  let looseOffer = false;
+  const dash = (from: number, to: number) => /^ ?[-–—] ?$/u.test(t.slice(from, to));
   let unsure: string | undefined;
   for (const [i, token] of tokens.entries()) {
     // The number of a rate ("1 USD = 3.468,14 COP", "1 COP = 0,00029 USD") is no amount.
@@ -792,8 +817,20 @@ function read(text: string, locale: string, currency: string): Omit<PageReading,
       if (token.values.length > 0) {
         const value = Math.max(...token.values);
         loose.push(value);
-        if (token.marks.length > 0 && token.marks.every((m) => /\p{Sc}/u.test(m))) {
-          shared.push({ value, number: token.number, marks: token.marks });
+        // The range a credit offer is eligible for ("eligible purchases of $10.00-$2,000.00").
+        if (
+          token.context === "aside" &&
+          (looseOffer && /^[-–—]$/u.test(token.label)
+            ? true
+            : next !== undefined && dash(token.to, next.from) && offer(token, false))
+        ) {
+          looseOffers.push(value);
+          looseOffer = true;
+        } else {
+          looseOffer = false;
+          if (token.marks.every((m) => /\p{Sc}/u.test(m))) {
+            shared.push({ value, number: token.number, marks: token.marks });
+          }
         }
       }
       // A number with a separator no locale writes so may still be an amount: count it whole.
@@ -825,7 +862,6 @@ function read(text: string, locale: string, currency: string): Omit<PageReading,
       }
       // The buyer's own balance, which PayPal shows beside the total, and the range a credit
       // offer is eligible for ("eligible purchases of $10.00-$2,000.00") are no charge.
-      const dash = (from: number, to: number) => /^ ?[-–—] ?$/u.test(t.slice(from, to));
       const credit =
         token.context === "aside" &&
         (conversions.at(-1)?.offer === true && /^[-–—]$/u.test(token.label)
@@ -848,6 +884,7 @@ function read(text: string, locale: string, currency: string): Omit<PageReading,
     offers,
     totals,
     loose,
+    looseOffers,
     shared,
     conversions,
     rates,
@@ -884,6 +921,7 @@ export function readPage(text: string, locales: readonly string[], currency: str
       totals: [],
       offers: [],
       loose: [],
+      looseOffers: [],
       shared: [],
       conversions: [],
       rates: {},
@@ -900,8 +938,14 @@ export function readPage(text: string, locales: readonly string[], currency: str
     r.totals.join() === reading.totals.join() &&
     r.offers.join() === reading.offers.join() &&
     r.loose.join() === reading.loose.join() &&
-    JSON.stringify([r.shared, r.conversions, r.rates, r.inverse]) ===
-      JSON.stringify([reading.shared, reading.conversions, reading.rates, reading.inverse]);
+    JSON.stringify([r.looseOffers, r.shared, r.conversions, r.rates, r.inverse]) ===
+      JSON.stringify([
+        reading.looseOffers,
+        reading.shared,
+        reading.conversions,
+        reading.rates,
+        reading.inverse,
+      ]);
   if (!readings.every(same)) {
     return { locale: first, ...reading, unsure: "its locales read it differently" };
   }
@@ -934,7 +978,8 @@ function wholeOf(minor: number, currency: string): string {
  * converted to the buyer's currency only where PayPal's own funding data states that conversion
  * (`known`): the page's text can hold a payment, never approve one. Then an amount under a sign
  * both currencies write (`$ 10.236`) is read in the buyer's currency; no amount in it is more
- * than PayPal's conversion and every converted total the page labels is it; the page's rate lines,
+ * than PayPal's conversion, a number with no mark that is exactly PayPal's charge is that charge,
+ * and every converted total the page labels is it; the page's rate lines,
  * either way round (`1 USD = 3.468,14 COP`, `1 COP = 0,00029 USD`), are PayPal's own rate rounded
  * to the digits they show; and no third currency shows. The buyer's own balance does not count.
  */
@@ -949,7 +994,7 @@ export function judge(
    * PayPal's conversion of the total, from its funding data: the buyer's currency, the rate its
    * charge gives, and the rate PayPal shows.
    */
-  known?: { currency: string; rate: string; quote?: Quote },
+  known?: { currency: string; rate: string; buyer?: string; quote?: Quote },
 ): Judgment {
   const no = (reason: string): Judgment => ({ ok: false, reason });
   if (page.unsure !== undefined) return no(page.unsure);
@@ -957,6 +1002,18 @@ export function judge(
   const theirs: number[] = [];
   if (known) {
     for (const a of page.shared) {
+      if (a.marks.length === 0) {
+        // A number with no mark is the buyer's charge only where it is that charge exactly.
+        const value = units(a.number, known.currency, page.locale);
+        if (
+          value !== undefined &&
+          known.buyer !== undefined &&
+          Number(value) === Number(known.buyer)
+        ) {
+          theirs.push(a.value);
+        }
+        continue;
+      }
       if (!a.marks.every((m) => writes(page.locale, known.currency, m))) continue;
       const value = units(a.number, known.currency, page.locale);
       if (value === undefined) return no("an amount in another currency not read whole");
@@ -966,7 +1023,7 @@ export function judge(
       theirs.push(a.value);
     }
   }
-  const loose = without(page.loose, theirs);
+  const loose = without(page.loose, [...theirs, ...(labeled ? [] : page.looseOffers)]);
   // Where PayPal's order states the charge, the page's balances and credit offers are no charge.
   const payable = labeled ? page.minor : without(page.minor, page.offers);
   if (Math.max(...payable, ...loose) > minor) return no("a larger amount that may be charged");

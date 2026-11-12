@@ -253,7 +253,7 @@ export function payPage(
   lines: readonly string[],
   lang: string,
   fields: readonly [string, string][],
-  o: { button?: string; script?: string } = {},
+  o: { button?: string; script?: string; after?: string } = {},
 ): string {
   const rows = lines.map((l) => `<div>${l}</div>`).join("\n");
   const inputs = fields
@@ -261,7 +261,7 @@ export function payPage(
     .join("");
   return `<!doctype html><html lang="${lang}"><body><h1>PayPal</h1>
 <form id="pay">${inputs}<section aria-label="Pagar con">${rows}</section>
-<button type="submit"${o.button ?? ""}>Pay</button></form><p id="out"></p>
+<button type="submit"${o.button ?? ""}>Pay</button></form><p id="out"></p>${o.after ?? ""}
 <script>document.getElementById("pay").onsubmit = (e) => { e.preventDefault(); document.getElementById("out").textContent = "clicked Pay"; };${o.script ?? ""}</script>
 </body></html>`;
 }
@@ -355,3 +355,28 @@ export const RECORDED_PAGE: readonly string[] = [
   "Pay",
   "Return to Test Store",
 ];
+
+/**
+ * A Colombian buyer's `/pay` review page for a USD 2.95 order paid with a card PayPal converts to
+ * COP, row by row as the gate logged it: the card with its last digits and the converted amount
+ * coded COP, the amount again under the sign COP shares with USD, PayPal's rate written from the
+ * buyer's currency (twice), and the footer that names the amount once more.
+ */
+export const ES_CO_CARD_PAGE: readonly string[] = [
+  "Pagar con",
+  "Visa Cargo",
+  "Últimos cuatro dígitos 4821",
+  "••4821",
+  "$ 10.236",
+  "COP",
+  "$ 10.236",
+  "Tipo de cambio de PayPal: 1 COP = 0,00029 USD",
+  "Tipo de cambio de PayPal: 1 COP = 0,00029 USD",
+  "Si continúas, autorizas a PayPal a cobrar el importe de $ 10.236 en tu tarjeta.",
+];
+
+/**
+ * A frame PayPal's page loads and never shows, as its checkout does for risk and messaging: its
+ * source holds numbers that are no amount on the page.
+ */
+export const HIDDEN_FRAME = `<iframe style="display:none" srcdoc="<body><p>Comisión $ 25.000</p><script>window.cfg={limit:'$ 99.999'}</script></body>"></iframe>`;
