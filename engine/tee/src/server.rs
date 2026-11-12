@@ -281,6 +281,12 @@ impl Problem {
             latest: None,
         }
     }
+
+    #[cfg(feature = "nitro")]
+    pub(crate) fn with_detail(mut self, detail: &'static str) -> Self {
+        self.detail = Some(detail);
+        self
+    }
 }
 
 impl From<EngineError> for Problem {

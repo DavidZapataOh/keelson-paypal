@@ -21,12 +21,51 @@ fn cms_opens_openssl_envelope() {
     assert_eq!(plain.as_slice(), b"sandbox-secret");
 }
 
+// KMS answers a `Recipient` decrypt with BER, not DER: indefinite lengths, a subjectKeyIdentifier
+// recipient and the encrypted content as a constructed string of OCTET STRING segments, as
+// aws-nitro-enclaves-sdk-c's `aws_cms_parse_enveloped_data` reads it. `openssl cms -encrypt
+// -binary -recip <cert> -keyid -keyopt rsa_padding_mode:oaep -keyopt rsa_oaep_md:sha256 -keyopt
+// rsa_mgf1_md:sha256 -aes-256-cbc -stream -outform DER` encodes it the same way, here for a
+// fresh RSA-2048 key as `recipient_key` makes.
+
+#[test]
+fn cms_opens_kms_ber_envelope() {
+    let key = PrivateKey::from_pkcs8_der(&read("kms-recipient-key.der")).unwrap();
+    let plain = open_envelope(&read("kms-enveloped.ber"), &key).unwrap();
+    assert_eq!(plain.as_slice(), b"sandbox-secret");
+}
+
+#[test]
+fn cms_joins_segmented_content() {
+    let key = PrivateKey::from_pkcs8_der(&read("kms-recipient-key.der")).unwrap();
+    let plain = open_envelope(&read("kms-segmented.ber"), &key).unwrap();
+    assert_eq!(plain.as_slice(), "keelson ".repeat(625).as_bytes());
+}
+
+#[test]
+fn malformed_ber_is_refused() {
+    let key = PrivateKey::from_pkcs8_der(&read("kms-recipient-key.der")).unwrap();
+    let ber = read("kms-enveloped.ber");
+    for cut in [1, 2, ber.len() / 2, ber.len() - 2, ber.len() - 1] {
+        assert!(open_envelope(&ber[..cut], &key).is_err(), "cut at {cut}");
+    }
+    let mut trailing = ber.clone();
+    trailing.push(0);
+    assert!(open_envelope(&trailing, &key).is_err());
+    assert!(open_envelope(&[0x30, 0x80].repeat(64), &key).is_err());
+}
+
 #[test]
 fn another_key_cannot_open_it() {
     let (other, spki) = recipient_key().unwrap();
     assert!(spki.len() > 256);
     assert!(open_envelope(&read("enveloped.der"), &other).is_err());
-    assert!(open_envelope(b"not der", &other).is_err());
+    let wrong_key = open_envelope(&read("kms-enveloped.ber"), &other).unwrap_err();
+    assert_eq!(wrong_key.class(), "the content key is not for this enclave");
+    assert_eq!(
+        open_envelope(b"not der", &other).unwrap_err().class(),
+        "not BER"
+    );
 }
 
 #[test]
