@@ -37,7 +37,8 @@ const SIGNATURE_AGENT = "https://api.keelson.finance";
 const exportRoute = createRoute({
   method: "get",
   path: "/v1/alibis/{id}/exports/{format}",
-  tags: ["Alibis"],
+  operationId: "getAlibiExport",
+  tags: ["alibis"],
   summary: "An Alibi in an agentic-commerce standard",
   description:
     "The purchase as AP2 v0.2, Mastercard Verifiable Intent v0.1, UCP 2026-08-25, ACP 2026-04-17, a Visa TAP / Web Bot Auth request, or the Visa 4.1.23 / Compelling Evidence 3.0 evidence pack (`visa`, or `visa.pdf`). Each carries the purchase's SCITT transparent statement and is signed by leg A's attested issuer key. The owner gets the full copy; anyone else what the Alibi shows them.",

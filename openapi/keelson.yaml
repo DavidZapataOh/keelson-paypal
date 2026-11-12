@@ -11660,8 +11660,9 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/alibis/{id}/exports/{format}:
     get:
+      operationId: getAlibiExport
       tags:
-        - Alibis
+        - alibis
       summary: An Alibi in an agentic-commerce standard
       description: The purchase as AP2 v0.2, Mastercard Verifiable Intent v0.1, UCP
         2026-08-25, ACP 2026-04-17, a Visa TAP / Web Bot Auth request, or the
