@@ -168,10 +168,15 @@ export function Anonymous({ alibi, rpc }: { alibi: AnyAlibi; rpc: string | undef
     };
   }, [p, rpc]);
 
-  const binding = useMemo(
-    () => (p && lib ? lib.bindAnonymousPurchase(lib.v1Shape(alibi), p.public_inputs) : undefined),
-    [p, lib, alibi],
-  );
+  const binding = useMemo(() => {
+    if (!p || !lib) return undefined;
+    try {
+      return lib.bindAnonymousPurchase(lib.v1Shape(alibi), p.public_inputs);
+    } catch {
+      // A v2 receipt's leaf is a SCITT statement, not the v1 leaf the binding reads.
+      return null;
+    }
+  }, [p, lib, alibi]);
 
   if (proof === null) return null;
   if (proof === undefined || !lib) {
@@ -197,7 +202,7 @@ export function Anonymous({ alibi, rpc }: { alibi: AnyAlibi; rpc: string | undef
   const rootLogged = Boolean(root?.log);
 
   const tones: Tone[] = [
-    bound ? "pass" : "fail",
+    bound ? "pass" : binding === null ? "warn" : "fail",
     local.state === "running" ? "run" : local.state === "done" && local.value ? "pass" : "fail",
     chain.state === "running"
       ? "run"
@@ -277,9 +282,11 @@ export function Anonymous({ alibi, rpc }: { alibi: AnyAlibi; rpc: string | undef
 
       <ul className="mt-5 divide-y divide-border border-y border-border">
         <Row tone={tones[0] as Tone} title="Proof is of this purchase" who="This page">
-          {bound
-            ? `The mandate, time, cart, agent and signed mandate it names are this Alibi's (${binding?.bound.length} of ${proof.public_inputs.length} inputs; the receipt does not carry the rest).`
-            : `It names another ${binding?.mismatched.map((i) => INPUTS[i]?.toLowerCase()).join(", ")} than this Alibi.`}
+          {binding === null
+            ? "This receipt does not carry the inputs the proof names; drop the full Alibi to bind them."
+            : bound
+              ? `The mandate, time, cart, agent and signed mandate it names are this Alibi's (${binding?.bound.length} of ${proof.public_inputs.length} inputs; the receipt does not carry the rest).`
+              : `It names another ${binding?.mismatched.map((i) => INPUTS[i]?.toLowerCase()).join(", ")} than this Alibi.`}
         </Row>
         <Row
           tone={tones[1] as Tone}
