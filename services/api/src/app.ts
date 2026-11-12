@@ -38,6 +38,7 @@ import { registerAgentDocs } from "./routes/agent-docs.ts";
 import { registerAgents } from "./routes/agents.ts";
 import { registerAlerts } from "./routes/alerts.ts";
 import { registerAlibis } from "./routes/alibis.ts";
+import { registerAmount } from "./routes/amount.ts";
 import { registerAnonymousMandates } from "./routes/anonymous-mandates.ts";
 import { registerBonds } from "./routes/bonds.ts";
 import { registerCardWebhooks } from "./routes/card-webhooks.ts";
@@ -438,6 +439,7 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerCompile(app, deps);
   registerCountersign(app, deps);
   registerPurchases(app, deps);
+  registerAmount(app, deps);
   registerEvidence(app, deps);
   registerObservations(app, deps);
   registerFx(app, deps);

@@ -3516,6 +3516,193 @@ components:
         - lastFour
         - expiresAt
         - embedUrl
+    AmountCheck:
+      type: object
+      properties:
+        v:
+          type: string
+          enum:
+            - keelson.amount_check/1
+        authority:
+          type: string
+          enum:
+            - paypal_order
+            - merchant_signed_cart
+            - user_confirmed
+            - checkout_page
+        via:
+          type: string
+          enum:
+            - own
+            - partner
+            - ucp
+        read_by:
+          type: string
+          enum:
+            - api
+            - tee:A
+        order_id_hash:
+          type: string
+          pattern: ^0x[0-9a-f]{64}$
+        total:
+          type: object
+          properties:
+            currency:
+              type: string
+            minor:
+              type: integer
+          required:
+            - currency
+            - minor
+        payee:
+          type: string
+        intent:
+          type: string
+          enum:
+            - CAPTURE
+            - AUTHORIZE
+        checked_at:
+          type: string
+        cross_check:
+          type: string
+          enum:
+            - agrees
+            - unavailable
+        evidence:
+          type: object
+          properties:
+            assertion:
+              type: object
+              properties:
+                credentialId:
+                  type: string
+                authenticatorData:
+                  type: string
+                clientDataJSON:
+                  type: string
+                signature:
+                  type: string
+              required:
+                - credentialId
+                - authenticatorData
+                - clientDataJSON
+                - signature
+      required:
+        - v
+        - authority
+        - read_by
+        - order_id_hash
+        - total
+        - payee
+        - intent
+        - checked_at
+        - cross_check
+      description: "What decided a live checkout's amount: PayPal's Orders API
+        (`paypal_order`), the store's signature (`merchant_signed_cart`) or the
+        user's passkey (`user_confirmed`). `checkout_page` is never an
+        authority."
+    AmountCheckRequest:
+      type: object
+      properties:
+        orderId:
+          type: string
+          pattern: ^(?:EC-)?[0-9A-Z]{17}$
+        crossCheck:
+          type: string
+          enum:
+            - agrees
+            - unavailable
+            - disagrees
+        order:
+          type: object
+          properties:
+            intent:
+              type: string
+              enum:
+                - SALE
+                - AUTHORIZE
+            payee:
+              type: string
+              pattern: ^[0-9A-Z]{8,20}$
+          required:
+            - intent
+            - payee
+          description: The order's intent and payee as PayPal's checkout stated them, when
+            it did.
+      required:
+        - orderId
+        - crossCheck
+    AmountConfirmation:
+      type: object
+      properties:
+        purchaseId:
+          type: string
+        store:
+          type: string
+        payee:
+          type: string
+        total:
+          type: object
+          properties:
+            currency:
+              type: string
+            minor:
+              type: string
+          required:
+            - currency
+            - minor
+        intent:
+          type: string
+          enum:
+            - CAPTURE
+            - AUTHORIZE
+        state:
+          type: string
+          enum:
+            - PENDING
+            - CONFIRMED
+            - DECLINED
+            - EXPIRED
+        expiresAt:
+          type: string
+        challenge:
+          type: string
+          description: The WebAuthn challenge, base64url.
+        credentialId:
+          type: string
+          description: The passkey that signed the mandate.
+        spc:
+          type: object
+          properties:
+            payeeName:
+              type: string
+            payeeOrigin:
+              type: string
+            total:
+              type: object
+              properties:
+                currency:
+                  type: string
+                value:
+                  type: string
+              required:
+                - currency
+                - value
+          required:
+            - payeeName
+            - payeeOrigin
+            - total
+      required:
+        - purchaseId
+        - store
+        - payee
+        - total
+        - intent
+        - state
+        - expiresAt
+        - challenge
+        - credentialId
+        - spc
     EvidenceUpload:
       type: object
       properties:
@@ -10115,6 +10302,205 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "409":
           description: The card is not open
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/purchases/{id}/amount-check:
+    post:
+      operationId: checkPurchaseAmount
+      tags:
+        - purchases
+      summary: Decide a live checkout's amount before the pay click
+      description: "For a live purchase Keelson allowed, right before the agent pays
+        PayPal's order `orderId`. Keelson reads the order with PayPal's Orders
+        API (`GET /v2/checkout/orders/{id}`) and answers `200` when it charges
+        exactly the countersigned total to a payee the mandate names. When
+        Keelson cannot read the order, the user confirms the amount with their
+        passkey: the first call answers `202` and sends the confirmation to
+        their phone, and later calls answer `202` until they confirm (`200`),
+        decline (`409 amount-declined`) or let it expire (`410`). `crossCheck`
+        is what PayPal's checkout stated for the same order; `disagrees` always
+        holds. Decided once per purchase; only the client that asked for the
+        countersign may call it."
+      security:
+        - oauth2:
+            - countersign:write
+      parameters:
+        - schema:
+            type: string
+            minLength: 26
+            maxLength: 26
+          required: true
+          name: id
+          in: path
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AmountCheckRequest"
+      responses:
+        "200":
+          description: An authority decided the amount
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AmountCheck"
+        "202":
+          description: The user is asked to confirm the amount on their phone
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  needs:
+                    type: string
+                    enum:
+                      - user_confirmed
+                  expiresAt:
+                    type: string
+                required:
+                  - needs
+                  - expiresAt
+        "404":
+          description: No such live purchase of this client
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: PayPal's order does not charge the countersigned total
+            (`amount-mismatch`, with `field`), another order was decided for
+            this purchase, or the user declined
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "410":
+          description: The user did not confirm in time
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: PayPal did not answer
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/purchases/{id}/amount-confirmation:
+    get:
+      operationId: getAmountConfirmation
+      tags:
+        - purchases
+      summary: The amount the user is asked to confirm
+      security:
+        - session: []
+      parameters:
+        - schema:
+            type: string
+            minLength: 26
+            maxLength: 26
+          required: true
+          name: id
+          in: path
+      responses:
+        "200":
+          description: The confirmation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AmountConfirmation"
+        "404":
+          description: No confirmation for this user
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+    post:
+      operationId: answerAmountConfirmation
+      tags:
+        - purchases
+      summary: Confirm or decline a live checkout's amount
+      description: 'Confirms the amount with the passkey that signed the mandate: a
+        WebAuthn or Secure Payment Confirmation assertion over
+        `SHA-256("keelson/amount-confirm/v1" || 0x00 || JCS({purchase_id,
+        order_id_hash, currency, minor, payee}))`. Or declines it, and the agent
+        does not pay.'
+      security:
+        - session: []
+      parameters:
+        - schema:
+            type: string
+            minLength: 26
+            maxLength: 26
+          required: true
+          name: id
+          in: path
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              anyOf:
+                - type: object
+                  properties:
+                    assertion:
+                      type: object
+                      properties:
+                        authenticatorData:
+                          type: string
+                        clientDataJSON:
+                          type: string
+                        signature:
+                          type: string
+                        credentialId:
+                          type: string
+                        userHandle:
+                          type: string
+                      required:
+                        - authenticatorData
+                        - clientDataJSON
+                        - signature
+                        - credentialId
+                  required:
+                    - assertion
+                - type: object
+                  properties:
+                    decline:
+                      type: boolean
+                      enum:
+                        - true
+                  required:
+                    - decline
+      responses:
+        "200":
+          description: The answer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AmountConfirmation"
+        "401":
+          description: The assertion does not verify
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: No confirmation for this user
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: Already answered
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "410":
+          description: Expired
           content:
             application/problem+json:
               schema:

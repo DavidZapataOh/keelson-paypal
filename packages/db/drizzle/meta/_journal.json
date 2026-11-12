@@ -407,6 +407,13 @@
       "when": 1794450101060,
       "tag": "0057_mandate_issuer",
       "breakpoints": true
+    },
+    {
+      "idx": 58,
+      "version": "7",
+      "when": 1794473704412,
+      "tag": "0058_live_amount_check",
+      "breakpoints": true
     }
   ]
 }
