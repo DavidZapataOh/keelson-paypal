@@ -103,6 +103,25 @@ contract BondVaultBatchForkTest is VaultBase {
         vault.lockCoverageBatch(b, sig);
     }
 
+    /// @dev A zero root never counts as anchored, though `rootAt` reads zero for every size not anchored.
+    function test_lockBatch_zeroRootReverts() public {
+        KeelsonTypes.CoverageBatch memory b = batch;
+        b.checkpointRoot = 0;
+        b.treeSize += 1;
+        assertEq(vault.anchor().rootAt(vault.logOrigin(), b.treeSize), 0);
+        bytes memory sig = _sig(b);
+        vm.expectRevert(IKeelsonBondVault.NotAnchored.selector);
+        vault.lockCoverageBatch(b, sig);
+    }
+
+    /// @dev A batch that ends now is expired, not merely too short.
+    function test_lockBatch_atExpiryReverts() public {
+        vm.warp(batch.expiresAt);
+        bytes memory sig = _sig(batch);
+        vm.expectRevert(IKeelsonBondVault.Expired.selector);
+        vault.lockCoverageBatch(batch, sig);
+    }
+
     function test_lockBatch_twiceReverts() public {
         bytes memory sig = _sig(batch);
         vault.lockCoverageBatch(batch, sig);

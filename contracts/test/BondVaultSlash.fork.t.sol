@@ -110,6 +110,28 @@ contract BondVaultSlashForkTest is SlashBase {
         vault.slash(verdict, treeSize, sigs);
     }
 
+    /// @dev A verdict is valid through its deadline's second.
+    function test_slash_atDeadline() public {
+        Vector memory v = _locked(WEBAUTHN);
+        KeelsonTypes.Verdict memory verdict = _amber(v, AMOUNT);
+        verdict.deadline = uint40(vm.getBlockTimestamp() + 10);
+        vm.warp(verdict.deadline);
+        _slash(verdict);
+        assertTrue(vault.settled(verdict.disputeId));
+        assertEq(pyusd.balanceOf(merchant), AMOUNT);
+    }
+
+    /// @dev A zero root never counts as anchored, though `rootAt` reads zero for every size not anchored.
+    function test_slash_zeroRootReverts() public {
+        Vector memory v = _locked(WEBAUTHN);
+        KeelsonTypes.Verdict memory verdict = _amber(v, AMOUNT);
+        verdict.checkpointRoot = 0;
+        bytes memory sigs = _sign2of2(verdict);
+        assertEq(vault.anchor().rootAt(vault.logOrigin(), treeSize + 1), 0);
+        vm.expectRevert(IKeelsonBondVault.NotAnchored.selector);
+        vault.slash(verdict, treeSize + 1, sigs);
+    }
+
     function test_slash_revertsUnanchoredRoot() public {
         Vector memory v = _locked(WEBAUTHN);
         KeelsonTypes.Verdict memory verdict = _amber(v, AMOUNT);
