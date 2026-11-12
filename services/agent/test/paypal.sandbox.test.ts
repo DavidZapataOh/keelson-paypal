@@ -175,5 +175,34 @@ describe.skipIf(!ready)(
         await context.close();
       }
     });
+    test("a MXN order, whose `$` the buyer's USD writes too, pays PayPal's charge and holds another bare amount", async () => {
+      const bearer = await token();
+      const order = await createOrder(bearer, "MXN", "59.00", "es-MX");
+      const context = await browser.newContext({ locale: "es-MX" });
+      const page = await context.newPage();
+      page.setDefaultTimeout(45_000);
+      try {
+        const pay = await signIn(page, order.approve);
+        const reference = await referenceFrom("MXN");
+        const gate = new PayGate({ checkoutHosts: ["www.sandbox.paypal.com"] });
+        gate.allow(checkoutTotal("MXN", { items: 5900 }), reference);
+        await gate.check(page, { kind: "click", target: pay });
+        const buyer = gate.paid?.conversion?.buyer;
+        expect(buyer?.currency).toBe("USD");
+        // Another bare amount, which may be pesos or dollars, holds.
+        await page.evaluate(() => {
+          const fee = document.createElement("p");
+          fee.textContent = "Fee $9,999.00";
+          document.body.prepend(fee);
+        });
+        const again = new PayGate({ checkoutHosts: ["www.sandbox.paypal.com"] });
+        again.allow(checkoutTotal("MXN", { items: 5900 }), reference);
+        const held = await again.check(page, { kind: "click", target: pay }).catch((e) => e);
+        expect(held).toBeInstanceOf(ToolError);
+        expect(again.held.at(-1)?.paypal?.buyer).toBe(`USD ${buyer?.value}`);
+      } finally {
+        await context.close();
+      }
+    });
   },
 );
