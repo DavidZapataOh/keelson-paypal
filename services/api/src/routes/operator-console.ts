@@ -563,6 +563,7 @@ const Me = z
 const meRoute = createRoute({
   method: "get",
   path: "/v1/operators/me",
+  operationId: "listOwnedOperators",
   tags: ["operators"],
   summary: "The operators the session's wallet owns",
   description:
@@ -576,6 +577,7 @@ const meRoute = createRoute({
 const rowsRoute = createRoute({
   method: "post",
   path: "/v1/operators/{agentId}/coverages/rows",
+  operationId: "getCoverageRows",
   tags: ["operators"],
   summary: "A block of the operator's coverages, for AG Grid's server-side row model",
   description:
@@ -601,6 +603,7 @@ const rowsRoute = createRoute({
 const dailyRoute = createRoute({
   method: "get",
   path: "/v1/operators/{agentId}/coverages/daily",
+  operationId: "getDailyCoverages",
   tags: ["operators"],
   summary: "The operator's coverages per day",
   description: "Per UTC day: coverages locked, the amount covered, premiums, and incidents.",
@@ -617,6 +620,7 @@ const dailyRoute = createRoute({
 const queryRoute = createRoute({
   method: "post",
   path: "/v1/operators/{agentId}/grid-query",
+  operationId: "queryCoverageGrid",
   tags: ["operators"],
   summary: "Turn a sentence into the coverage grid's state",
   description:

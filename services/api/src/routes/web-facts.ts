@@ -91,6 +91,7 @@ const problemContent = { "application/problem+json": { schema: ProblemSchema } }
 const create = createRoute({
   method: "post",
   path: "/v1/observations/web-fact",
+  operationId: "notarizeWebFact",
   tags: ["evidence"],
   summary: "Notarize a product endpoint with TLSNotary",
   description:

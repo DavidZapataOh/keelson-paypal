@@ -24,6 +24,7 @@ const problemContent = { "application/problem+json": { schema: ProblemSchema } }
 const route = createRoute({
   method: "post",
   path: "/v1/purchases/{id}/tracking",
+  operationId: "recordTracking",
   tags: ["purchases"],
   summary: "Record a purchase's shipment and its delivery",
   description:

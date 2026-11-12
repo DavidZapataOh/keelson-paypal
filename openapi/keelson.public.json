@@ -1,0 +1,4644 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Keelson API",
+    "version": "0.0.0",
+    "description": "The operations an app or an operator's agent calls: ask for a mandate, seal evidence, countersign a cart, and read and verify the Alibi. Runs on the PayPal sandbox and Arbitrum Sepolia."
+  },
+  "servers": [
+    {
+      "url": "https://api.keelson.finance"
+    }
+  ],
+  "components": {
+    "schemas": {
+      "AgentRun": {
+        "type": "object",
+        "properties": {
+          "state": {
+            "type": "string",
+            "enum": [
+              "started",
+              "ended"
+            ]
+          },
+          "liveViewUrl": {
+            "type": "string",
+            "format": "uri",
+            "description": "Kernel's live view of the agent's browser, opened read-only."
+          }
+        },
+        "required": [
+          "state"
+        ]
+      },
+      "AlibiReceipt": {
+        "type": "object",
+        "properties": {
+          "alibi_id": {
+            "type": "string"
+          },
+          "leaf": {
+            "type": "string",
+            "description": "The leaf bytes, base64."
+          },
+          "leaf_hash": {
+            "type": "string",
+            "description": "The RFC 6962 leaf hash, unpadded base64url."
+          },
+          "tlog_proof": {
+            "type": "string",
+            "description": "A c2sp.org/tlog-proof@v1 with cosignatures."
+          },
+          "anchor": {
+            "type": "object",
+            "additionalProperties": {}
+          },
+          "timestamps": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "tsa": {
+                  "type": "string"
+                },
+                "token": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "tsa",
+                "token"
+              ]
+            }
+          }
+        },
+        "required": [
+          "alibi_id",
+          "leaf",
+          "leaf_hash",
+          "tlog_proof",
+          "timestamps"
+        ]
+      },
+      "AlibiReport": {
+        "type": "object",
+        "properties": {
+          "reference": {
+            "type": "string"
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "verified",
+              "verified-unanchored",
+              "verified-offline",
+              "failed",
+              "incomplete"
+            ]
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "step": {
+                  "type": "integer"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": [
+                    "pass",
+                    "fail",
+                    "undisclosed",
+                    "pending",
+                    "absent",
+                    "unreachable"
+                  ]
+                },
+                "reason": {
+                  "type": "string"
+                },
+                "reads": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  },
+                  "description": "RFC 6901 pointers the check read."
+                },
+                "ms": {
+                  "type": "number"
+                },
+                "detail": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "id",
+                "step",
+                "status",
+                "reads",
+                "ms"
+              ]
+            }
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "2of2",
+              "degraded"
+            ]
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": {}
+            }
+          },
+          "unbound": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "pointer": {
+                  "type": "string"
+                },
+                "value": {}
+              },
+              "required": [
+                "pointer"
+              ]
+            }
+          },
+          "changed": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "rpc": {
+            "type": "object",
+            "properties": {
+              "url": {
+                "type": "string"
+              },
+              "custom": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "url",
+              "custom"
+            ]
+          },
+          "ms": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "reference",
+          "verdict",
+          "checks",
+          "mode",
+          "fields",
+          "unbound",
+          "changed",
+          "ms"
+        ]
+      },
+      "AmberCase": {
+        "type": [
+          "object",
+          "null"
+        ],
+        "properties": {
+          "commitment": {
+            "type": "string",
+            "pattern": "^0x[0-9a-f]+$",
+            "description": "The `amberCommitment` the operator signed into the coverage: Poseidon2 over the product page, the fields below and a salt."
+          },
+          "attested": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "url": {
+                "type": "string",
+                "format": "uri",
+                "description": "The store's JSON page for the SKU."
+              },
+              "sku": {
+                "type": "string"
+              },
+              "size": {
+                "type": "string"
+              },
+              "color": {
+                "type": "string"
+              },
+              "unit_minor": {
+                "type": "string",
+                "pattern": "^\\d+$"
+              },
+              "returns_free": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "url",
+              "sku",
+              "size",
+              "color",
+              "unit_minor",
+              "returns_free"
+            ],
+            "description": "What the operator attested. Null on the public dispute read: what was bought stays with the consoles."
+          },
+          "conviction": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "field": {
+                "type": "string",
+                "enum": [
+                  "size",
+                  "color",
+                  "unit_price",
+                  "returns_free"
+                ]
+              },
+              "attested_value": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "What the operator attested of the field, which the store's answer contradicts. Null on the public dispute read."
+              },
+              "proven_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "web_fact_digest": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]+$",
+                "description": "The EIP-712 digest of the `WebFact` leg A signed over the store's answer."
+              },
+              "captured_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              },
+              "tx_hash": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]+$"
+              },
+              "explorer_url": {
+                "type": "string",
+                "format": "uri"
+              },
+              "proof": {
+                "type": [
+                  "object",
+                  "null"
+                ],
+                "properties": {
+                  "bytes": {
+                    "type": "integer"
+                  },
+                  "hash": {
+                    "type": "string",
+                    "pattern": "^0x[0-9a-f]+$",
+                    "description": "keccak256 of the proof."
+                  },
+                  "public_inputs": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "pattern": "^0x[0-9a-f]+$"
+                    },
+                    "description": "`range_hi, range_lo, amber_commitment, product, field_id`, as the court gave the verifier."
+                  }
+                },
+                "required": [
+                  "bytes",
+                  "hash",
+                  "public_inputs"
+                ]
+              }
+            },
+            "required": [
+              "field",
+              "attested_value",
+              "proven_at",
+              "web_fact_digest",
+              "captured_at",
+              "tx_hash",
+              "explorer_url",
+              "proof"
+            ],
+            "description": "`AmberContradictionCourt`'s conviction on Arbitrum Sepolia: a C2b proof that the store's own answer, notarized by leg A, holds another value of `field`. Null while there is none."
+          }
+        },
+        "required": [
+          "commitment",
+          "attested",
+          "conviction"
+        ],
+        "description": "What the operator attested about the item it bought, and whether it was proven false. Null when the purchase carries no attestation (a cart of several lines, or bought before attestations)."
+      },
+      "Cart": {
+        "type": "object",
+        "properties": {
+          "merchant": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "currency": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 3
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "sku": {
+                  "type": "string",
+                  "maxLength": 256
+                },
+                "size": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "maxLength": 256
+                },
+                "color": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "maxLength": 256
+                },
+                "category": {
+                  "type": "string",
+                  "maxLength": 256
+                },
+                "qty": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0
+                },
+                "unit_minor": {
+                  "type": "integer",
+                  "minimum": 0
+                }
+              },
+              "required": [
+                "sku",
+                "category",
+                "qty",
+                "unit_minor"
+              ]
+            },
+            "minItems": 1,
+            "maxItems": 32
+          },
+          "return_days": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "returns_free": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "merchant",
+          "currency",
+          "lines",
+          "return_days",
+          "returns_free"
+        ]
+      },
+      "CartCheck": {
+        "type": "object",
+        "properties": {
+          "canAttempt": {
+            "type": "boolean",
+            "description": "Whether a countersign of this cart would pass the mandate as it stands now."
+          },
+          "needsApproval": {
+            "type": "boolean",
+            "description": "The cart passes, and is above the user's ask-me amount: the countersign pauses it for their one-time approval."
+          },
+          "blockers": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "example": "field:total"
+                },
+                "field": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "message": {
+                  "type": "string"
+                },
+                "next": {
+                  "type": "string",
+                  "description": "What the agent does about it."
+                }
+              },
+              "required": [
+                "code",
+                "field",
+                "message",
+                "next"
+              ]
+            }
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "field": {
+                  "type": "string"
+                },
+                "mandate": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "cart": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "pass": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "field",
+                "mandate",
+                "cart",
+                "pass"
+              ]
+            }
+          }
+        },
+        "required": [
+          "canAttempt",
+          "needsApproval",
+          "blockers",
+          "checks"
+        ]
+      },
+      "CheckoutBreakdown": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "string"
+          },
+          "tax": {
+            "type": "string"
+          },
+          "shipping": {
+            "type": "string"
+          },
+          "discount": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "items",
+          "tax",
+          "shipping",
+          "discount"
+        ],
+        "description": "What the countersigned total is made of, in minor units: the items, plus tax and shipping, less discounts. Absent for purchases countersigned without it."
+      },
+      "ConnectionApproved": {
+        "type": "object",
+        "properties": {
+          "mandate_id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "connect",
+              "once"
+            ]
+          }
+        },
+        "required": [
+          "mandate_id",
+          "kind"
+        ]
+      },
+      "ConnectionLimits": {
+        "type": "object",
+        "properties": {
+          "currency": {
+            "type": "string",
+            "enum": [
+              "AUD",
+              "BRL",
+              "CAD",
+              "CNY",
+              "CZK",
+              "DKK",
+              "EUR",
+              "HKD",
+              "HUF",
+              "ILS",
+              "JPY",
+              "MYR",
+              "MXN",
+              "TWD",
+              "NZD",
+              "NOK",
+              "PHP",
+              "PLN",
+              "GBP",
+              "SGD",
+              "SEK",
+              "CHF",
+              "THB",
+              "USD"
+            ],
+            "default": "USD"
+          },
+          "perPurchaseMinor": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "description": "Most one purchase may cost, minor units."
+          },
+          "totalMinor": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "description": "Most all purchases may cost together."
+          },
+          "merchants": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "mrc_runfast"
+              ]
+            },
+            "minItems": 1,
+            "maxItems": 1,
+            "default": [
+              "mrc_runfast"
+            ],
+            "description": "Onboarded merchant ids; every one when left out."
+          },
+          "until": {
+            "type": "string",
+            "format": "date-time",
+            "description": "When the mandate ends."
+          },
+          "askAboveMinor": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "description": "Above this a purchase waits for the user's one-time approval, although the limits allow it."
+          }
+        },
+        "required": [
+          "perPurchaseMinor",
+          "totalMinor",
+          "until"
+        ]
+      },
+      "ConnectionRequest": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "example": "Claude Code"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 100,
+            "maxLength": 1000,
+            "description": "Why the agent asks, in its own words; the user reads it before approving."
+          },
+          "limits": {
+            "$ref": "#/components/schemas/ConnectionLimits"
+          }
+        },
+        "required": [
+          "name",
+          "reason",
+          "limits"
+        ]
+      },
+      "ConnectionRequestState": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "connect",
+              "once",
+              "change"
+            ]
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "PENDING",
+              "APPROVED",
+              "DENIED",
+              "EXPIRED"
+            ]
+          },
+          "mandateId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The mandate the user signed."
+          },
+          "parentMandateId": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "userCode": {
+            "type": "string"
+          },
+          "approvalUrl": {
+            "type": "string"
+          },
+          "matchNumber": {
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "interval": {
+            "type": "integer"
+          },
+          "operatorAgentId": {
+            "type": "string",
+            "description": "The ERC-8004 agent id of the operator the mandate names, in decimal."
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "state",
+          "mandateId",
+          "parentMandateId",
+          "userCode",
+          "approvalUrl",
+          "matchNumber",
+          "expiresAt",
+          "interval",
+          "operatorAgentId"
+        ]
+      },
+      "ConnectionTokenError": {
+        "type": "object",
+        "properties": {
+          "error": {
+            "type": "string",
+            "enum": [
+              "authorization_pending",
+              "slow_down",
+              "access_denied",
+              "expired_token",
+              "invalid_grant",
+              "unsupported_grant_type"
+            ]
+          },
+          "error_description": {
+            "type": "string"
+          },
+          "interval": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "error",
+          "error_description"
+        ]
+      },
+      "CountersignRequest": {
+        "type": "object",
+        "properties": {
+          "authorizationId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64,
+            "description": "The PayPal authorization that holds the mandate's funds, or this request's own hold when the mandate holds each purchase separately; leg A reads it. Absent for a card mandate, whose purchase is paid with a single-use card issued after the ALLOW."
+          },
+          "closedMandate": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 131072,
+            "description": "The open mandate closed by the agent's key binding over the request and cart. Required, except of an app acting for a user under a mandate of Keelson's hosted operator, which sends `mandateId` instead."
+          },
+          "mandateId": {
+            "type": "string",
+            "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+            "description": "Only for an app acting for a user (`purchases:write`) under a mandate of Keelson's hosted operator that the user approved for it: Keelson closes the mandate with the hosted operator's key over `requestId` and this cart."
+          },
+          "requestId": {
+            "type": "string",
+            "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+            "description": "With `mandateId`: the request ULID the closed mandate binds, and the purchase's id; a new one when left out."
+          },
+          "cart": {
+            "$ref": "#/components/schemas/Cart"
+          },
+          "unit": {
+            "type": "object",
+            "additionalProperties": {},
+            "description": "The PayPal purchase unit the cart is checked against: `{amount}`, the checkout total the buyer pays as a PayPal Orders v2 amount, whose `breakdown` has the `item_total` of the cart's lines and, when the checkout charges them, `tax_total`, `shipping` and `discount`. Keelson countersigns `amount.value`, which must be `item_total + tax_total + shipping − discount`, and checks it against the mandate's budget. `handling`, `insurance` and `shipping_discount` are refused: fold them into `shipping`."
+          },
+          "evidence": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "maxLength": 256
+              },
+              "maxItems": 8
+            },
+            "default": {},
+            "description": "Evidence sources per field. `channel3:` sources are refused here: the API adds them from the observation stored in the evidence."
+          },
+          "evidenceRoot": {
+            "type": "string",
+            "pattern": "^0x[0-9a-f]{64}$",
+            "description": "The root of the evidence stored with `POST /v1/evidence` for this mandate."
+          },
+          "live": {
+            "type": "object",
+            "properties": {
+              "store": {
+                "type": "string",
+                "maxLength": 256,
+                "format": "uri",
+                "description": "The store's origin: the origin of the website the mandate allows for the cart's merchant."
+              }
+            },
+            "required": [
+              "store"
+            ],
+            "additionalProperties": false,
+            "description": "Only when the buyer pays at the store's own checkout with their own PayPal account: Keelson countersigns and logs the purchase and issues its Alibi, and neither covers nor captures it. Its Alibi is public once the PayPal transaction is recorded. The agent's pay click waits for an ALLOW; the agent then records PayPal's transaction id with `PUT /v1/purchases/{id}/paypal-transaction`."
+          },
+          "repeatOf": {
+            "type": "string",
+            "minLength": 26,
+            "maxLength": 26,
+            "description": "Only when the user asked to buy the same cart again: the id of the latest purchase of this cart under the mandate. Not needed once that purchase was denied or failed before capture, or was captured more than ten minutes ago. A retry after a lost answer never sends it: the `409 purchase-exists` answer names the purchase already made."
+          }
+        },
+        "required": [
+          "cart",
+          "unit",
+          "evidenceRoot"
+        ]
+      },
+      "Countersigned": {
+        "type": "object",
+        "properties": {
+          "purchaseId": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "2of2",
+              "degraded"
+            ],
+            "description": "`degraded` when leg B was unreachable and only leg A signed."
+          },
+          "decision": {
+            "type": "string",
+            "enum": [
+              "allow",
+              "deny"
+            ]
+          },
+          "countersign": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "The EIP-712 `Countersign` message, as decimal strings."
+          },
+          "digest": {
+            "type": "string",
+            "pattern": "^0x[0-9a-f]{64}$"
+          },
+          "signatures": {
+            "type": "object",
+            "properties": {
+              "tdx": {
+                "type": "string",
+                "pattern": "^0x[0-9a-f]{130}$"
+              },
+              "nitro": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "pattern": "^0x[0-9a-f]{130}$"
+              }
+            },
+            "required": [
+              "tdx",
+              "nitro"
+            ]
+          },
+          "signers": {
+            "type": "object",
+            "properties": {
+              "tdx": {
+                "type": "string"
+              },
+              "nitro": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "tdx",
+              "nitro"
+            ]
+          },
+          "trace": {
+            "description": "The `keelson.eval/1` trace both legs signed over."
+          },
+          "approval": {
+            "$ref": "#/components/schemas/OnceApproval"
+          },
+          "state": {
+            "type": "string",
+            "description": "`CAPTURED` once logged, covered and captured; `FAILED` with `failure` when a step refused; `COUNTERSIGNED`, `LOGGED` or `COVERED` while a step is pending; `DENIED` for a DENY."
+          },
+          "logIndex": {
+            "type": "string",
+            "description": "The leaf's index in the Alibi log."
+          },
+          "coverage": {
+            "type": "object",
+            "properties": {
+              "chainId": {
+                "type": "integer"
+              },
+              "txHash": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "chainId",
+              "txHash"
+            ],
+            "description": "The `lockCoverage` transaction of the operator's bond."
+          },
+          "capture": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "invoiceId": {
+                "type": "string"
+              },
+              "status": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "invoiceId",
+              "status"
+            ],
+            "description": "The PayPal capture of the countersigned amount."
+          },
+          "failure": {
+            "type": "object",
+            "properties": {
+              "step": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "step",
+              "reason"
+            ],
+            "description": "The step that failed and why; nothing was captured."
+          },
+          "blocked": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "For a `DENIED` cart, the mandate fields whose check failed."
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "field": {
+                  "type": "string"
+                },
+                "mandate": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "cart": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "field",
+                "mandate",
+                "cart"
+              ]
+            },
+            "description": "For a `DENIED` cart, each failed field with what the mandate allowed and what the cart had, as text."
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "field": {
+                  "type": "string"
+                },
+                "mandate": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "cart": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "pass": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "field",
+                "mandate",
+                "cart",
+                "pass"
+              ]
+            },
+            "description": "For a purchase the engine checked, each mandate field with what the mandate allowed, what the cart had and whether it held."
+          },
+          "card": {
+            "type": "object",
+            "properties": {
+              "issuer": {
+                "type": "string"
+              },
+              "lastFour": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              },
+              "expiresAt": {
+                "type": "string"
+              },
+              "controls": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "settledMinor": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "chargebacks": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "description": "Chargebacks filed through the card issuer over this purchase."
+              },
+              "bondClaimMinor": {
+                "type": "string",
+                "description": "The most a bond claim over this purchase may pay: the settled amount less what chargebacks returned; 0 while one is open."
+              },
+              "authorizations": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "amountMinor": {
+                      "type": "string"
+                    },
+                    "currency": {
+                      "type": "string"
+                    },
+                    "mcc": {
+                      "type": "string"
+                    },
+                    "merchantName": {
+                      "type": "string"
+                    },
+                    "merchantCountry": {
+                      "type": "string"
+                    },
+                    "approved": {
+                      "type": "boolean"
+                    },
+                    "failedMask": {
+                      "type": "integer"
+                    },
+                    "reason": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "legs": {
+                      "type": "object",
+                      "properties": {
+                        "tdx": {
+                          "type": "boolean"
+                        },
+                        "nitro": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "tdx",
+                        "nitro"
+                      ]
+                    },
+                    "latencyMs": {
+                      "type": "integer"
+                    },
+                    "at": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "amountMinor",
+                    "currency",
+                    "mcc",
+                    "merchantName",
+                    "merchantCountry",
+                    "approved",
+                    "failedMask",
+                    "reason",
+                    "legs",
+                    "latencyMs",
+                    "at"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "issuer",
+              "lastFour",
+              "state",
+              "expiresAt",
+              "controls",
+              "settledMinor",
+              "chargebacks",
+              "bondClaimMinor",
+              "authorizations"
+            ],
+            "description": "A card purchase: its single-use card (never its number) and every authorization the card network sent it, with both legs' decision. `CAPTURED` once the merchant's capture settles."
+          },
+          "live": {
+            "type": "object",
+            "properties": {
+              "store": {
+                "type": "string"
+              },
+              "transactionId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "store",
+              "transactionId"
+            ],
+            "description": "A purchase the buyer pays at the store's own checkout: the store's origin and the PayPal transaction id once the agent recorded it. Never covered nor captured."
+          }
+        },
+        "required": [
+          "purchaseId",
+          "mode",
+          "decision",
+          "countersign",
+          "digest",
+          "signatures",
+          "signers"
+        ]
+      },
+      "DeviceAuthorization": {
+        "type": "object",
+        "properties": {
+          "device_code": {
+            "type": "string"
+          },
+          "user_code": {
+            "type": "string"
+          },
+          "verification_uri": {
+            "type": "string"
+          },
+          "verification_uri_complete": {
+            "type": "string"
+          },
+          "expires_in": {
+            "type": "integer"
+          },
+          "interval": {
+            "type": "integer"
+          },
+          "request_id": {
+            "type": "string",
+            "description": "The request's id: `GET /v1/connections/requests/{id}` reads its state without spending the device code."
+          },
+          "match_number": {
+            "type": "integer",
+            "minimum": 10,
+            "maximum": 99,
+            "description": "Show it beside the link: the user picks it out of three before the request opens, so a link relayed by someone else does not."
+          }
+        },
+        "required": [
+          "device_code",
+          "user_code",
+          "verification_uri",
+          "verification_uri_complete",
+          "expires_in",
+          "interval",
+          "request_id"
+        ],
+        "description": "RFC 8628 §3.2. Show `user_code` and `verification_uri` to the user, then poll `POST /v1/connections/token` every `interval` seconds."
+      },
+      "DisputeStatus": {
+        "type": "object",
+        "properties": {
+          "dispute_id": {
+            "type": "string"
+          },
+          "purchase_id": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "OPEN",
+              "ATTRIBUTED",
+              "RESOLVED"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "description": "PayPal's `dispute_reason`."
+          },
+          "received_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time",
+            "description": "When Keelson received the dispute's first webhook or poll."
+          },
+          "attributed_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "elapsed_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "From `received_at` to `attributed_at`; null while the dispute is open."
+          },
+          "liable": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "operator",
+              "keelson",
+              "merchant",
+              "user",
+              null
+            ]
+          },
+          "parties": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "party": {
+                  "type": "string",
+                  "enum": [
+                    "operator",
+                    "keelson",
+                    "merchant"
+                  ]
+                },
+                "liable": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "party",
+                "liable"
+              ]
+            },
+            "description": "The parties a verdict can make pay: the operator's bond, Keelson's reserve, or the merchant through PayPal."
+          },
+          "verdict": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "rule": {
+                "type": "string",
+                "example": "R61"
+              },
+              "digest": {
+                "type": "string"
+              },
+              "chain_id": {
+                "type": "integer"
+              },
+              "message": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string"
+                }
+              },
+              "signatures": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "tee": {
+                      "type": "integer"
+                    },
+                    "signer": {
+                      "type": "string"
+                    },
+                    "signature": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "tee",
+                    "signer",
+                    "signature"
+                  ]
+                }
+              },
+              "facts": {
+                "type": "object",
+                "additionalProperties": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "boolean"
+                    }
+                  ]
+                }
+              }
+            },
+            "required": [
+              "rule",
+              "digest",
+              "chain_id",
+              "message",
+              "signatures",
+              "facts"
+            ]
+          },
+          "settlement": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "rail": {
+                "type": "string",
+                "enum": [
+                  "pyusd",
+                  "paypal"
+                ],
+                "description": "`pyusd`: the payee the verdict names is the merchant. `paypal`: it is Keelson's treasury, which pays the merchant a PayPal Payout."
+              },
+              "outcome": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "paid",
+                  "queued",
+                  "claimable",
+                  "failed",
+                  null
+                ],
+                "description": "`queued`: the slash waits out the veto window until `ready_at`. `claimable`: the PYUSD transfer failed and waits as a claim. Null until the chain answered; always null when neither the operator nor Keelson is liable."
+              },
+              "failure": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The contract error that refused the settlement on chain: of a `failed` one, or of one Keelson's treasury paid instead."
+              },
+              "paid_by": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "enum": [
+                  "chain",
+                  "treasury",
+                  "violation-pool",
+                  null
+                ],
+                "description": "`chain`: the operator's bond or Keelson's reserve paid. `violation-pool`: the operator's `ViolationBondPool` deposit paid the merchant on a court's conviction, with no verdict. `treasury`: the chain refused a verdict that still holds (its window or deadline had passed), so Keelson's treasury pays the payee itself, PYUSD on chain or a PayPal Payout; the settlement is paid once `outcome` is `paid`."
+              },
+              "refund_id": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "The buyer's PayPal refund; its `custom_id` is the verdict's `ksv1.` reference."
+              },
+              "tx_hash": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "explorer_url": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "ready_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              },
+              "payout_batch_id": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "payout_status": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "settled_at": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "format": "date-time"
+              }
+            },
+            "required": [
+              "rail",
+              "outcome",
+              "failure",
+              "paid_by",
+              "refund_id",
+              "tx_hash",
+              "explorer_url",
+              "ready_at",
+              "payout_batch_id",
+              "payout_status",
+              "settled_at"
+            ]
+          },
+          "responses": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "type": "string",
+                  "enum": [
+                    "provide_evidence",
+                    "send_message",
+                    "accept_claim"
+                  ]
+                },
+                "stage": {
+                  "type": "string",
+                  "description": "PayPal's lifecycle stage when it was sent."
+                },
+                "evidence_types": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "drafted_by": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "enum": [
+                    "model",
+                    "template",
+                    null
+                  ],
+                  "description": "`model` when the statement was drafted with citations; `template` when the rule's fixed statement was sent. Null for an accepted claim."
+                },
+                "citations": {
+                  "type": "integer",
+                  "description": "How many passages of the Alibi and the verdict the statement cites. The statement itself is not public: it quotes the purchase's Alibi."
+                },
+                "sent_at": {
+                  "type": "string",
+                  "format": "date-time"
+                }
+              },
+              "required": [
+                "action",
+                "stage",
+                "evidence_types",
+                "drafted_by",
+                "citations",
+                "sent_at"
+              ]
+            },
+            "description": "What Keelson sent PayPal for the party at fault. The action and the evidence types follow from the rule; a model only drafts the text."
+          },
+          "amber": {
+            "$ref": "#/components/schemas/AmberCase"
+          }
+        },
+        "required": [
+          "dispute_id",
+          "purchase_id",
+          "state",
+          "reason",
+          "received_at",
+          "attributed_at",
+          "elapsed_ms",
+          "liable",
+          "parties",
+          "verdict",
+          "settlement",
+          "responses",
+          "amber"
+        ]
+      },
+      "EvidenceManifest": {
+        "type": "object",
+        "properties": {
+          "v": {
+            "type": "string",
+            "enum": [
+              "keelson.manifest/1"
+            ]
+          },
+          "root": {
+            "type": "string",
+            "pattern": "^0x[0-9a-f]{64}$"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string"
+                },
+                "media_type": {
+                  "type": "string"
+                },
+                "leaf": {
+                  "type": "string",
+                  "pattern": "^0x[0-9a-f]{64}$",
+                  "description": "`SHA-256(0x00 ‖ \"keelson/evidence-item/v1\" ‖ salt ‖ type ‖ 0x00 ‖ media_type ‖ 0x00 ‖ content_hash)`."
+                }
+              },
+              "required": [
+                "type",
+                "media_type",
+                "leaf"
+              ]
+            },
+            "minItems": 1,
+            "maxItems": 26
+          }
+        },
+        "required": [
+          "v",
+          "root",
+          "items"
+        ],
+        "description": "Type, media type and salted leaf of every item, in order; `root` is the RFC 6962 tree hash of the leaves and the `evidenceRoot`. Content hashes and salts are only given in a disclosure."
+      },
+      "EvidenceUpload": {
+        "type": "object",
+        "properties": {
+          "mandateId": {
+            "type": "string",
+            "minLength": 26,
+            "maxLength": 26
+          },
+          "manifest": {
+            "$ref": "#/components/schemas/EvidenceManifest"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": {
+                  "type": "string",
+                  "maxLength": 64
+                },
+                "mediaType": {
+                  "type": "string",
+                  "maxLength": 128
+                },
+                "salt": {
+                  "type": "string",
+                  "description": "32 random bytes, base64."
+                },
+                "bytes": {
+                  "type": "string",
+                  "description": "The item bytes, base64."
+                }
+              },
+              "required": [
+                "type",
+                "mediaType",
+                "salt",
+                "bytes"
+              ]
+            },
+            "minItems": 1,
+            "maxItems": 26
+          }
+        },
+        "required": [
+          "mandateId",
+          "manifest",
+          "items"
+        ]
+      },
+      "LinkOperator": {
+        "type": "object",
+        "properties": {
+          "chainId": {
+            "anyOf": [
+              {
+                "type": "number",
+                "enum": [
+                  421614
+                ]
+              },
+              {
+                "type": "number",
+                "enum": [
+                  42161
+                ]
+              },
+              {
+                "type": "number",
+                "enum": [
+                  11155111
+                ]
+              }
+            ]
+          },
+          "agentId": {
+            "type": "string",
+            "pattern": "^(0|[1-9]\\d{0,19})$",
+            "description": "The ERC-8004 agent id, a decimal integer."
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "cnfJwk": {
+            "type": "object",
+            "properties": {
+              "kty": {
+                "type": "string",
+                "enum": [
+                  "EC"
+                ]
+              },
+              "crv": {
+                "type": "string",
+                "enum": [
+                  "P-256"
+                ]
+              },
+              "x": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{43}$"
+              },
+              "y": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9_-]{43}$"
+              },
+              "kid": {
+                "type": "string",
+                "maxLength": 64
+              }
+            },
+            "required": [
+              "kty",
+              "crv",
+              "x",
+              "y"
+            ],
+            "description": "The agent's P-256 `cnf` key, a public JWK."
+          },
+          "deadline": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "description": "Unix seconds, at most 15 minutes ahead."
+          },
+          "signature": {
+            "type": "string",
+            "maxLength": 8194,
+            "pattern": "^0x([0-9a-fA-F]{2})+$",
+            "description": "The EIP-712 `OperatorLink(uint256 agentId,bytes32 cnfThumbprint,uint256 deadline)` signature under the domain `{ name: \"Keelson\", version: \"1\", chainId }`, by the agent's owner or `agentWallet` (EOA, ERC-1271 or ERC-6492). `cnfThumbprint` is the RFC 7638 SHA-256 thumbprint of `cnfJwk`."
+          }
+        },
+        "required": [
+          "chainId",
+          "agentId",
+          "name",
+          "cnfJwk",
+          "deadline",
+          "signature"
+        ]
+      },
+      "MandateChangeRequest": {
+        "type": "object",
+        "properties": {
+          "note": {
+            "type": "string",
+            "minLength": 10,
+            "maxLength": 280,
+            "description": "Why the agent needs more room, in one line the user reads verbatim, e.g. 'Needs $40 more for shipping'."
+          },
+          "limits": {
+            "type": "object",
+            "properties": {
+              "perPurchaseMinor": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "totalMinor": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              },
+              "until": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "askAboveMinor": {
+                "type": "integer",
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991
+              }
+            },
+            "description": "The limits asked for; the mandate's own where left out."
+          }
+        },
+        "required": [
+          "note"
+        ]
+      },
+      "OnceApproval": {
+        "type": "object",
+        "properties": {
+          "device_code": {
+            "type": "string",
+            "description": "Absent when the user is already being asked about this cart: keep polling the device code you were given then."
+          },
+          "user_code": {
+            "type": "string"
+          },
+          "verification_uri": {
+            "type": "string"
+          },
+          "verification_uri_complete": {
+            "type": "string"
+          },
+          "expires_in": {
+            "type": "integer"
+          },
+          "interval": {
+            "type": "integer"
+          },
+          "request_id": {
+            "type": "string",
+            "description": "Read the request's state with `GET /v1/connections/requests/{id}`."
+          }
+        },
+        "required": [
+          "user_code",
+          "verification_uri",
+          "verification_uri_complete",
+          "expires_in",
+          "interval",
+          "request_id"
+        ],
+        "description": "On a deny for a cart over the mandate's amount or outside its merchants: the user was asked to approve this cart once. Poll `POST /v1/connections/token` with its `device_code`; the answer is a single-purchase mandate for exactly this cart."
+      },
+      "Operator": {
+        "type": "object",
+        "properties": {
+          "agentId": {
+            "type": "string",
+            "pattern": "^(0|[1-9]\\d{0,19})$",
+            "description": "The ERC-8004 agent id, a decimal integer."
+          },
+          "chainId": {
+            "type": "integer"
+          },
+          "agentRegistry": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string",
+            "description": "The agent's owner in the Identity registry."
+          }
+        },
+        "required": [
+          "agentId",
+          "chainId",
+          "agentRegistry",
+          "owner"
+        ]
+      },
+      "OperatorMandate": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "state": {
+            "type": "string",
+            "enum": [
+              "ACTIVE"
+            ]
+          },
+          "currency": {
+            "type": "string"
+          },
+          "maxMinor": {
+            "type": "integer"
+          },
+          "remainingMinor": {
+            "type": "integer"
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "holdMode": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "mandate",
+              "per_purchase",
+              null
+            ]
+          },
+          "authorizationId": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The PayPal authorization that holds the mandate's funds, when the mandate is held as a whole."
+          },
+          "openMandate": {
+            "type": "string",
+            "description": "The mandate as issued, which the agent closes with its `cnf` key for each countersign."
+          }
+        },
+        "required": [
+          "id",
+          "state",
+          "currency",
+          "maxMinor",
+          "remainingMinor",
+          "expiresAt",
+          "holdMode",
+          "authorizationId",
+          "openMandate"
+        ]
+      },
+      "Problem": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "format": "uri"
+          },
+          "title": {
+            "type": "string"
+          },
+          "status": {
+            "type": "integer"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "instance": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "status",
+          "instance"
+        ],
+        "additionalProperties": {}
+      },
+      "Purchase": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "mandateId": {
+            "type": "string"
+          },
+          "mode": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "2of2",
+              "degraded",
+              null
+            ]
+          },
+          "amount": {
+            "type": "object",
+            "properties": {
+              "currency": {
+                "type": "string"
+              },
+              "minor": {
+                "type": "string"
+              },
+              "breakdown": {
+                "$ref": "#/components/schemas/CheckoutBreakdown"
+              }
+            },
+            "required": [
+              "currency",
+              "minor"
+            ]
+          },
+          "state": {
+            "type": "string"
+          },
+          "logIndex": {
+            "type": "string",
+            "description": "The leaf's index in the Alibi log."
+          },
+          "coverage": {
+            "type": "object",
+            "properties": {
+              "chainId": {
+                "type": "integer"
+              },
+              "txHash": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "chainId",
+              "txHash"
+            ],
+            "description": "The `lockCoverage` transaction of the operator's bond."
+          },
+          "capture": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "invoiceId": {
+                "type": "string"
+              },
+              "status": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "invoiceId",
+              "status"
+            ],
+            "description": "The PayPal capture of the countersigned amount."
+          },
+          "failure": {
+            "type": "object",
+            "properties": {
+              "step": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "step",
+              "reason"
+            ],
+            "description": "The step that failed and why; nothing was captured."
+          },
+          "blocked": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "For a `DENIED` cart, the mandate fields whose check failed."
+          },
+          "reasons": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "field": {
+                  "type": "string"
+                },
+                "mandate": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "cart": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                }
+              },
+              "required": [
+                "field",
+                "mandate",
+                "cart"
+              ]
+            },
+            "description": "For a `DENIED` cart, each failed field with what the mandate allowed and what the cart had, as text."
+          },
+          "checks": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "field": {
+                  "type": "string"
+                },
+                "mandate": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "cart": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "pass": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "field",
+                "mandate",
+                "cart",
+                "pass"
+              ]
+            },
+            "description": "For a purchase the engine checked, each mandate field with what the mandate allowed, what the cart had and whether it held."
+          },
+          "card": {
+            "type": "object",
+            "properties": {
+              "issuer": {
+                "type": "string"
+              },
+              "lastFour": {
+                "type": "string"
+              },
+              "state": {
+                "type": "string"
+              },
+              "expiresAt": {
+                "type": "string"
+              },
+              "controls": {
+                "type": "object",
+                "additionalProperties": {}
+              },
+              "settledMinor": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "chargebacks": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": {}
+                },
+                "description": "Chargebacks filed through the card issuer over this purchase."
+              },
+              "bondClaimMinor": {
+                "type": "string",
+                "description": "The most a bond claim over this purchase may pay: the settled amount less what chargebacks returned; 0 while one is open."
+              },
+              "authorizations": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "amountMinor": {
+                      "type": "string"
+                    },
+                    "currency": {
+                      "type": "string"
+                    },
+                    "mcc": {
+                      "type": "string"
+                    },
+                    "merchantName": {
+                      "type": "string"
+                    },
+                    "merchantCountry": {
+                      "type": "string"
+                    },
+                    "approved": {
+                      "type": "boolean"
+                    },
+                    "failedMask": {
+                      "type": "integer"
+                    },
+                    "reason": {
+                      "type": [
+                        "string",
+                        "null"
+                      ]
+                    },
+                    "legs": {
+                      "type": "object",
+                      "properties": {
+                        "tdx": {
+                          "type": "boolean"
+                        },
+                        "nitro": {
+                          "type": "boolean"
+                        }
+                      },
+                      "required": [
+                        "tdx",
+                        "nitro"
+                      ]
+                    },
+                    "latencyMs": {
+                      "type": "integer"
+                    },
+                    "at": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "amountMinor",
+                    "currency",
+                    "mcc",
+                    "merchantName",
+                    "merchantCountry",
+                    "approved",
+                    "failedMask",
+                    "reason",
+                    "legs",
+                    "latencyMs",
+                    "at"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "issuer",
+              "lastFour",
+              "state",
+              "expiresAt",
+              "controls",
+              "settledMinor",
+              "chargebacks",
+              "bondClaimMinor",
+              "authorizations"
+            ],
+            "description": "A card purchase: its single-use card (never its number) and every authorization the card network sent it, with both legs' decision. `CAPTURED` once the merchant's capture settles."
+          },
+          "live": {
+            "type": "object",
+            "properties": {
+              "store": {
+                "type": "string"
+              },
+              "transactionId": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              }
+            },
+            "required": [
+              "store",
+              "transactionId"
+            ],
+            "description": "A purchase the buyer pays at the store's own checkout: the store's origin and the PayPal transaction id once the agent recorded it. Never covered nor captured."
+          }
+        },
+        "required": [
+          "id",
+          "mandateId",
+          "mode",
+          "amount",
+          "state"
+        ]
+      },
+      "TeeLeg": {
+        "type": "object",
+        "properties": {
+          "tee": {
+            "type": "string",
+            "enum": [
+              "tdx",
+              "nitro"
+            ]
+          },
+          "signer": {
+            "type": "string"
+          },
+          "measurement": {
+            "type": "string"
+          },
+          "registeredAt": {
+            "type": "string"
+          },
+          "verifiedAt": {
+            "type": "string",
+            "description": "When the attestation last verified."
+          },
+          "expiresAt": {
+            "type": "string"
+          },
+          "onchain": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "properties": {
+              "chainId": {
+                "type": "number"
+              },
+              "verdictVerifier": {
+                "type": "string"
+              },
+              "registeredAt": {
+                "type": "string"
+              },
+              "expiresAt": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "chainId",
+              "verdictVerifier",
+              "registeredAt",
+              "expiresAt"
+            ],
+            "description": "The signer's record in the VerdictVerifier, which on-chain verification reads; null when it is not registered there."
+          },
+          "attestation": {
+            "type": "object",
+            "additionalProperties": {},
+            "description": "The attestation the signer was admitted from: the platform evidence, its binding and the block it was made over."
+          }
+        },
+        "required": [
+          "tee",
+          "signer",
+          "measurement",
+          "registeredAt",
+          "verifiedAt",
+          "expiresAt",
+          "onchain",
+          "attestation"
+        ]
+      },
+      "Timestamp": {
+        "type": "object",
+        "properties": {
+          "tsa": {
+            "type": "string",
+            "enum": [
+              "digicert",
+              "sigstore",
+              "freetsa",
+              "sectigo"
+            ]
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "primary",
+              "fallback"
+            ]
+          },
+          "token": {
+            "type": "string",
+            "description": "The DER `TimeStampToken`, base64."
+          },
+          "genTime": {
+            "type": "string",
+            "description": "The token's `genTime`, RFC 3339 UTC."
+          },
+          "serial": {
+            "type": "string",
+            "description": "The token's serial number, hex."
+          }
+        },
+        "required": [
+          "tsa",
+          "role",
+          "token",
+          "genTime",
+          "serial"
+        ]
+      },
+      "TrustGrade": {
+        "type": "object",
+        "properties": {
+          "v": {
+            "type": "string",
+            "enum": [
+              "keelson.grade/1"
+            ]
+          },
+          "agentId": {
+            "type": "string"
+          },
+          "grade": {
+            "type": "string",
+            "enum": [
+              "A",
+              "B",
+              "C",
+              "D",
+              "F"
+            ],
+            "description": "From the one-sided 95 % credible upper bound of the incident rate: A ≤ 1 %, B ≤ 2 %, C ≤ 5 %, D ≤ 10 %, F above."
+          },
+          "computedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "calibration": {
+            "type": "object",
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "campaigns": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "The red-team campaigns pooled."
+              },
+              "mu_ppm": {
+                "type": "integer",
+                "description": "The prior's mean, ASR × escape + amber."
+              },
+              "kappa": {
+                "type": "number",
+                "description": "The prior's strength, by the method of moments."
+              }
+            },
+            "required": [
+              "id",
+              "at",
+              "campaigns",
+              "mu_ppm",
+              "kappa"
+            ]
+          },
+          "evidence": {
+            "type": "object",
+            "properties": {
+              "coverages": {
+                "type": "integer"
+              },
+              "incidents": {
+                "type": "object",
+                "properties": {
+                  "total": {
+                    "type": "integer"
+                  },
+                  "slashes": {
+                    "type": "integer",
+                    "description": "Paid from the operator's bond."
+                  },
+                  "pool": {
+                    "type": "integer",
+                    "description": "Paid from its `ViolationBondPool` deposit."
+                  },
+                  "uncollected": {
+                    "type": "integer",
+                    "description": "Paid by Keelson's treasury instead."
+                  },
+                  "pending": {
+                    "type": "integer",
+                    "description": "Not settled yet."
+                  }
+                },
+                "required": [
+                  "total",
+                  "slashes",
+                  "pool",
+                  "uncollected",
+                  "pending"
+                ],
+                "description": "Verdicts with the operator at fault: what the grade counts."
+              }
+            },
+            "required": [
+              "coverages",
+              "incidents"
+            ]
+          },
+          "reserve": {
+            "type": "object",
+            "properties": {
+              "warranties": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "warranties"
+            ],
+            "description": "Keelson's own faults on the operator's coverages, paid by its reserve. Not in the grade."
+          },
+          "frequency": {
+            "type": "object",
+            "properties": {
+              "alpha": {
+                "type": "number"
+              },
+              "beta": {
+                "type": "number"
+              },
+              "credibility_ppm": {
+                "type": "integer"
+              },
+              "mean_ppm": {
+                "type": "integer"
+              },
+              "upper95_ppm": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "alpha",
+              "beta",
+              "credibility_ppm",
+              "mean_ppm",
+              "upper95_ppm"
+            ]
+          },
+          "severity": {
+            "type": "object",
+            "properties": {
+              "meanMinor": {
+                "type": "integer"
+              },
+              "maxMinor": {
+                "type": "integer"
+              },
+              "lossRatio_ppm": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "meanMinor",
+              "maxMinor",
+              "lossRatio_ppm"
+            ]
+          },
+          "loss": {
+            "type": "object",
+            "properties": {
+              "horizon": {
+                "type": "integer"
+              },
+              "scenarios": {
+                "type": "integer"
+              },
+              "expectedMinor": {
+                "type": "integer"
+              },
+              "var99Minor": {
+                "type": "integer"
+              },
+              "es99Minor": {
+                "type": "integer"
+              },
+              "var995Minor": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "horizon",
+              "scenarios",
+              "expectedMinor",
+              "var99Minor",
+              "es99Minor",
+              "var995Minor"
+            ]
+          },
+          "premium": {
+            "type": "object",
+            "properties": {
+              "bps": {
+                "type": "integer",
+                "description": "Charged on each new coverage, in `lockCoverage`."
+              },
+              "modelBps": {
+                "type": "integer"
+              },
+              "floorBps": {
+                "type": "integer"
+              },
+              "theta": {
+                "type": "number"
+              },
+              "costOfCapital": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "bps",
+              "modelBps",
+              "floorBps",
+              "theta",
+              "costOfCapital"
+            ]
+          },
+          "bond": {
+            "type": "object",
+            "properties": {
+              "requiredMinor": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "requiredMinor"
+            ]
+          },
+          "computeMs": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "v",
+          "agentId",
+          "grade",
+          "computedAt",
+          "calibration",
+          "evidence",
+          "reserve",
+          "frequency",
+          "severity",
+          "loss",
+          "premium",
+          "bond",
+          "computeMs"
+        ],
+        "description": "An operator's trust grade, premium and minimum bond. Amounts are US cents. The red-team campaigns set the prior of the incident rate; the operator's covered purchases and the verdicts with it at fault update it in closed form; a seeded Monte Carlo of the aggregate loss over the next 30 days prices the premium and the bond."
+      }
+    },
+    "securitySchemes": {
+      "oauth2": {
+        "type": "oauth2",
+        "description": "OAuth 2.1. An operator's agent uses client credentials; an app acting for a user uses the authorization code grant with PKCE (S256). Every token is requested for the resource `https://api.keelson.finance` (RFC 8707).",
+        "flows": {
+          "clientCredentials": {
+            "tokenUrl": "https://api.keelson.finance/api/auth/oauth2/token",
+            "scopes": {
+              "countersign:write": "Countersign carts as the operator's own agent",
+              "evidence:write": "Seal and store evidence",
+              "evidence:disclose": "Disclose stored evidence items",
+              "evidence:decrypt": "Decrypt sealed evidence originals",
+              "alibis:read": "Read and verify Alibis",
+              "disputes:read": "Read disputes and their attribution",
+              "operators:write": "Link and manage operators",
+              "merchants:write": "Manage a merchant's settings",
+              "mandates:request": "Ask the user for a mandate or a change of one",
+              "purchases:write": "Check and countersign carts for the user",
+              "offline_access": "Stay connected with a refresh token"
+            }
+          },
+          "authorizationCode": {
+            "authorizationUrl": "https://api.keelson.finance/api/auth/oauth2/authorize",
+            "tokenUrl": "https://api.keelson.finance/api/auth/oauth2/token",
+            "refreshUrl": "https://api.keelson.finance/api/auth/oauth2/token",
+            "scopes": {
+              "countersign:write": "Countersign carts as the operator's own agent",
+              "evidence:write": "Seal and store evidence",
+              "evidence:disclose": "Disclose stored evidence items",
+              "evidence:decrypt": "Decrypt sealed evidence originals",
+              "alibis:read": "Read and verify Alibis",
+              "disputes:read": "Read disputes and their attribution",
+              "operators:write": "Link and manage operators",
+              "merchants:write": "Manage a merchant's settings",
+              "mandates:request": "Ask the user for a mandate or a change of one",
+              "purchases:write": "Check and countersign carts for the user",
+              "offline_access": "Stay connected with a refresh token"
+            }
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/status": {
+      "get": {
+        "operationId": "getStatus",
+        "tags": [
+          "system"
+        ],
+        "summary": "Dependency status",
+        "responses": {
+          "200": {
+            "description": "Status of the service and its dependencies; always 200",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "ok",
+                        "degraded"
+                      ]
+                    },
+                    "dependencies": {
+                      "type": "object",
+                      "properties": {
+                        "db": {
+                          "type": "string",
+                          "enum": [
+                            "up",
+                            "down"
+                          ]
+                        },
+                        "kv": {
+                          "type": "string",
+                          "enum": [
+                            "up",
+                            "down"
+                          ]
+                        },
+                        "teeA": {
+                          "type": "string",
+                          "enum": [
+                            "up",
+                            "down"
+                          ]
+                        },
+                        "teeB": {
+                          "type": "string",
+                          "enum": [
+                            "up",
+                            "down"
+                          ]
+                        },
+                        "relayer": {
+                          "type": "object",
+                          "properties": {
+                            "status": {
+                              "type": "string",
+                              "enum": [
+                                "up",
+                                "down",
+                                "degraded"
+                              ]
+                            },
+                            "chains": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "chainId": {
+                                    "type": "integer"
+                                  },
+                                  "status": {
+                                    "type": "string",
+                                    "enum": [
+                                      "up",
+                                      "down",
+                                      "degraded"
+                                    ]
+                                  },
+                                  "address": {
+                                    "type": "string"
+                                  },
+                                  "balanceWei": {
+                                    "type": "string"
+                                  },
+                                  "nextNonce": {
+                                    "type": "string"
+                                  },
+                                  "pending": {
+                                    "type": "integer"
+                                  },
+                                  "baseFeeWei": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "chainId",
+                                  "status",
+                                  "address",
+                                  "pending"
+                                ]
+                              }
+                            }
+                          },
+                          "required": [
+                            "status",
+                            "chains"
+                          ]
+                        },
+                        "log": {
+                          "type": "object",
+                          "properties": {
+                            "status": {
+                              "type": "string",
+                              "enum": [
+                                "up",
+                                "down"
+                              ]
+                            },
+                            "origins": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "properties": {
+                                  "origin": {
+                                    "type": "string"
+                                  },
+                                  "size": {
+                                    "type": "integer"
+                                  },
+                                  "checkpointAgeMs": {
+                                    "type": "integer"
+                                  }
+                                },
+                                "required": [
+                                  "origin",
+                                  "size",
+                                  "checkpointAgeMs"
+                                ]
+                              }
+                            }
+                          },
+                          "required": [
+                            "status",
+                            "origins"
+                          ]
+                        },
+                        "paypal": {
+                          "type": "object",
+                          "properties": {
+                            "status": {
+                              "type": "string",
+                              "enum": [
+                                "up",
+                                "down"
+                              ]
+                            },
+                            "environment": {
+                              "type": "string",
+                              "enum": [
+                                "sandbox",
+                                "production"
+                              ]
+                            }
+                          },
+                          "required": [
+                            "status",
+                            "environment"
+                          ]
+                        },
+                        "webhooks": {
+                          "type": "object",
+                          "properties": {
+                            "status": {
+                              "type": "string",
+                              "enum": [
+                                "up",
+                                "down"
+                              ]
+                            },
+                            "lastWebhookAgeMs": {
+                              "type": "integer"
+                            },
+                            "lastPollAgeMs": {
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "status"
+                          ]
+                        },
+                        "chainEvents": {
+                          "type": "object",
+                          "properties": {
+                            "status": {
+                              "type": "string",
+                              "enum": [
+                                "up",
+                                "down"
+                              ]
+                            },
+                            "finalizedBlock": {
+                              "type": "string"
+                            },
+                            "reconciledAgeMs": {
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "status"
+                          ]
+                        },
+                        "anchor": {
+                          "type": "object",
+                          "properties": {
+                            "status": {
+                              "type": "string",
+                              "enum": [
+                                "up",
+                                "down"
+                              ]
+                            },
+                            "environment": {
+                              "type": "string",
+                              "enum": [
+                                "arbitrum-sepolia"
+                              ]
+                            },
+                            "size": {
+                              "type": "string"
+                            },
+                            "anchoredAgeMs": {
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "status",
+                            "environment"
+                          ]
+                        }
+                      },
+                      "required": [
+                        "db",
+                        "kv"
+                      ]
+                    },
+                    "rpc": {
+                      "type": "object",
+                      "properties": {
+                        "calls": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "provider": {
+                                "type": "string"
+                              },
+                              "method": {
+                                "type": "string"
+                              },
+                              "calls": {
+                                "type": "integer"
+                              }
+                            },
+                            "required": [
+                              "provider",
+                              "method",
+                              "calls"
+                            ]
+                          }
+                        }
+                      },
+                      "required": [
+                        "calls"
+                      ]
+                    },
+                    "version": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "status",
+                    "dependencies",
+                    "rpc",
+                    "version"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/events": {
+      "get": {
+        "operationId": "streamEvents",
+        "tags": [
+          "events"
+        ],
+        "summary": "Stream events",
+        "description": "Server-sent events for one channel. Send `Last-Event-ID` to replay the events after that id before going live.",
+        "security": [
+          {
+            "oauth2": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "description": "`public:<name>`, or the caller's own namespace `<base64url(kind:subject)>` with an optional `:<suffix>`."
+            },
+            "required": true,
+            "description": "`public:<name>`, or the caller's own namespace `<base64url(kind:subject)>` with an optional `:<suffix>`.",
+            "name": "channel",
+            "in": "query"
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "required": false,
+            "name": "last-event-id",
+            "in": "header"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "An event stream; each event carries the row id, the channel and a JSON payload",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid channel or Last-Event-ID",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Not authenticated",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The channel belongs to another principal",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many concurrent streams for this principal",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/connections": {
+      "post": {
+        "operationId": "requestMandate",
+        "tags": [
+          "connections"
+        ],
+        "summary": "Ask the user for a mandate",
+        "description": "The agent's operator asks its user for a mandate with these limits, as an RFC 8628 device authorization: the user opens `verification_uri_complete`, compares `user_code` and approves on Keelson's page with a passkey, lowering any limit. Only a client that linked an operator may ask, and the mandate names that operator. The code expires in 15 minutes and is single use.\n\nAn app acting for a user with a token they granted it (`mandates:request`) asks that user only: the request is theirs from the start, so it carries no number to match. The mandate names the app's own operator, or Keelson's hosted operator when the app has none. Through the hosted operator, every app is capped (`hosted-cap`): one user's open mandates and purchases of the last 180 days with apps whose redirect URIs are not a known host's may not pass `HOSTED_CAP_PER_USER_MINOR`, and with all such apps `HOSTED_CAP_KNOWN_PER_USER_MINOR`; every user's funded exposure may not pass `HOSTED_CAP_TOTAL_MINOR`.",
+        "security": [
+          {
+            "oauth2": [
+              "countersign:write"
+            ]
+          },
+          {
+            "oauth2": [
+              "mandates:request"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "required": true,
+            "name": "idempotency-key",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConnectionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Show the code and the link to the user, then poll",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceAuthorization"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid access token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The client linked no operator, and no hosted operator serves it",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The client linked several operators",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request is invalid, or over the hosted operator's cap (`hosted-cap`)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/connections/token": {
+      "post": {
+        "operationId": "pollConnection",
+        "tags": [
+          "connections"
+        ],
+        "summary": "Poll for the user's answer",
+        "description": "RFC 8628 §3.4 polling with `grant_type=urn:ietf:params:oauth:grant-type:device_code`. Until the user decides: `authorization_pending`, or `slow_down` (and 5 more seconds to wait) when polled faster than `interval`. Then `access_denied`, `expired_token`, or the approved mandate's id, once: the device code is spent by the answer that carries it.",
+        "security": [
+          {
+            "oauth2": [
+              "countersign:write"
+            ]
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "grant_type": {
+                    "type": "string"
+                  },
+                  "device_code": {
+                    "type": "string",
+                    "maxLength": 256
+                  }
+                },
+                "required": [
+                  "grant_type",
+                  "device_code"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Approved: the mandate the user signed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionApproved"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Not approved, or not yet",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionTokenError"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid access token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/connections/requests/{id}": {
+      "get": {
+        "operationId": "getConnectionRequest",
+        "tags": [
+          "connections"
+        ],
+        "summary": "Read your request's state",
+        "description": "The state of a request this client made, as often as needed: reading it changes nothing and does not spend the device code. Wait `interval` seconds between reads. An app acting for a user (`mandates:request`) reads only that user's requests.",
+        "security": [
+          {
+            "oauth2": [
+              "countersign:write"
+            ]
+          },
+          {
+            "oauth2": [
+              "mandates:request"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The request",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConnectionRequestState"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid access token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such request of this client",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/mandates/{id}/changes": {
+      "post": {
+        "operationId": "requestMandateChange",
+        "tags": [
+          "mandates"
+        ],
+        "summary": "Ask the user to change a mandate",
+        "description": "The agent asks its user for different limits, with a one-line note the user reads verbatim. The user may lower what is asked and approves with a passkey; the new mandate then replaces this one, whose hold is released. Nothing changes until the user signs. Poll `GET /v1/connections/requests/{id}` for the answer. An app acting for a user (`mandates:request`) asks only about a mandate that user approved for it.",
+        "security": [
+          {
+            "oauth2": [
+              "countersign:write"
+            ]
+          },
+          {
+            "oauth2": [
+              "mandates:request"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "required": true,
+            "name": "idempotency-key",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MandateChangeRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The user was asked; show the link and poll",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "request_id": {
+                      "type": "string"
+                    },
+                    "user_code": {
+                      "type": "string"
+                    },
+                    "verification_uri_complete": {
+                      "type": "string"
+                    },
+                    "expires_in": {
+                      "type": "integer"
+                    },
+                    "interval": {
+                      "type": "integer"
+                    }
+                  },
+                  "required": [
+                    "request_id",
+                    "user_code",
+                    "verification_uri_complete",
+                    "expires_in",
+                    "interval"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid access token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such mandate of an operator this client linked, or that the user approved for this app",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The mandate has ended, or a change of it is already waiting for the user (`change-pending`, with its `requestId`)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The limits are invalid, or over the hosted operator's cap (`hosted-cap`)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/mandates/{id}/check": {
+      "post": {
+        "operationId": "checkCart",
+        "tags": [
+          "mandates"
+        ],
+        "summary": "Check a cart against a mandate",
+        "description": "A dry run: what a countersign of this cart would find, field by field, from the same policy set the TEE legs run, with nothing signed, reserved or logged. The countersign stays the only decision. An app acting for a user (`purchases:write`) checks only under a mandate that user approved for it.",
+        "security": [
+          {
+            "oauth2": [
+              "countersign:write"
+            ]
+          },
+          {
+            "oauth2": [
+              "purchases:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "cart": {
+                    "$ref": "#/components/schemas/Cart"
+                  }
+                },
+                "required": [
+                  "cart"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The check",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CartCheck"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid access token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such mandate of an operator this client linked",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/countersign": {
+      "post": {
+        "operationId": "countersign",
+        "tags": [
+          "tee"
+        ],
+        "summary": "Countersign a cart",
+        "description": "Sends the cart to the TEE legs in order and returns the countersignatures only when both agree. A DENY is countersigned too. An app acting for a user (`purchases:write`) countersigns only under a mandate that user approved for it; under a mandate of Keelson's hosted operator it sends `mandateId` and Keelson closes the mandate with that operator's key over the request id and this cart, and nothing else. A cart is bought once per mandate: while a purchase of the same cart is in flight, or for ten minutes after it was captured, another request for it is answered `409 purchase-exists` with that purchase's id, whatever its request id, evidence or `Idempotency-Key`. Retrying after a lost answer is therefore safe; to buy the same cart again on purpose, name that purchase in `repeatOf`.",
+        "security": [
+          {
+            "oauth2": [
+              "countersign:write"
+            ]
+          },
+          {
+            "oauth2": [
+              "purchases:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "required": true,
+            "name": "idempotency-key",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CountersignRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The decision and its countersignatures",
+            "headers": {
+              "Keelson-Countersign-Mode": {
+                "schema": {
+                  "type": "string",
+                  "enum": [
+                    "2of2",
+                    "degraded"
+                  ],
+                  "description": "`degraded` when only one TEE signed; the same as `mode` in the body."
+                },
+                "required": true,
+                "description": "`degraded` when only one TEE signed; the same as `mode` in the body."
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Countersigned"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Countersigned, and a step of the purchase is still pending; `Location` is the purchase, which finishes on its own",
+            "headers": {
+              "Location": {
+                "schema": {
+                  "type": "string"
+                },
+                "required": true
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Countersigned"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "A leg refused the agent's authority",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such mandate of an operator this client linked, or that the user approved for this app",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The mandate is not active, the evidence root is not stored for it or already binds another purchase, the request was already used, or the same cart is already being bought (`purchase-exists`, with its `purchaseId`)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "A leg refused the request as too large",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The request is invalid, the purchase unit's amount does not reconcile with the cart (`invalid-amount`), the authorization is not this purchase's hold, the cart is not the one held for this request, the evidence holds another cart or another checkout amount or reference rates Keelson did not issue, its Channel3 observation is not usable, its WebFact is not this purchase's, or a live store is not the website the mandate allows",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many countersigns for this mandate",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "502": {
+            "description": "The legs disagree, or a signer is not registered",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "A leg needed to sign, or PayPal, is unavailable, or the hosted operator's key is not configured",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/purchases/{id}": {
+      "get": {
+        "operationId": "getPurchase",
+        "tags": [
+          "purchases"
+        ],
+        "summary": "A purchase",
+        "description": "The purchase's state: its log index, its coverage and its capture once each is recorded. Readable by the mandate's owner and by the client that asked for the countersign; an app acting for a user, only for that user.",
+        "security": [
+          {
+            "oauth2": []
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The purchase",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Purchase"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such purchase, or not the caller's",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/evidence": {
+      "post": {
+        "operationId": "storeEvidence",
+        "tags": [
+          "evidence"
+        ],
+        "summary": "Store sealed evidence",
+        "description": "Stores what the agent saw at decision time for an active mandate of an operator this client linked or, for an app acting for a user, one that user approved for the app. The manifest is rebuilt from the items and must match, every item has its own salt, no public item may still hold an email address or phone number, and every `.original` must open with the evidence identity. A countersign may only bind a stored root, once.",
+        "security": [
+          {
+            "oauth2": [
+              "evidence:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "required": true,
+            "name": "idempotency-key",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/EvidenceUpload"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Stored",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "evidenceRoot": {
+                      "type": "string",
+                      "pattern": "^0x[0-9a-f]{64}$"
+                    }
+                  },
+                  "required": [
+                    "evidenceRoot"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such mandate of an operator this client linked",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The mandate is not active, holds the most bundles it may, or the root is stored for another mandate",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The bundle is larger than 16 MiB",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "The items do not build the manifest, a public item holds PII, or an original does not open",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Too many uploads for this mandate",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/evidence/{root}": {
+      "get": {
+        "operationId": "getEvidenceManifest",
+        "tags": [
+          "evidence"
+        ],
+        "summary": "Read an evidence manifest",
+        "description": "The public manifest of a stored bundle: salted leaves only.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^0x[0-9a-f]{64}$"
+            },
+            "required": true,
+            "name": "root",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The manifest",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EvidenceManifest"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such bundle",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/tee/attestations": {
+      "get": {
+        "operationId": "listTeeAttestations",
+        "tags": [
+          "tee"
+        ],
+        "summary": "Attested TEE signers",
+        "description": "The signers whose countersignatures are accepted, each with the attestation it was admitted from, and the measurements the deployment publishes. A verifier checks the attestations itself.",
+        "responses": {
+          "200": {
+            "description": "The admitted signers and the published measurements",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "legs": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/TeeLeg"
+                      }
+                    },
+                    "measurements": {
+                      "type": "object",
+                      "properties": {
+                        "engineBuildId": {
+                          "type": "string"
+                        },
+                        "tdx": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "nitro": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "provenance": {
+                          "type": "string",
+                          "description": "Where the Sigstore build provenance attested measurements.json is published; `gh attestation verify` checks it."
+                        }
+                      },
+                      "required": [
+                        "engineBuildId",
+                        "tdx",
+                        "nitro",
+                        "provenance"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "legs",
+                    "measurements"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/timestamps/{hash}": {
+      "get": {
+        "operationId": "getTimestamps",
+        "tags": [
+          "timestamps"
+        ],
+        "summary": "RFC 3161 timestamps of a hash",
+        "description": "The RFC 3161 tokens two independent TSAs issued over a log leaf hash (or another stamped hash). Each token's message imprint is the hash itself, so `openssl ts -verify -digest <hash>` checks it.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$",
+              "description": "The SHA-256 hash, 64 lowercase hex digits."
+            },
+            "required": true,
+            "description": "The SHA-256 hash, 64 lowercase hex digits.",
+            "name": "hash",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The tokens issued so far and the TSAs still pending",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "hash": {
+                      "type": "string"
+                    },
+                    "stamps": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/Timestamp"
+                      }
+                    },
+                    "pending": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": [
+                          "digicert",
+                          "sigstore",
+                          "freetsa",
+                          "sectigo"
+                        ]
+                      }
+                    }
+                  },
+                  "required": [
+                    "hash",
+                    "stamps",
+                    "pending"
+                  ]
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "The hash was never queued",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/alibis/{id}.pdf": {
+      "get": {
+        "operationId": "getAlibiPdf",
+        "tags": [
+          "alibis"
+        ],
+        "summary": "An alibi as a PDF/A-3b",
+        "description": "A one-page PDF/A-3b summary of the Alibi with a QR to its verify page and the bundle embedded as `<id>.alibi`. Same readers, and the same public copy, as the bundle.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+              "description": "The alibi id: the purchase's ULID."
+            },
+            "required": true,
+            "description": "The alibi id: the purchase's ULID.",
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The PDF",
+            "content": {
+              "application/pdf": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "The PDF has not changed"
+          },
+          "404": {
+            "description": "No alibi with this id that the caller may read",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/alibis/{id}": {
+      "get": {
+        "operationId": "getAlibi",
+        "tags": [
+          "alibis"
+        ],
+        "summary": "An alibi bundle",
+        "description": "The purchase's Alibi: its RFC 8785 bundle, readable by the mandate's user or, with `alibis:read`, by the client that uploaded the purchase's evidence; the Alibi of a live purchase, once its PayPal transaction is recorded, by anyone. Anyone else gets its public copy, whose mandate withholds the user's login id and risk data: their salted digests stay in the signed payload, so the copy verifies the same. It grows as timestamps, the capture and the on-chain anchor arrive; earlier sections never change.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+              "description": "The alibi id: the purchase's ULID."
+            },
+            "required": true,
+            "description": "The alibi id: the purchase's ULID.",
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The bundle",
+            "content": {
+              "application/vnd.keelson.alibi.v1+json": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "304": {
+            "description": "The bundle has not changed"
+          },
+          "404": {
+            "description": "No alibi with this id that the caller may read",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/alibis/verify": {
+      "post": {
+        "operationId": "verifyAlibi",
+        "tags": [
+          "alibis"
+        ],
+        "summary": "Verify an alibi",
+        "description": "Runs the browser verifier's algorithm on an Alibi bundle against the pinned trust roots and a public Arbitrum RPC. No authentication; the bundle is not stored.",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/vnd.keelson.alibi.v1+json": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlibiReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Not an Alibi bundle; `pointer` names the failing value",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "The body is over 1 MiB",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "The body is not an Alibi bundle's media type",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/alibis/{id}/receipt": {
+      "get": {
+        "operationId": "getAlibiReceipt",
+        "tags": [
+          "alibis"
+        ],
+        "summary": "The public receipt of an alibi",
+        "description": "What the public log already publishes about an Alibi: its leaf, inclusion proof, anchor and timestamps. No authentication.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$",
+              "description": "The alibi id: the purchase's ULID."
+            },
+            "required": true,
+            "description": "The alibi id: the purchase's ULID.",
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The receipt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlibiReceipt"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No alibi with this id that the caller may read",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/disputes/{id}": {
+      "get": {
+        "operationId": "getDispute",
+        "tags": [
+          "Disputes"
+        ],
+        "summary": "A dispute's attribution",
+        "description": "Where a PayPal dispute over a Keelson purchase stands: the party at fault, the `Verdict` both TEE legs signed, the time from the dispute's arrival to its verdict, and the operator's amber commitment with any conviction of it. No authentication; it holds no personal data, so what the operator attested is left out.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^PP-[A-Z]-[0-9A-Za-z-]{1,40}$"
+            },
+            "required": true,
+            "name": "id",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The dispute",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DisputeStatus"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No dispute with this id over a Keelson purchase",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/operators": {
+      "post": {
+        "operationId": "linkOperator",
+        "tags": [
+          "operators"
+        ],
+        "summary": "Link an ERC-8004 agent as an operator",
+        "description": "Binds the agent's `cnf` key to its ERC-8004 identity once its owner or `agentWallet` signs `OperatorLink`. The owner of an agent that is already linked re-links it, after a transfer for example.",
+        "security": [
+          {
+            "oauth2": [
+              "operators:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "required": true,
+            "name": "idempotency-key",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkOperator"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "The operator is linked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Operator"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid access token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Not signed by the agent's owner or agent wallet",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No such agent in the Identity registry",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "The agent id is linked on another registry",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid, or past its deadline",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "The chain cannot be read",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/operators/{agentId}/mandates": {
+      "get": {
+        "operationId": "listOperatorMandates",
+        "tags": [
+          "operators"
+        ],
+        "summary": "The active mandates naming the operator",
+        "description": "Lists the active mandates whose operator is `agentId`, with their open mandates and holds, so that the operator's agent can buy under them. Only the OAuth client that linked the operator (`POST /v1/operators`) reads them; any other caller gets 404. An app acting for a user (`mandates:request`) reads only the mandates naming `agentId` that this user approved for it.",
+        "security": [
+          {
+            "oauth2": [
+              "countersign:write"
+            ]
+          },
+          {
+            "oauth2": [
+              "mandates:request"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^(0|[1-9]\\d{0,19})$",
+              "description": "The ERC-8004 agent id, a decimal integer."
+            },
+            "required": true,
+            "description": "The ERC-8004 agent id, a decimal integer.",
+            "name": "agentId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The operator's active mandates, newest first",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "mandates": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/OperatorMandate"
+                      }
+                    }
+                  },
+                  "required": [
+                    "mandates"
+                  ]
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "No valid access token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The token lacks countersign:write",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No operator this client linked",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/operators/{agentId}/mandates/{mandateId}/runs": {
+      "post": {
+        "operationId": "announceRun",
+        "tags": [
+          "operators"
+        ],
+        "summary": "Announce an agent run under a mandate",
+        "description": "Tells the mandate's owner that the operator's agent started or ended shopping under the mandate, with the live view of its browser, as an `agent.run` event on the owner's `mandate:<id>` stream. Only the OAuth client that linked the operator announces runs, on its active mandates.",
+        "security": [
+          {
+            "oauth2": [
+              "countersign:write"
+            ]
+          }
+        ],
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^(0|[1-9]\\d{0,19})$",
+              "description": "The ERC-8004 agent id, a decimal integer."
+            },
+            "required": true,
+            "description": "The ERC-8004 agent id, a decimal integer.",
+            "name": "agentId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 26,
+              "maxLength": 26
+            },
+            "required": true,
+            "name": "mandateId",
+            "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 255
+            },
+            "required": true,
+            "name": "idempotency-key",
+            "in": "header"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AgentRun"
+              }
+            }
+          }
+        },
+        "responses": {
+          "202": {
+            "description": "Published to the mandate's owner"
+          },
+          "401": {
+            "description": "No valid access token",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "The token lacks countersign:write",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "No active mandate of an operator this client linked",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Invalid, or not a Kernel live view",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/operators/{agentId}/grade": {
+      "get": {
+        "operationId": "getTrustGrade",
+        "tags": [
+          "operators"
+        ],
+        "summary": "Trust grade, premium and bond of an operator",
+        "description": "Recomputed whenever a coverage or a verdict of the operator, or the nightly calibration, changes it. Public.",
+        "parameters": [
+          {
+            "schema": {
+              "type": "string",
+              "pattern": "^(0|[1-9]\\d{0,19})$",
+              "description": "The operator's ERC-8004 agent id, a decimal integer."
+            },
+            "required": true,
+            "description": "The operator's ERC-8004 agent id, a decimal integer.",
+            "name": "agentId",
+            "in": "path"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The grade",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrustGrade"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Not a linked operator",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Nothing to price the operator's losses from yet",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "No finished red-team campaign to calibrate from",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

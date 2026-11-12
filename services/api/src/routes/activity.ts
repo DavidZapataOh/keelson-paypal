@@ -32,6 +32,7 @@ const Row = z
 const list = createRoute({
   method: "get",
   path: "/v1/activity",
+  operationId: "listActivity",
   tags: ["agents"],
   summary: "Read your activity",
   description:

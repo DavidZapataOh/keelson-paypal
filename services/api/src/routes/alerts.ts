@@ -51,6 +51,7 @@ const SentEmail = z
 const pushKey = createRoute({
   method: "get",
   path: "/v1/push/key",
+  operationId: "getPushKey",
   tags: ["alerts"],
   summary: "Read the push key",
   description:
@@ -69,6 +70,7 @@ const pushKey = createRoute({
 const subscribe = createRoute({
   method: "post",
   path: "/v1/push/subscriptions",
+  operationId: "createPushSubscription",
   tags: ["alerts"],
   summary: "Get alerts on this browser",
   description:
@@ -90,6 +92,7 @@ const subscribe = createRoute({
 const unsubscribePush = createRoute({
   method: "delete",
   path: "/v1/push/subscriptions",
+  operationId: "deletePushSubscription",
   tags: ["alerts"],
   summary: "Stop alerts on this browser",
   middleware: [requireSession()],
@@ -108,6 +111,7 @@ const unsubscribePush = createRoute({
 const testPush = createRoute({
   method: "post",
   path: "/v1/push/test",
+  operationId: "sendTestPush",
   tags: ["alerts"],
   summary: "Send a test notification",
   middleware: [requireSession()],
@@ -125,6 +129,7 @@ const testPush = createRoute({
 const readEmail = createRoute({
   method: "get",
   path: "/v1/alerts/email",
+  operationId: "getAlertEmail",
   tags: ["alerts"],
   summary: "Read your alert address",
   middleware: [requireSession()],
@@ -137,6 +142,7 @@ const readEmail = createRoute({
 const setEmail = createRoute({
   method: "put",
   path: "/v1/alerts/email",
+  operationId: "setAlertEmail",
   tags: ["alerts"],
   summary: "Set your alert address",
   description:
@@ -164,6 +170,7 @@ const setEmail = createRoute({
 const removeEmail = createRoute({
   method: "delete",
   path: "/v1/alerts/email",
+  operationId: "deleteAlertEmail",
   tags: ["alerts"],
   summary: "Stop email alerts",
   middleware: [requireSession()],
@@ -176,6 +183,7 @@ const removeEmail = createRoute({
 const confirm = createRoute({
   method: "post",
   path: "/v1/alerts/email/confirm",
+  operationId: "confirmAlertEmail",
   tags: ["alerts"],
   summary: "Confirm an alert address",
   description: "Opened from the confirmation link; needs no session. A link works once.",
@@ -199,6 +207,7 @@ const confirm = createRoute({
 const unsubscribe = createRoute({
   method: "post",
   path: "/v1/alerts/unsubscribe",
+  operationId: "unsubscribeAlerts",
   tags: ["alerts"],
   summary: "Unsubscribe in one click",
   description:
@@ -217,6 +226,7 @@ const unsubscribe = createRoute({
 const trail = createRoute({
   method: "get",
   path: "/v1/alerts/emails",
+  operationId: "listAlertEmails",
   tags: ["alerts"],
   summary: "List the emails sent to you",
   description: "Every alert email composed for you, newest first, with what it reported.",
