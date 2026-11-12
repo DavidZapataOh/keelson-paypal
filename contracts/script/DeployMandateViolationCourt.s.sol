@@ -17,7 +17,9 @@ contract DeployMandateViolationCourt is HonkVerifierDeploy {
     function run() external returns (MandateViolationCourt court) {
         vm.startBroadcast(_owner());
         _ensureDeployer();
-        (address verifier,) = _deployVerifiers(PREFIX);
+        // The verifiers are recorded once: their libraries' registry names nest under the reference verifier's.
+        address verifier = predict(_verifier(PREFIX));
+        if (verifier.code.length == 0) (verifier,) = _deployVerifiers(PREFIX);
         court = MandateViolationCourt(
             _deploy(versioned(COURT), type(MandateViolationCourt).creationCode, courtArgs(verifier))
         );
