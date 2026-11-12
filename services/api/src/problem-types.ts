@@ -45,7 +45,8 @@ export const PROBLEM_TYPES = {
   },
   "amount-mismatch": {
     title: "Amount mismatch",
-    explain: "PayPal's order does not match what Keelson countersigned; the field member names what differs.",
+    explain:
+      "PayPal's order does not match what Keelson countersigned; the field member names what differs.",
     fix: "Do not pay. Re-quote the checkout and ask Keelson to countersign the new total.",
   },
   "amount-order-changed": {
@@ -53,7 +54,7 @@ export const PROBLEM_TYPES = {
     explain: "Keelson decided this purchase's amount for a different PayPal order.",
     fix: "Check the amount of the order you are about to pay, then retry.",
   },
-  "answered": {
+  answered: {
     title: "Already answered",
     explain: "This amount confirmation was already approved or declined.",
     fix: "Read the confirmation's state instead of answering it again.",
@@ -296,6 +297,18 @@ export const PROBLEM_TYPES = {
     title: "Forbidden",
     explain: "You are authenticated but not allowed to perform this action.",
     fix: "Use an account or session with the required role.",
+  },
+  "export-binding": {
+    title: "Export not signed",
+    explain:
+      "The enclave issuer refused to sign this export: a fact it states does not match the purchase's logged statement.",
+    fix: "Do not retry the same export. Report the purchase id and format to Keelson.",
+  },
+  "export-refused": {
+    title: "Export refused",
+    explain:
+      "This standard cannot state this purchase, or the enclave issuer is unavailable; the reason member names which.",
+    fix: "On signer_unavailable, retry later. Otherwise use another format: the reason names what this one lacks.",
   },
   "forbidden-channel": {
     title: "Forbidden channel",
