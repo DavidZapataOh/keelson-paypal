@@ -58,6 +58,11 @@ describe("CMW collection of the legs' evidence (RFC 9999)", () => {
   test.skipIf(!hasCddl())("validates against the RFC 9999 CDDL", () => {
     const json = enc.encode(JSON.stringify(teeCollection({ tdx, nitro })));
     expect(validateCddl("rfc9999.cddl", "json-collection", json, "json")).toBe(true);
-    expect(validateCddl("rfc9999.cddl", "json-collection", enc.encode("{}"), "json")).toBe(false);
+    // A record without its value. cddl 0.10.7 does not enforce the `+` of an empty map, which
+    // readCollection refuses itself.
+    const noValue = { __cmwc_t: TEE_LEGS_COLLECTION, tdx: [TEE_EVIDENCE_TYPE] };
+    expect(
+      validateCddl("rfc9999.cddl", "json-collection", enc.encode(JSON.stringify(noValue)), "json"),
+    ).toBe(false);
   });
 });
