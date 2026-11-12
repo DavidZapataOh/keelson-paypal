@@ -29,8 +29,10 @@ const MAX_RESPONSE: usize = 64 * 1024;
 /// Why the sealed secret could not be opened.
 #[derive(Debug)]
 pub enum SealError {
-    /// The request did not reach KMS or KMS refused it.
+    /// The request did not reach KMS.
     Kms(String),
+    /// KMS answered with an error.
+    KmsRefused(String),
     /// KMS's answer is not EnvelopedData for this key, with RSAES-OAEP and AES-256-CBC.
     Envelope(&'static str),
     /// The attestation or the key could not be made.
@@ -41,8 +43,22 @@ impl std::fmt::Display for SealError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Kms(e) => write!(f, "kms: {e}"),
+            Self::KmsRefused(e) => write!(f, "kms refused: {e}"),
             Self::Envelope(what) => write!(f, "kms answer: {what}"),
             Self::Enclave(e) => write!(f, "enclave: {e}"),
+        }
+    }
+}
+
+impl SealError {
+    /// The failing step, without KMS's message or anything of the secret: safe to return to the
+    /// parent, which cannot read the enclave's console.
+    pub fn class(&self) -> &'static str {
+        match self {
+            Self::Kms(_) => "kms unreachable",
+            Self::KmsRefused(_) => "kms refused the decrypt",
+            Self::Envelope(what) => what,
+            Self::Enclave(_) => "enclave key or attestation",
         }
     }
 }
@@ -111,10 +127,103 @@ pub fn signed_headers(
     ]
 }
 
-/// Opens KMS's `CiphertextForRecipient`: CMS EnvelopedData whose one recipient's content key is
-/// wrapped for `key` with RSAES-OAEP (SHA-256), and whose content is AES-256-CBC.
-pub fn open_envelope(der: &[u8], key: &PrivateKey) -> Result<Zeroizing<Vec<u8>>, SealError> {
-    let info = ContentInfo::from_der(der).map_err(|_| SealError::Envelope("not ContentInfo"))?;
+const OCTET_STRING: u8 = 0x04;
+const CONSTRUCTED: u8 = 0x20;
+const CONTEXT_SPECIFIC: u8 = 0x80;
+/// Deeper than any EnvelopedData nests.
+const MAX_DEPTH: usize = 16;
+const NOT_BER: SealError = SealError::Envelope("not BER");
+
+/// Re-encodes BER (X.690) as DER for the `cms` types, which decode DER alone. KMS answers with
+/// BER: indefinite lengths, and the encrypted content as a constructed string of OCTET STRING
+/// segments (X.690 8.7.3), which DER encodes as one primitive string (X.690 10.2). DER passes
+/// through unchanged.
+fn ber_to_der(ber: &[u8]) -> Result<Vec<u8>, SealError> {
+    let mut input = ber;
+    let (tag, content) = ber_element(&mut input, 0)?.ok_or(NOT_BER)?;
+    if !input.is_empty() {
+        return Err(NOT_BER);
+    }
+    let mut der = Vec::with_capacity(ber.len());
+    write_tlv(&mut der, tag, &content);
+    Ok(der)
+}
+
+/// Reads one element off `input` as its tag and its DER content, or `None` at an end-of-contents.
+fn ber_element(input: &mut &[u8], depth: usize) -> Result<Option<(u8, Vec<u8>)>, SealError> {
+    let &[tag, first, ref rest @ ..] = *input else {
+        return Err(NOT_BER);
+    };
+    // CMS uses no tag numbers above 30.
+    if tag & 0x1f == 0x1f || depth > MAX_DEPTH {
+        return Err(NOT_BER);
+    }
+    *input = rest;
+    if tag == 0 {
+        return if first == 0 { Ok(None) } else { Err(NOT_BER) };
+    }
+    let length = match first {
+        0x80 if tag & CONSTRUCTED != 0 => None,
+        0..0x80 => Some(usize::from(first)),
+        0x81..=0x84 => {
+            let (bytes, rest) = input
+                .split_at_checked(usize::from(first & 0x7f))
+                .ok_or(NOT_BER)?;
+            *input = rest;
+            Some(bytes.iter().fold(0, |n, b| n << 8 | usize::from(*b)))
+        }
+        _ => return Err(NOT_BER),
+    };
+    let mut children = Vec::new();
+    match length {
+        Some(length) => {
+            let (mut body, rest) = input.split_at_checked(length).ok_or(NOT_BER)?;
+            *input = rest;
+            if tag & CONSTRUCTED == 0 {
+                return Ok(Some((tag, body.to_vec())));
+            }
+            while !body.is_empty() {
+                children.push(ber_element(&mut body, depth + 1)?.ok_or(NOT_BER)?);
+            }
+        }
+        None => {
+            while let Some(child) = ber_element(input, depth + 1)? {
+                children.push(child);
+            }
+        }
+    }
+    let string = tag == OCTET_STRING | CONSTRUCTED || tag & 0xc0 == CONTEXT_SPECIFIC;
+    if string && !children.is_empty() && children.iter().all(|(t, _)| *t == OCTET_STRING) {
+        let joined = children.into_iter().flat_map(|(_, c)| c).collect();
+        return Ok(Some((tag & !CONSTRUCTED, joined)));
+    }
+    let mut content = Vec::new();
+    for (t, c) in &children {
+        write_tlv(&mut content, *t, c);
+    }
+    Ok(Some((tag, content)))
+}
+
+fn write_tlv(out: &mut Vec<u8>, tag: u8, content: &[u8]) {
+    out.push(tag);
+    match u8::try_from(content.len()) {
+        Ok(n) if n < 0x80 => out.push(n),
+        _ => {
+            let bytes = content.len().to_be_bytes();
+            let skip = bytes.iter().take_while(|b| **b == 0).count();
+            out.push(0x80 | (bytes.len() - skip) as u8);
+            out.extend_from_slice(&bytes[skip..]);
+        }
+    }
+    out.extend_from_slice(content);
+}
+
+/// Opens KMS's `CiphertextForRecipient`: CMS EnvelopedData, in BER, whose one recipient's
+/// content key is wrapped for `key` with RSAES-OAEP (SHA-256, MGF1 with SHA-256), and whose
+/// content is AES-256-CBC.
+pub fn open_envelope(ber: &[u8], key: &PrivateKey) -> Result<Zeroizing<Vec<u8>>, SealError> {
+    let der = ber_to_der(ber)?;
+    let info = ContentInfo::from_der(&der).map_err(|_| SealError::Envelope("not ContentInfo"))?;
     if info.content_type != ENVELOPED_DATA {
         return Err(SealError::Envelope("not EnvelopedData"));
     }
@@ -151,11 +260,11 @@ pub fn open_envelope(der: &[u8], key: &PrivateKey) -> Result<Zeroizing<Vec<u8>>,
         .ok_or(SealError::Envelope("no content"))?;
     use cbc::cipher::{BlockModeDecrypt, KeyIvInit, block_padding::Pkcs7};
     let decryptor = cbc::Decryptor::<aes::Aes256>::new_from_slices(&cek, iv.as_bytes())
-        .map_err(|_| SealError::Envelope("key or IV size"))?;
+        .map_err(|_| SealError::Envelope("content key or IV size"))?;
     decryptor
         .decrypt_padded_vec::<Pkcs7>(ciphertext.as_bytes())
         .map(Zeroizing::new)
-        .map_err(|_| SealError::Envelope("padding"))
+        .map_err(|_| SealError::Envelope("content padding"))
 }
 
 /// The DER `SubjectPublicKeyInfo` of a fresh RSA-2048 key, and the key: what the attestation's
@@ -202,7 +311,7 @@ pub async fn unseal(
         .await
         .map_err(SealError::Kms)?;
     if status != 200 {
-        return Err(SealError::Kms(format!(
+        return Err(SealError::KmsRefused(format!(
             "{status} {}",
             String::from_utf8_lossy(&answer)
         )));
@@ -216,6 +325,6 @@ pub async fn unseal(
         .map_err(|_| SealError::Envelope("no CiphertextForRecipient"))?;
     let der = STANDARD
         .decode(answer.ciphertext_for_recipient)
-        .map_err(|_| SealError::Envelope("not base64"))?;
+        .map_err(|_| SealError::Envelope("CiphertextForRecipient not base64"))?;
     open_envelope(&der, key)
 }
