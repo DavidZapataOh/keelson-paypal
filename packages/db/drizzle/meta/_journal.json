@@ -358,6 +358,13 @@
       "when": 1794429197531,
       "tag": "0050_paypal_wallets",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1794472807625,
+      "tag": "0051_stop_cards",
+      "breakpoints": true
     }
   ]
 }

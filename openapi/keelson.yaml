@@ -1694,6 +1694,10 @@ components:
         revoked:
           type: integer
           description: Mandates ended.
+        cardsClosed:
+          type: integer
+          description: Single-use cards closed at the issuer, none of whose authorizations
+            was approved yet. Any authorization still reaching one is declined.
         released:
           type: array
           items:
@@ -1741,6 +1745,7 @@ components:
       required:
         - id
         - revoked
+        - cardsClosed
         - released
         - mandateHashes
         - releasing

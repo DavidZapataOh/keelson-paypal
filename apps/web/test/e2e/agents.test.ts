@@ -533,6 +533,7 @@ describe.each(Object.keys(VIEWPORTS) as Kind[])("agents on %s", (kind) => {
         return {
           id: "01M7STOP000000000000000000",
           revoked: 1,
+          cardsClosed: 2,
           released: [{ currency: "USD", minor: "41200" }],
           releasing: [],
           mandateHashes: ["ab".repeat(32)],
@@ -555,7 +556,9 @@ describe.each(Object.keys(VIEWPORTS) as Kind[])("agents on %s", (kind) => {
     await page.mouse.down();
     await page.waitForTimeout(1800);
     await page.mouse.up();
-    await page.getByText("All agents stopped. $412.00 of holds released.").waitFor();
+    await page
+      .getByText("All agents stopped. $412.00 of holds released. 2 single-use cards closed.")
+      .waitFor();
     expect(await page.getByText("entry #1207", { exact: false }).count()).toBe(1);
     expect(stopped).toBe(1);
     await axe(page);

@@ -476,6 +476,7 @@ describe("email alerts", () => {
     const alert = await stopAlert(notifier, sub, {
       id: stop,
       revoked: 2,
+      cardsClosed: 1,
       released: [{ currency: "USD", minor: "5000" }],
       releasing: [{ currency: "USD", minor: "1400" }],
       mandateHashes: [],
@@ -484,7 +485,7 @@ describe("email alerts", () => {
       createdAt: new Date().toISOString(),
     });
     expect(alert.alert.body).toBe(
-      "2 mandates ended and every agent lost access. $50.00 released; $14.00 releasing once pending purchases settle.",
+      "2 mandates ended and every agent lost access. 1 single-use card closed. $50.00 released; $14.00 releasing once pending purchases settle.",
     );
     expect(alert.alert.details).toEqual([
       { label: "Public log", value: "Recorded once pending purchases are logged" },

@@ -1,0 +1,1 @@
+ALTER TABLE "agent_stops" ADD COLUMN "cards_closed" integer DEFAULT 0 NOT NULL;

@@ -132,6 +132,10 @@ const StopSchema = z
   .object({
     id: z.string(),
     revoked: z.int().openapi({ description: "Mandates ended." }),
+    cardsClosed: z.int().openapi({
+      description:
+        "Single-use cards closed at the issuer, none of whose authorizations was approved yet. Any authorization still reaching one is declined.",
+    }),
     released: z
       .array(z.object({ currency: z.string(), minor: z.string() }))
       .openapi({ description: "What PayPal held for them, per currency, now released." }),
@@ -189,7 +193,7 @@ const LIVE = [...REVOCABLE];
 
 export function registerAgents(
   app: OpenAPIHono,
-  deps: Pick<Deps, "db" | "kv" | "log" | "paypal" | "tlog" | "notifier" | "demoAgentId">,
+  deps: Pick<Deps, "db" | "kv" | "log" | "paypal" | "tlog" | "notifier" | "demoAgentId" | "cards">,
 ): void {
   const { db } = deps;
 

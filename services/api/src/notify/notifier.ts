@@ -292,12 +292,16 @@ export function stopAlert(n: Notifier, userId: string, stop: StopRecord) {
     stop.released.length ? `${sum(stop.released)} released` : "",
     stop.releasing.length ? `${sum(stop.releasing)} releasing once pending purchases settle` : "",
   ].filter(Boolean);
+  const cards =
+    stop.cardsClosed > 0
+      ? `${stop.cardsClosed} single-use ${stop.cardsClosed === 1 ? "card" : "cards"} closed. `
+      : "";
   return Promise.resolve({
     userId,
     alert: {
       event: "agents.stopped",
       title: "All your agents are stopped",
-      body: `${stop.revoked} ${stop.revoked === 1 ? "mandate" : "mandates"} ended and every agent lost access. ${held.length ? `${held.join("; ")}.` : "Nothing was held."}`,
+      body: `${stop.revoked} ${stop.revoked === 1 ? "mandate" : "mandates"} ended and every agent lost access. ${cards}${held.length ? `${held.join("; ")}.` : "Nothing was held."}`,
       url: `${n.appOrigin}/activity/`,
       action: "See your activity",
       details: [

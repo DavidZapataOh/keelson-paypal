@@ -559,7 +559,10 @@ concurrent ones cannot pass a cap. The consent page shows the per-user cap of th
 
 Refresh tokens rotate and can be revoked (RFC 7009, `/api/auth/oauth2/revoke`). Stopping every
 agent (`POST /v1/agents/stop`) revokes the user's refresh tokens and consents and refuses every
-access token issued before it, on the API and on `/mcp`. Disconnecting one host
+access token issued before it, on the API and on `/mcp`. It also closes at the card issuer every
+single-use card none of whose authorizations was approved yet (`cardsClosed`), and the card veto
+declines any authorization of a stopped user's card as `stopped` before asking a leg, so a card the
+issuer has not closed yet is still refused. Disconnecting one host
 (`POST /v1/agents/{agentId}/disconnect?client={clientId}`, one row per host on the agents page)
 does the same for that host only: its mandates, requests, consent and refresh tokens end, and its
 access tokens issued before then are refused. The hosted operator's mandates no app holds show as

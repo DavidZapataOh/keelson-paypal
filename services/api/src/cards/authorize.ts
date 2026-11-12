@@ -17,6 +17,7 @@ import {
 import type { Logger } from "pino";
 import { type Address, getAddress, type Hex, keccak256, recoverAddress, toHex } from "viem";
 import { countersignOf } from "../pipeline/leaf.ts";
+import { stoppedSince } from "../stop.ts";
 import type { CardAuthorized, CardNetworkAuthorization } from "../tee/client.ts";
 import { VERIFYING_CONTRACT } from "../tee/config.ts";
 import type { TeeConfig } from "../tee/signers.ts";
@@ -66,7 +67,9 @@ function resultOf(failedMask: number, reason: string | null): CardResult {
   if (failedMask & (bit("mcc") | bit("country") | bit("merchant"))) return "UNAUTHORIZED_MERCHANT";
   if (failedMask & bit("amount")) return "INSUFFICIENT_FUNDS";
   if (failedMask & bit("used")) return "VELOCITY_EXCEEDED";
-  if (failedMask & bit("expired") || reason === "card-not-open") return "CARD_PAUSED";
+  if (failedMask & bit("expired") || reason === "card-not-open" || reason === "stopped") {
+    return "CARD_PAUSED";
+  }
   return "SUSPECTED_FRAUD";
 }
 
@@ -167,6 +170,9 @@ export async function decide(
     ).length > 0;
   if (row.card.state === "USED" || row.card.state === "CLOSED" || (await approvedBefore())) {
     failedMask |= bit("used");
+  } else if (await stoppedSince(db, row.mandate.userId, row.mandate.createdAt)) {
+    // The user stopped every agent: declined though the issuer has not closed the card yet.
+    reason = "stopped";
   } else if (row.card.state !== "OPEN" || row.purchase.state !== "COVERED") {
     reason = "card-not-open";
   } else if (row.card.expiresAt.getTime() <= Date.now()) reason = "card-expired";
