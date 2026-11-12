@@ -1,0 +1,157 @@
+{
+  "details": {
+    "BUYER:1DS97980237733941": {
+      "data": {
+        "transactionId": "1DS97980237733941",
+        "transactionTypeEnum": "PAYMENT_SENT",
+        "transactionType": "Payment",
+        "status": "COMPLETED",
+        "timeCreatedInISO": "2026-11-12T05:19:17.000Z",
+        "amount": {
+          "grossAmount": "$2.95",
+          "netAmount": "$2.95",
+          "rawAmounts": {
+            "gross": {
+              "value": "2.95",
+              "currencyCode": "USD"
+            }
+          }
+        },
+        "counterparty": {
+          "name": "Test Store",
+          "isBusiness": true
+        }
+      }
+    },
+    "BUYER:38A17830LA358333N": {
+      "data": {
+        "transactionId": "38A17830LA358333N",
+        "transactionTypeEnum": "AUTHORIZATION",
+        "transactionType": "Authorization",
+        "status": "PENDING",
+        "timeCreatedInISO": "2026-11-12T06:34:04.000Z",
+        "amount": {
+          "grossAmount": "$8.00",
+          "netAmount": "$8.00",
+          "rawAmounts": {
+            "gross": {
+              "value": "8",
+              "currencyCode": "USD"
+            }
+          }
+        },
+        "counterparty": {
+          "name": "Test Store",
+          "isBusiness": true
+        }
+      }
+    },
+    "BUYER:9Y354735UH509962K": {
+      "data": {
+        "transactionId": "9Y354735UH509962K",
+        "transactionTypeEnum": "AUTHORIZATION",
+        "transactionType": "Authorization",
+        "status": "PENDING",
+        "timeCreatedInISO": "2026-11-12T06:23:07.000Z",
+        "amount": {
+          "grossAmount": "$8.00",
+          "netAmount": "$8.00",
+          "rawAmounts": {
+            "gross": {
+              "value": "8",
+              "currencyCode": "USD"
+            }
+          }
+        },
+        "counterparty": {
+          "name": "Test Store",
+          "isBusiness": true
+        }
+      }
+    },
+    "CO:2TX619119H4252218": {
+      "data": {
+        "transactionId": "2TX619119H4252218",
+        "transactionTypeEnum": "AUTHORIZATION",
+        "transactionType": "Autorización",
+        "status": "PENDING",
+        "timeCreatedInISO": "2026-11-12T06:46:09.000Z",
+        "amount": {
+          "grossAmount": "$2,95",
+          "netAmount": "$2,95",
+          "rawAmounts": {
+            "gross": {
+              "value": "2.95",
+              "currencyCode": "USD"
+            }
+          }
+        },
+        "counterparty": {
+          "name": "Test Store",
+          "isBusiness": true
+        }
+      }
+    },
+    "CO:42C57819NR1232028": {
+      "data": {
+        "transactionId": "42C57819NR1232028",
+        "transactionTypeEnum": "CORRECTION",
+        "transactionType": "Transferencia",
+        "status": "COMPLETED",
+        "timeCreatedInISO": "2026-11-11T23:06:16.000Z",
+        "amount": {
+          "grossAmount": "$5.000,00",
+          "netAmount": "$5.000,00",
+          "rawAmounts": {
+            "gross": {
+              "value": "5000",
+              "currencyCode": "USD"
+            }
+          }
+        },
+        "counterparty": {
+          "name": "PayPal",
+          "isBusiness": true
+        }
+      }
+    }
+  },
+  "rows": {
+    "BUYER": [
+      {
+        "id": "38A17830LA358333N",
+        "text": "Test Store −$8.00 Today, Nov 12 . Authorization"
+      },
+      {
+        "id": "9Y354735UH509962K",
+        "text": "Test Store −$8.00 Today, Nov 12 . Authorization"
+      },
+      {
+        "id": "6K448550DA089263F",
+        "text": "Test Store −$120.00 Yesterday, Nov 11 . Authorization"
+      },
+      {
+        "id": "4H944171HN199040H",
+        "text": "Test Store −$150.00 Nov 10 . Authorization"
+      },
+      {
+        "id": "5NE28382B0292625D",
+        "text": "Test Store −$100.00 Nov 9 . Authorization"
+      },
+      {
+        "id": "04B58856X2611982K",
+        "text": "Test Store −$100.00 Nov 9 . Authorization"
+      }
+    ],
+    "CO": [
+      {
+        "id": "2TX619119H4252218",
+        "text": "Test Store −$2,95 Hoy, 12 nov . Autorización"
+      },
+      {
+        "id": "42C57819NR1232028",
+        "text": "Esta semana P Paypal +$5.000,00 11 nov . Transferencia"
+      }
+    ]
+  }
+}

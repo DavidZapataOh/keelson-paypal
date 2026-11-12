@@ -33,6 +33,8 @@ export interface LiveStore {
   hosts: readonly string[];
   /** Hosts whose every page is a checkout page. */
   checkoutHosts: readonly string[];
+  /** The store's PayPal merchant id, as PayPal's orders name their payee. */
+  paypalMerchantId: string;
 }
 
 /** Shopify's `/products/<handle>.js`, the fields the quote reads. */
@@ -494,18 +496,66 @@ export async function runCheckout(o: {
 }
 
 const TRANSACTION = /^[0-9A-Z]{17}$/;
+const DECIMAL = /^\d+(?:\.\d+)?$/;
+/** Activity types that are the buyer paying a merchant. */
+const PAYMENTS = new Set(["PAYMENT_SENT", "AUTHORIZATION"]);
+/** How long before the pay click an entry may be dated, for clock skew between the two. */
+const SKEW_MS = 120_000;
+/** How many of the newest activity entries are opened. */
+const NEWEST = 10;
+
+/** The fields read from an entry's details in the buyer's PayPal activity. */
+export interface ActivityEntry {
+  transactionId: string;
+  transactionTypeEnum: string;
+  timeCreatedInISO: string;
+  amount: { rawAmounts: { gross: { value: string; currencyCode: string } } };
+}
+
+/** What the payment just made charged, and when its pay click was let through, at the latest. */
+export interface PaidOrder {
+  currency: string;
+  /** The order's total, a decimal string (`2.95`). */
+  value: string;
+  since: Date;
+}
+
+const sameDecimal = (a: string, b: string) =>
+  DECIMAL.test(a) && DECIMAL.test(b) && Number(a) === Number(b);
+
+/**
+ * The id of the one activity entry that is a payment or authorization of exactly the order's
+ * gross since its pay click; undefined when none is, or more than one.
+ */
+export function activityMatch(entries: readonly unknown[], order: PaidOrder): string | undefined {
+  const ids = entries.flatMap((e) => {
+    const x = e as Partial<ActivityEntry> | null;
+    const gross = x?.amount?.rawAmounts?.gross;
+    const at = Date.parse(x?.timeCreatedInISO ?? "");
+    const ok =
+      typeof x?.transactionId === "string" &&
+      TRANSACTION.test(x.transactionId) &&
+      PAYMENTS.has(x.transactionTypeEnum ?? "") &&
+      gross?.currencyCode === order.currency &&
+      sameDecimal(String(gross.value), order.value) &&
+      at >= order.since.getTime() - SKEW_MS;
+    return ok ? [x.transactionId as string] : [];
+  });
+  return ids.length === 1 ? ids[0] : undefined;
+}
 
 /**
  * The PayPal transaction id of the payment just made: from the store's confirmation page when it
- * shows one, else from the newest entry of the buyer's PayPal activity that names `merchant` and
- * `total`, read in a tab
- * of its own that nothing records. Only the id leaves the page.
+ * shows one, else from the buyer's PayPal activity, in a tab of its own that nothing records. The
+ * activity page lists entries by id; each entry's details, which the page itself fetches when one
+ * is opened, state its type, time and gross, and the one {@link activityMatch} finds is taken.
+ * Only the id leaves PayPal's pages.
  */
 export async function paypalTransactionId(
   context: BrowserContext,
   confirmation: Page,
-  total: string,
-  merchant: string,
+  order: PaidOrder,
+  paypal = "https://www.paypal.com",
 ): Promise<string | undefined> {
   const shown = await confirmation
     .locator("body")
@@ -516,16 +566,29 @@ export async function paypalTransactionId(
   if (onPage && TRANSACTION.test(onPage)) return onPage;
   const tab = await context.newPage();
   try {
-    await tab.goto("https://www.paypal.com/myaccount/activities/", { waitUntil: "load" });
-    const link = tab
-      .locator('a[href*="/activit"]')
-      .filter({ hasText: total })
-      .filter({ hasText: merchant })
-      .first();
-    await link.waitFor({ timeout: 15_000 });
-    const href = (await link.getAttribute("href")) ?? "";
-    const id = /\/([0-9A-Z]{17})(?:[/?#]|$)/.exec(href)?.[1];
-    return id && TRANSACTION.test(id) ? id : undefined;
+    await tab.goto(`${paypal}/myaccount/activities/`, { waitUntil: "load" });
+    const rows = tab.locator('[class*="js_transactionItem-"]');
+    await rows.first().waitFor({ timeout: 15_000 });
+    const ids = (await rows.evaluateAll((els) => els.map((e) => e.className)))
+      .map((c) => /\bjs_transactionItem-([0-9A-Z]{17})\b/.exec(c)?.[1])
+      .filter((id): id is string => id !== undefined)
+      .slice(0, NEWEST);
+    const entries = await tab.evaluate(
+      (ids) =>
+        Promise.all(
+          ids.map((id) =>
+            fetch(`/myaccount/activities/details/inline/${id}`, {
+              credentials: "same-origin",
+              headers: { accept: "application/json" },
+            })
+              .then((r) => (r.ok ? r.json() : undefined))
+              .then((b) => b?.data)
+              .catch(() => undefined),
+          ),
+        ),
+      ids,
+    );
+    return activityMatch(entries, order);
   } catch {
     return undefined;
   } finally {

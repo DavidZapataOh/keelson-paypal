@@ -436,6 +436,27 @@ export function parseMandate(input: unknown): Mandate {
   return m;
 }
 
+/** Whether `s` is a PayPal merchant id, as PayPal's orders name their payee. */
+export const isPayPalMerchantId = (s: string): boolean => /^[0-9A-Z]{8,20}$/.test(s);
+
+/**
+ * The PayPal merchant ids `m` allows paying: those its `payment.allowed_payees` name. Anything
+ * else written there (a placeholder for a store whose id is not known) allows no merchant.
+ */
+export const allowedPayees = (m: Pick<Mandate, "payment">): string[] =>
+  m.payment.constraints.flatMap((c) =>
+    c.type === "payment.allowed_payees"
+      ? c.allowed.map((a) => a.paypal_merchant_id).filter(isPayPalMerchantId)
+      : [],
+  );
+
+/**
+ * Whether PayPal's order may pay `payee`: the one rule the pay click and the recorded order both
+ * apply. A mandate that names no PayPal merchant allows paying none.
+ */
+export const payeeAllowed = (allowed: readonly string[], payee: string): boolean =>
+  allowed.includes(payee);
+
 /** The spread over the reference rate `m` allows a conversion of its charges, in basis points. */
 export const maxSpreadBps = (m: Pick<Mandate, "fx">): number =>
   m.fx?.max_spread_bps ?? DEFAULT_MAX_SPREAD_BPS;

@@ -87,8 +87,10 @@ export {
 export { ANY_MERCHANT, MCC_LABELS, MCC_TABLE, onCardRail, storesFor } from "./mcc.ts";
 export {
   ANY_ITEM,
+  allowedPayees,
   CATEGORY_TABLE,
   isMerchantId,
+  isPayPalMerchantId,
   MAX_LIFETIME_SECONDS,
   MAX_SPREAD_BPS,
   type Mandate,
@@ -96,6 +98,7 @@ export {
   MandateSchema,
   maxSpreadBps,
   parseMandate,
+  payeeAllowed,
   STRING_LIMITS,
 } from "./schema.ts";
 export {

@@ -1,4 +1,5 @@
-import type { Mandate } from "@keelson/mandate";
+import { isPayPalMerchantId, type Mandate } from "@keelson/mandate";
+import type { Page } from "playwright";
 import type { LiveStore } from "./live.ts";
 
 /**
@@ -27,6 +28,8 @@ export const ALFRED: LiveStore = {
     "*.hcaptcha.com",
   ],
   checkoutHosts: ["www.paypal.com", "*.paypal.com", "shop.app", "*.shop.app"],
+  // The payee PayPal's own orders at its checkout name.
+  paypalMerchantId: "DZ93UDZC2BKLE",
 };
 
 /** The live flow's item: one digital copy of "The Change" for piano, vocal and chords. */
@@ -40,16 +43,26 @@ const usd = (minor: number) => `$${(minor / 100).toFixed(2)}`;
 
 /**
  * Narrows a mandate to the live purchase: one digital copy of the live item from Alfred Music, at
- * most `maxMinor`, final sale. `paypalMerchantId` names the store's PayPal account.
+ * most `maxMinor`, final sale, paid only to the store's PayPal account `paypalMerchantId`, which
+ * must be a PayPal merchant id: a mandate is never signed for a payee it cannot name.
  */
 export function liveMandate(m: Mandate, maxMinor: number, paypalMerchantId: string): Mandate {
+  if (!isPayPalMerchantId(paypalMerchantId)) {
+    throw new Error("the store's PayPal merchant id is not known; no mandate is signed without it");
+  }
   m.intent = {
     ...m.intent,
     prompt_summary: `Digital sheet music of "The Change" for piano, vocal and chords, from Alfred Music, at most ${usd(maxMinor)}`,
   };
-  m.payment.constraints = m.payment.constraints.map((c) =>
-    c.type === "payment.budget" || c.type === "payment.amount_range" ? { ...c, max: maxMinor } : c,
-  );
+  m.payment.constraints = m.payment.constraints.map((c) => {
+    if (c.type === "payment.budget" || c.type === "payment.amount_range") {
+      return { ...c, max: maxMinor };
+    }
+    if (c.type === "payment.allowed_payees") {
+      return { ...c, allowed: [{ paypal_merchant_id: paypalMerchantId }] };
+    }
+    return c;
+  });
   m.checkout.constraints = m.checkout.constraints.map((c) => {
     switch (c.type) {
       case "checkout.line_items":
@@ -86,4 +99,23 @@ export function liveMandate(m: Mandate, maxMinor: number, paypalMerchantId: stri
     }
   });
   return m;
+}
+
+/**
+ * The PayPal merchant id the store's own PayPal integration names on `page`: the PayPal JS SDK's
+ * `merchant-id`, or its `data-merchant-id` when that is `*`. Undefined unless the page names
+ * exactly one valid id. Cart platforms may load the SDK with the store's client id alone, which
+ * names none.
+ */
+export async function storePayPalMerchantId(page: Page): Promise<string | undefined> {
+  const named = await page
+    .locator('script[src^="https://www.paypal.com/sdk/js?"]')
+    .evaluateAll((tags) =>
+      tags.flatMap((t) => {
+        const id = new URL((t as HTMLScriptElement).src).searchParams.get("merchant-id") ?? "";
+        return id === "*" ? (t.getAttribute("data-merchant-id") ?? "").split(",") : [id];
+      }),
+    );
+  const ids = [...new Set(named.map((id) => id.trim()))];
+  return ids.length === 1 && isPayPalMerchantId(ids[0] as string) ? ids[0] : undefined;
 }
