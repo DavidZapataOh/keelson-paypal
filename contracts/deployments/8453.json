@@ -21,10 +21,12 @@
   },
   "contracts": {
     "TimelockController": "0x23A1C8CF57e1d7c3bbf850922dD9a8D03a9757b9",
-    "GuardianSafe": "0x1cd0152d2d954Fc8c9436986C9F4B2C15903eF5C"
+    "GuardianSafe": "0x1cd0152d2d954Fc8c9436986C9F4B2C15903eF5C",
+    "DstackApp": "0x4A3c4db01925B326746D1ABd7b8978710f34De4E"
   },
   "deployedAtBlock": 56288199,
   "legA": {
+    "appId": "0x4A3c4db01925B326746D1ABd7b8978710f34De4E",
     "kmsRoot": "0x02a335aea3df11d46ae0a373d3f26fbd1d208572ecc87e630e618dac693b7af721"
   }
 }
