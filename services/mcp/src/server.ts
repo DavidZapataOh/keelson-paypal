@@ -204,6 +204,18 @@ const Next = z
   .describe("Exactly what the agent does next.");
 type Next = z.infer<typeof Next>;
 
+/**
+ * Who closed an export's mandates: Keelson, or nobody yet (`pending`, for the agent to close).
+ * Formats without mandates to close have no answer.
+ */
+export function closedByOf(
+  format: "ap2" | "vi" | "ucp" | "acp" | "tap" | "visa",
+  artifact: Record<string, unknown>,
+): "keelson" | "pending" | undefined {
+  if (format !== "ap2" && format !== "vi" && format !== "ucp") return undefined;
+  return "pending_close" in artifact ? "pending" : "keelson";
+}
+
 /** The envelope every write tool answers with; each tool adds its own optional fields. */
 const Envelope = z.object({
   status: z.enum(STATUSES),
@@ -1413,7 +1425,7 @@ export function createKeelsonServer(o: KeelsonServerOptions): McpServer {
       try {
         const res = await call(keelson, `/v1/alibis/${purchaseId}/exports/${format}`);
         const artifact = (await res.json()) as Record<string, unknown>;
-        const closedBy = "pending_close" in artifact ? "pending" : "keelson";
+        const closedBy = closedByOf(format, artifact);
         return envelope(
           "success",
           {
@@ -1424,7 +1436,7 @@ export function createKeelsonServer(o: KeelsonServerOptions): McpServer {
                 : `Hand the ${format} export to whoever asked for it.`,
           },
           `The purchase as ${format}, signed by Keelson's attested enclave.`,
-          { artifact, closedBy },
+          { artifact, ...(closedBy ? { closedBy } : {}) },
         );
       } catch (err) {
         if (err instanceof KeelsonError && (err.status === 409 || err.status === 503)) {
