@@ -308,11 +308,8 @@ contract KeelsonReserve is IKeelsonReserve, ERC4626, AccessManaged, EIP712, Nonc
     function _claimRedeem(Redemption storage r, address controller, address receiver, uint256 assets, uint256 shares)
         internal
     {
-        // `assets` and `shares` are at most the claimable amounts, which are `uint128`.
-        // forge-lint: disable-start(unsafe-typecast)
-        r.claimableShares -= uint128(shares);
-        r.claimableAssets -= uint128(assets);
-        // forge-lint: disable-end(unsafe-typecast)
+        r.claimableShares -= SafeCast.toUint128(shares);
+        r.claimableAssets -= SafeCast.toUint128(assets);
         totalClaimableRedeem -= assets;
         IERC20(asset()).safeTransfer(receiver, assets);
         // forge-lint: disable-next-line(reentrancy-events)
