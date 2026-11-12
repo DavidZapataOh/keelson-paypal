@@ -128,3 +128,32 @@ describe("COSE_Sign1 with ES256K and Ed25519", () => {
     expect(() => decodeSign1(untagged)).toThrow(expect.objectContaining({ code: "format" }));
   });
 });
+
+describe("a statement read from a database", () => {
+  // Leg A's purchase statement as the engine encodes it; node-postgres returns bytea as a Buffer.
+  const vector = JSON.parse(
+    readFileSync(
+      new URL("../../../internal/alibilog/testdata/statement-v2/allow-2of2.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  const statement = hexToBytes(vector.statement_hex);
+
+  test("decodes from a Buffer as it does from its bytes", () => {
+    const s = decodeSign1(Buffer.from(statement));
+    expect(s).toEqual(decodeSign1(statement));
+    expect(s.protected.constructor).toBe(Uint8Array);
+    expect(encodeSign1(s)).toEqual(statement);
+  });
+
+  test("a non-canonical statement is still refused from a Buffer", () => {
+    // The protected header's length (0x58 0x84) written in two bytes (0x59 0x00 0x84).
+    expect([...statement.subarray(0, 4)]).toEqual([0xd2, 0x84, 0x58, 0x84]);
+    const padded = Buffer.concat([
+      statement.subarray(0, 2),
+      Uint8Array.of(0x59, 0x00),
+      statement.subarray(3),
+    ]);
+    expect(() => decodeSign1(padded)).toThrow(expect.objectContaining({ code: "noncanonical" }));
+  });
+});

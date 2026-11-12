@@ -29,6 +29,7 @@ const OWN_CHROME = new Set([
   "/alerts/",
   "/alerts/confirm/",
   "/alerts/unsubscribe/",
+  "/amount/",
 ]);
 
 export function Chrome({ children }: { children: ReactNode }) {

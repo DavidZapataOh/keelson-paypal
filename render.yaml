@@ -387,7 +387,24 @@ services:
     # Render adds www.keelson.finance and redirects it to the apex when the apex is added.
     domains:
       - keelson.finance
+    # SD-JWT VC issuer metadata and Type Metadata, which verifiers fetch by direct GET.
+    routes:
+      - type: rewrite
+        source: /credentials/user/v1
+        destination: /credentials/user/v1.json
     headers:
+      - path: /.well-known/jwt-vc-issuer
+        name: Content-Type
+        value: application/json
+      - path: /.well-known/jwt-vc-issuer
+        name: Access-Control-Allow-Origin
+        value: "*"
+      - path: /credentials/*
+        name: Content-Type
+        value: application/json
+      - path: /credentials/*
+        name: Access-Control-Allow-Origin
+        value: "*"
       - path: /_astro/*
         name: Cache-Control
         value: public, max-age=31536000, immutable

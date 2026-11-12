@@ -21,8 +21,19 @@ export function encode(value: unknown): Uint8Array {
   return cborEncode(value, encodeOptions);
 }
 
+/**
+ * The same bytes as a plain `Uint8Array`. cbor2 decodes byte strings as views of its input, and a
+ * Node `Buffer` (node-postgres returns `bytea` as one) re-encodes as a map, not a byte string.
+ */
+function plain(bytes: Uint8Array): Uint8Array {
+  return bytes.constructor === Uint8Array
+    ? bytes
+    : new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+}
+
 /** Decodes bytes only if they are exactly the deterministic encoding of their value. */
-export function decodeStrict(bytes: Uint8Array): unknown {
+export function decodeStrict(input: Uint8Array): unknown {
+  const bytes = plain(input);
   let value: unknown;
   try {
     value = decode(bytes, decodeOptions);
@@ -45,7 +56,7 @@ export function decodeStrict(bytes: Uint8Array): unknown {
 /** Decodes any well-formed CBOR, keeping maps as `Map`. */
 export function decodeLoose(bytes: Uint8Array): unknown {
   try {
-    return decode(bytes, { preferMap: true });
+    return decode(plain(bytes), { preferMap: true });
   } catch (err) {
     throw new ScittFormatError("cbor", (err as Error).message);
   }

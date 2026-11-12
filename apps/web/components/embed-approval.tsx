@@ -47,6 +47,7 @@ import {
 import { money } from "../lib/format";
 import { asked, type Chosen, Clause, day, Lower, Value } from "./approval";
 import { SplitK } from "./brand";
+import { ConfusableChip } from "./identity-row";
 import { MandateVisual } from "./mandate-visual";
 
 /** Below this the request cannot be shown whole, so it is not shown at all. */
@@ -690,6 +691,8 @@ export function EmbedApproval() {
       <span className="text-muted-foreground">
         Verified agent platform · registered agent #{request.agent.agentId}
       </span>
+      <ConfusableChip name={request.agent.operator} />
+      <ConfusableChip name={request.name} />
     </div>
   );
 

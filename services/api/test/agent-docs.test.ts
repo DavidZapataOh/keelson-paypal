@@ -61,3 +61,20 @@ test("the docs name every tool the MCP server registers, and the polling rule", 
     }
   }
 });
+
+test("the spec names every discovery document and endpoint the API and landing publish", async () => {
+  const spec = await readFile(
+    new URL("../../../apps/docs/src/content/docs/reference/spec.mdoc", import.meta.url),
+    "utf8",
+  );
+  for (const name of [
+    "/.well-known/authzen-configuration",
+    "/access/v1/evaluation",
+    "/access/v1/evaluations",
+    "/.well-known/jwt-vc-issuer",
+    "/problems/{slug}",
+    "KEELSON_TEE_SIGNER_V1",
+  ]) {
+    expect(spec, name).toContain(name);
+  }
+});
