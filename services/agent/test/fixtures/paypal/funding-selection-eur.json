@@ -1,0 +1,159 @@
+[
+  {
+    "result": {
+      "data": {
+        "json": {
+          "__typename": "FundingSelectionSuccessResponse",
+          "config": {
+            "balanceEligibility": null,
+            "balanceSelected": null,
+            "balanceSubType": "BALANCE",
+            "holdingMetadata": {
+              "__typename": "PayPalBalanceMetadata",
+              "subType": "BALANCE"
+            },
+            "mustUse": [],
+            "preferredInstrumentId": null,
+            "recommendedInstrumentId": null,
+            "selectedInstrumentIds": ["BA-SANDBOXBANK0001"],
+            "stickyFiEligibleIds": [],
+            "instantVault": null,
+            "instrumentConstraints": [],
+            "balancePrioritized": false
+          },
+          "contingencies": [],
+          "creditOffers": [],
+          "disclaimer": {
+            "text": "Your choice will be your preferred for future online purchases.",
+            "type": "RECOMMENDED_FI"
+          },
+          "experiments": [],
+          "fundingInstruments": [
+            {
+              "id": "BA-SANDBOXBANK0001",
+              "__typename": "BankFundingInstrument",
+              "canSplitWith": [],
+              "cashAdvanceFeeApplicable": false,
+              "label": "Sandbox Bank",
+              "primaryEligible": false,
+              "splitTenderEligible": false,
+              "type": "BANK",
+              "contingencies": [],
+              "currencyConversionOptions": [
+                {
+                  "__typename": "CurrencyConversionPayPal",
+                  "combinedFundingAmounts": [],
+                  "conversionRateDurationWarning": false,
+                  "type": "PAYPAL",
+                  "conversionRate": {
+                    "fromAmount": "1",
+                    "fromCurrency": "USD",
+                    "toAmount": "0.866445367",
+                    "toCurrency": "EUR"
+                  },
+                  "convertedAmount": {
+                    "currencyCode": "USD",
+                    "value": "3.40"
+                  }
+                }
+              ],
+              "imageUrl": {
+                "imagePath": "https://www.paypalobjects.com/ui-web/money-icons/bank/generic_bank.png"
+              },
+              "instrumentContext": null,
+              "usability": {
+                "__typename": "FundingUsable",
+                "normalizedProcessorResponse": null,
+                "status": "USABLE"
+              },
+              "backupInstrumentId": null,
+              "bankSubtype": "CHECKING",
+              "lastDigits": "0001"
+            },
+            {
+              "id": "CC-SANDBOXCARD0001",
+              "__typename": "CardFundingInstrument",
+              "canSplitWith": [],
+              "cashAdvanceFeeApplicable": false,
+              "label": "Visa",
+              "primaryEligible": false,
+              "splitTenderEligible": false,
+              "type": "CARD",
+              "contingencies": [],
+              "currencyConversionOptions": [
+                {
+                  "__typename": "CurrencyConversionPayPal",
+                  "combinedFundingAmounts": [],
+                  "conversionRateDurationWarning": false,
+                  "type": "PAYPAL",
+                  "conversionRate": {
+                    "fromAmount": "1",
+                    "fromCurrency": "USD",
+                    "toAmount": "0.866445367",
+                    "toCurrency": "EUR"
+                  },
+                  "convertedAmount": {
+                    "currencyCode": "USD",
+                    "value": "3.40"
+                  }
+                },
+                {
+                  "__typename": "CurrencyConversionVendor",
+                  "combinedFundingAmounts": [],
+                  "type": "VENDOR"
+                }
+              ],
+              "imageUrl": {
+                "imagePath": "https://www.paypalobjects.com/ui-web/money-icons/bank/generic_bank.png"
+              },
+              "instrumentContext": null,
+              "usability": {
+                "__typename": "FundingUsable",
+                "normalizedProcessorResponse": null,
+                "status": "USABLE"
+              },
+              "cardBrand": "VISA",
+              "cardSubtype": "CREDIT",
+              "lastDigits": "4242",
+              "rewardId": null,
+              "balanceAvailable": null,
+              "installments": []
+            },
+            {
+              "id": "HO-SANDBOXBAL00001",
+              "__typename": "BalanceFundingInstrument",
+              "canSplitWith": [],
+              "cashAdvanceFeeApplicable": false,
+              "label": "PayPal balance",
+              "primaryEligible": false,
+              "splitTenderEligible": false,
+              "type": "BALANCE",
+              "contingencies": [],
+              "currencyConversionOptions": [],
+              "imageUrl": {
+                "imagePath": "https://www.paypalobjects.com/ui-web/money-icons/bank/generic_bank.png"
+              },
+              "instrumentContext": null,
+              "usability": {
+                "__typename": "FundingDisallowed",
+                "normalizedProcessorResponse": null,
+                "status": "DISALLOWED",
+                "disallowedReasons": ["UNSUPPORTED_DUE_TO_BALANCE_DISALLOWED"]
+              },
+              "backupInstrumentId": null,
+              "currency": "USD",
+              "availableAmount": {
+                "currencyCode": "USD",
+                "value": "5009.30"
+              }
+            }
+          ],
+          "hint": null,
+          "incentives": null,
+          "overCaptureAmount": null,
+          "oneCardRebrandingNotification": null
+        }
+      }
+    }
+  }
+]

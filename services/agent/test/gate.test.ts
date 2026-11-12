@@ -336,31 +336,23 @@ describe("the pay-click gate", () => {
     expect(gate.takeRequote()).toBeUndefined();
   });
 
-  test("PayPal's page with the total in USD and its conversion to COP is paid", async () => {
+  test("PayPal's page that shows a conversion PayPal's funding data does not state is held, as it is", async () => {
     await asPayPal();
     gate.allow(USD_295, reference());
     await open(`/pay/converted?token=${TOKEN}`);
-    // With no conversion from PayPal's own answers, the page is read again in English, once.
-    const first = await click({ type: "ref", ref: await ref("Pagar ahora") });
-    expect(text(first)).toMatch(/switched PayPal's page to English/);
-    expect(new URL(tab.url()).searchParams.get("locale.x")).toBe("en_US");
     const r = await click({ type: "ref", ref: await ref("Pagar ahora") });
-    expect(r.is_error, JSON.stringify(gate.held)).toBeFalsy();
-    expect(await out()).toBe("clicked Pagar ahora");
-    expect(gate.paid).toMatchObject({
-      charge: { intent: "SALE", currency: "USD", value: "2.95" },
-      conversion: { buyer: { currency: "COP", value: "10231" }, rate: "3468.14", spread_bps: 500 },
-    });
+    expect(text(r)).toMatch(/names no funding instrument/);
+    expect(new URL(tab.url()).searchParams.get("locale.x")).toBeNull();
+    expect(await out()).toBe("");
+    expect(gate.paid).toBeUndefined();
   });
 
-  test("PayPal's page with a number that may be a larger amount is held, and the log keeps no buyer data", async () => {
+  test("PayPal's page with no funding data PayPal states is held, and the log keeps no buyer data", async () => {
     await asPayPal();
     gate.allow(USD_295, reference());
     await open(`/pay/cop-total?token=${TOKEN}`);
-    await click({ type: "ref", ref: await ref("Pagar ahora") });
     const r = await click({ type: "ref", ref: await ref("Pagar ahora") });
     expect(r.is_error).toBe(true);
-    expect(text(r)).toMatch(/a larger amount that may be charged/);
     expect(await out()).toBe("");
     const [held] = gate.held;
     // "1 USD = 3.468,14 COP" is a rate, not an amount.

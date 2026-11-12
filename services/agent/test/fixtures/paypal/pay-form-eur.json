@@ -1,0 +1,23 @@
+[
+  ["fundingInstrumentId", "BA-SANDBOXBANK0001"],
+  ["fundingInstrumentType", "BANK"],
+  ["fundingInstrumentSubtype", "CHECKING"],
+  ["fundingInstrumentAmount", "2.95"],
+  ["balanceInstrumentCount", "0"],
+  ["selectedCurrencyConversionOptionType", "PAYPAL"],
+  ["selectedCurrencyConversionOptionCode", "USD"],
+  ["selectedRadioFiConvertedAmount", "3.4"],
+  ["balancePayload", "{\"bal_availabilities\": \"false\"}"],
+  ["issuerRewardsPayload", "{\"rewards_shown\":\"0\"}"],
+  ["payPalRewardsPayload", "{\"gold_enabled\":\"N\",\"rewards_available_balance\":\"none\"}"],
+  [
+    "splitTenderPayload",
+    "{\"split_tender_enabled\":false,\"split_tender_funding_instruments\":\"\",\"split_tender_valid\":false}"
+  ],
+  ["shippingAddressId", "0000000000000000001"],
+  ["purchaseCurrencyCode", "EUR"],
+  ["purchaseAmount", "2.95"],
+  ["selectedRadioFiCurrencyConversionType", "PAYPAL"],
+  ["selectedRadioFiCurrencyConversionCurrencyCode", "USD"],
+  ["selectedRadioFiCurrencyConversionConvertedAmount", "3.40"]
+]
