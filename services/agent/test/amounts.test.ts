@@ -267,6 +267,7 @@ describe("a page is paid only where it charges the countersigned total and nothi
       totals: [295],
       offers: [],
       loose: [],
+      looseOffers: [],
       shared: [],
       conversions: [],
       rates: {},

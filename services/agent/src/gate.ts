@@ -143,6 +143,11 @@ export class PayGate {
     locale: string | null;
     amounts: string[];
     totals: string[];
+    /**
+     * The amounts under a sign the cart's currency shares with another on the page (`$ 10.236`),
+     * read as the cart's currency; numbers with no sign, which may be the buyer's, are left out.
+     */
+    loose?: string[];
     unsure?: string;
     cart?: string;
     requote?: string;
@@ -263,16 +268,21 @@ export class PayGate {
       );
     }
     const lang = await page.evaluate(() => document.documentElement.lang).catch(() => "");
-    // Every frame's text: a total drawn inside a frame is on the page the buyer sees.
+    const converts = PayGate.#matches(this.#convertHosts, URL.parse(page.url())?.hostname ?? "");
+    // On PayPal, the page is read once its checkout has settled, with the Pay form it submits.
+    const form = converts ? await this.#settle(page, action) : undefined;
+    // Every rendered frame's text: a total drawn inside a frame is on the page the buyer sees. A
+    // frame that is not rendered (`display: none`) is not: its `innerText` is its whole source.
     const text = (
       await Promise.all(
-        page
-          .frames()
-          // biome-ignore lint/performance/useDomNodeTextContent: the amounts as the buyer sees them on the page.
-          .map((f) => f.evaluate(() => document.body?.innerText ?? "").catch(() => "")),
+        page.frames().map((f) =>
+          f
+            // biome-ignore lint/performance/useDomNodeTextContent: the amounts as the buyer sees them on the page.
+            .evaluate(() => (document.body?.checkVisibility() ? document.body.innerText : ""))
+            .catch(() => ""),
+        ),
       )
     ).join("\n");
-    const converts = PayGate.#matches(this.#convertHosts, URL.parse(page.url())?.hostname ?? "");
     // PayPal's `locale.x` names the locale it was asked for, not always the one it renders in
     // (`es_XC` on a page in English): there the page's own language decides.
     const locales = converts && lang ? pageLocales(lang, "") : pageLocales(lang, page.url());
@@ -286,7 +296,7 @@ export class PayGate {
     let paypal: { charge: PayPalCharge; funding: Funding } | undefined;
     let conversion: Conversion | undefined;
     if (converts) {
-      paypal = await this.#order(page, action, total, show, read);
+      paypal = await this.#order(page, form, total, show, read);
       const { buyer } = paypal.funding;
       if (buyer.currency !== total.currency) {
         const checked = this.#conversion(total, {
@@ -300,6 +310,7 @@ export class PayGate {
             locale: read.locale || null,
             amounts: read.minor.map(show),
             totals: read.totals.map(show),
+            loose: read.shared.filter((a) => a.marks.length > 0).map((a) => show(a.value)),
             unsure: checked,
             paypal: fundingLog(total, paypal.funding),
             seen: sanitize(await rows(page), read.locale || "en", total.currency),
@@ -319,6 +330,7 @@ export class PayGate {
       conversion && {
         currency: conversion.buyer.currency,
         rate: conversion.rate,
+        buyer: conversion.buyer.value,
         ...(quote ? { quote } : {}),
       },
     );
@@ -342,6 +354,7 @@ export class PayGate {
         locale: read.locale || null,
         amounts: read.minor.map(show),
         totals: read.totals.map(show),
+        loose: read.shared.filter((a) => a.marks.length > 0).map((a) => show(a.value)),
         ...(read.unsure ? { unsure: read.unsure } : !judged.ok ? { unsure: judged.reason } : {}),
         ...(this.#cart ? { cart: cart ? show(cart.minor) : "unread" } : {}),
         ...(this.#requote ? { requote: show(this.#requote.minor) } : {}),
@@ -376,30 +389,13 @@ export class PayGate {
    * states what the Pay form pays with. An order whose breakdown adds tax or shipping to the
    * countersigned items is held with that total as its re-quote.
    */
-  async #order(
-    page: Page,
-    action: PayAction,
-    total: CheckoutTotal,
-    show: (m: number) => string,
-    read: PageReading,
-  ): Promise<{ charge: PayPalCharge; funding: Funding }> {
-    let partial: Partial<Funding> | undefined;
-    const fail = async (reason: string): Promise<never> => {
-      this.held.push({
-        locale: read.locale || null,
-        amounts: read.minor.map(show),
-        totals: read.totals.map(show),
-        unsure: reason,
-        ...(this.#requote ? { requote: show(this.#requote.minor) } : {}),
-        ...(partial ? { paypal: fundingLog(total, partial) } : {}),
-        seen: sanitize(await rows(page), read.locale || "en", total.currency),
-      });
-      this.#refuse(reason);
-    };
-    const token = orderToken(page.url());
+  /**
+   * Waits for PayPal's checkout to settle and returns the Pay form the action submits, read twice
+   * alike; held while PayPal is still updating it.
+   */
+  async #settle(page: Page, action: PayAction): Promise<PayForm | undefined | false> {
     const target = "target" in action ? action.target : undefined;
-    if (!token || !target)
-      return fail("PayPal's order for this page could not be read. Paying waits.");
+    if (!target) return false;
     // PayPal refetches its funding data after a change; the form shows the old one until then.
     await page.waitForLoadState("networkidle", { timeout: SETTLE_MS }).catch(() => {});
     const busy = await target
@@ -416,9 +412,37 @@ export class PayGate {
     await page.waitForTimeout(REREAD_MS);
     const again = await readPayForm(target);
     if (busy || JSON.stringify(form) !== JSON.stringify(again)) {
-      return fail(
+      this.#refuse(
         "PayPal's checkout is still updating. Read the page again, then repeat the action.",
       );
+    }
+    return form;
+  }
+
+  async #order(
+    page: Page,
+    form: PayForm | undefined | false,
+    total: CheckoutTotal,
+    show: (m: number) => string,
+    read: PageReading,
+  ): Promise<{ charge: PayPalCharge; funding: Funding }> {
+    let partial: Partial<Funding> | undefined;
+    const fail = async (reason: string): Promise<never> => {
+      this.held.push({
+        locale: read.locale || null,
+        amounts: read.minor.map(show),
+        totals: read.totals.map(show),
+        loose: read.shared.filter((a) => a.marks.length > 0).map((a) => show(a.value)),
+        unsure: reason,
+        ...(this.#requote ? { requote: show(this.#requote.minor) } : {}),
+        ...(partial ? { paypal: fundingLog(total, partial) } : {}),
+        seen: sanitize(await rows(page), read.locale || "en", total.currency),
+      });
+      this.#refuse(reason);
+    };
+    const token = orderToken(page.url());
+    if (!token || form === false) {
+      return fail("PayPal's order for this page could not be read. Paying waits.");
     }
     const charge = await readCharge(page);
     if (!charge) return fail("PayPal's order for this page could not be read. Paying waits.");
@@ -437,7 +461,7 @@ export class PayGate {
     if (this.#payee !== undefined && charge.payee !== this.#payee) {
       await fail("PayPal's order pays another merchant than the mandate names. Paying waits.");
     }
-    const funding = await readFunding(page, token, form as PayForm | undefined, charge);
+    const funding = await readFunding(page, token, form, charge);
     if (!funding.ok) {
       partial = funding.funding;
       return fail(`${funding.reason}. Paying waits.`);

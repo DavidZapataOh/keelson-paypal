@@ -179,3 +179,38 @@ describe("PayPal's hosted checkout for a EUR order funded in USD, as the sandbox
     });
   });
 });
+
+describe("PayPal's hosted checkout for a MXN order funded in USD, both written `$`", () => {
+  const page = [
+    "MX$59.00",
+    "Pay with",
+    "Checking",
+    " ••••0001",
+    "$3.29",
+    "PayPal's conversion rate: 1 USD = 17.96526 MXN",
+    "Pay in 4",
+    "4 interest-free payments on eligible purchases of $10.00-$2,000.00. Not available for this transaction.",
+    "Pay Monthly",
+    "Pay over time for eligible purchases of $49.00-$10,000.00. Not available for this transaction.",
+    "Pay over time for your purchase of $3.29 with PayPal Credit.",
+    "Complete Purchase",
+  ].join("\n");
+  // PayPal charges USD 3.29 and shows 1 USD = 17.965262249 MXN.
+  const known = {
+    currency: "USD",
+    rate: rateBetween("59.00", "3.29"),
+    buyer: "3.29",
+    quote: { currency: "USD", rate: "17.965262249", inverse: true },
+  };
+
+  test("a bare `$` amount that is PayPal's charge, and credit offers' ranges, are no peso charge", () => {
+    expect(judge(readPage(page, ["en"], "MXN"), 5900, "MXN", true, false, known)).toEqual({
+      ok: true,
+    });
+  });
+
+  test("another bare `$` amount, pesos or dollars, holds", () => {
+    const fee = readPage(`${page}\nFee $9,999.00`, ["en"], "MXN");
+    expect(judge(fee, 5900, "MXN", true, false, known).ok).toBe(false);
+  });
+});
