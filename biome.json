@@ -75,7 +75,7 @@
       }
     },
     {
-      "includes": ["apps/verify/src/styles.css"],
+      "includes": ["apps/verify/src/styles.css", "apps/web/app/globals.css"],
       "css": {
         "parser": {
           "tailwindDirectives": true
