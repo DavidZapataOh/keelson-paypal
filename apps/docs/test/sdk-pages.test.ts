@@ -108,4 +108,23 @@ describe("the SDK pages call only what the SDKs have", () => {
       expect(page("verify"), s).toContain(s);
     }
   });
+
+  test("the tool names match the MCP server's, dots and all", () => {
+    const server = read("services/mcp/src/server.ts");
+    const tools = [
+      ...server.matchAll(
+        /(?:registerTool|registerAppTool)\(\s*(?:server,\s*)?"(keelson\.[a-z_]+)"/g,
+      ),
+    ].map((m) => m[1] as string);
+    expect(tools.length).toBeGreaterThan(10);
+    const connect = read("apps/docs/src/content/docs/quickstart/connect-an-agent.mdoc");
+    const listed = [...connect.matchAll(/`(keelson\.[a-z_]+)`/g)].map((m) => m[1] as string);
+    expect(new Set(listed)).toEqual(new Set(tools));
+    // Some frameworks allow no dot in a tool name, so the SDKs say how each name maps.
+    for (const doc of [page("install"), read("packages/sdk/README.md")]) {
+      for (const [, name] of doc.matchAll(/`(keelson_[a-z_]+)`/g)) {
+        expect(doc).toContain(`\`${(name as string).replace("keelson_", "keelson.")}\``);
+      }
+    }
+  });
 });

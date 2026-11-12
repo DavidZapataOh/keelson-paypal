@@ -115,9 +115,10 @@ import { langchainTools } from "@keelson-finance/sdk/langchain"; // LangChain, L
 import { keelsonMcpServer } from "@keelson-finance/sdk/claude-agent-sdk"; // Claude Agent SDK
 ```
 
-Each gives the model Keelson's tools under the names and answers of Keelson's MCP server
-(`keelson_request_mandate`, `keelson_submit_evidence`, `keelson_request_countersign`...). A tool
-never throws at the model: it answers `{ status, next, message, retryable }`, and `next` says
+Each gives the model Keelson's tools with the answers of Keelson's MCP server, under its names with
+`_` for `.`, since some frameworks allow no dot in a tool name: `keelson_request_mandate` is
+`keelson.request_mandate`, `keelson_submit_evidence` is `keelson.submit_evidence`,
+`keelson_request_countersign` is `keelson.request_countersign`... A tool never throws at the model: it answers `{ status, next, message, retryable }`, and `next` says
 exactly what to do. None of them adds a byte to the core entry.
 
 ## Verifying an Alibi
