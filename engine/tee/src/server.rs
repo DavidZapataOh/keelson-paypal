@@ -400,6 +400,9 @@ struct Health {
     /// On the TDX leg: `verified` when its clock was set from authenticated time at boot.
     #[serde(skip_serializing_if = "Option::is_none")]
     clock: Option<&'static str>,
+    /// On the TDX leg: the on-chain KMS its keys come from and its app there.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    kms: Option<KmsInfo>,
     signer: Address,
     boot_epoch: u64,
     oci_digest: String,
@@ -416,6 +419,15 @@ struct Health {
     /// signature chain that proves the app derived each.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     log_keys: Vec<LogKeyInfo>,
+}
+
+#[derive(Serialize)]
+struct KmsInfo {
+    chain_id: u64,
+    /// Hex, without `0x`.
+    app_id: String,
+    /// The KMS root key, SEC1 compressed hex.
+    root: String,
 }
 
 #[derive(Serialize)]
@@ -456,6 +468,11 @@ async fn health(State(state): State<Arc<AppState>>) -> Json<Health> {
             "verified"
         } else {
             "unverified"
+        }),
+        kms: (engine.config().tee_kind == TeeKind::Tdx).then(|| KmsInfo {
+            chain_id: crate::kms::KMS_CHAIN_ID,
+            app_id: alloy_primitives::hex::encode(crate::kms::APP_ID),
+            root: alloy_primitives::hex::encode(crate::kms::KMS_ROOT),
         }),
         signer: engine.signer(),
         boot_epoch: engine.boot_epoch(),

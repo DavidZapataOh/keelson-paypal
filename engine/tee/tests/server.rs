@@ -84,6 +84,15 @@ async fn health_is_open() {
         assert_eq!(health[field], value, "{field}");
     }
     assert_eq!(health["clock"], "unverified");
+    let hex = |b: &[u8]| -> String { b.iter().map(|x| format!("{x:02x}")).collect() };
+    assert_eq!(
+        health["kms"],
+        json!({
+            "chain_id": keelson_tee::kms::KMS_CHAIN_ID,
+            "app_id": hex(&keelson_tee::kms::APP_ID),
+            "root": hex(&keelson_tee::kms::KMS_ROOT),
+        })
+    );
 }
 
 #[tokio::test]
