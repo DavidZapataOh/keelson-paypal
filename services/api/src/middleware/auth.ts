@@ -10,7 +10,19 @@ import { tokenStopped } from "../stopped.ts";
 declare module "hono" {
   interface ContextVariableMap {
     invalidToken: boolean | undefined;
+    resourceMetadata: string | undefined;
   }
+}
+
+/**
+ * Sets a Bearer challenge naming the protected resource metadata (RFC 9728 §5.1), then `params`
+ * (RFC 6750 §3), so a client learns how to authenticate from the challenge alone.
+ */
+export function challenge(c: Context, params?: string): void {
+  const metadata = c.var.resourceMetadata;
+  const parts = [metadata === undefined ? undefined : `resource_metadata="${metadata}"`, params];
+  const value = parts.filter((p) => p !== undefined).join(", ");
+  c.header("WWW-Authenticate", value === "" ? "Bearer" : `Bearer ${value}`);
 }
 
 /**
@@ -25,7 +37,9 @@ export function authenticate(
 ): MiddlewareHandler {
   const issuer = `${baseURL.replace(/\/$/, "")}/api/auth`;
   const jwksUrl = `${issuer}/jwks`;
+  const resourceMetadata = `${baseURL.replace(/\/$/, "")}/.well-known/oauth-protected-resource`;
   return async (c, next) => {
+    c.set("resourceMetadata", resourceMetadata);
     if (c.req.header("authorization")) {
       try {
         const payload = await verifyAccessTokenRequest(requestToResourceInput(c.req.raw), {
@@ -104,8 +118,9 @@ function revocationUnknown(c: Context): Response {
   );
 }
 
-function invalidToken(c: Context): Response {
-  c.header("WWW-Authenticate", 'Bearer error="invalid_token"');
+/** The 401 for a token that does not verify, or that was revoked. */
+export function invalidToken(c: Context): Response {
+  challenge(c, 'error="invalid_token"');
   return problem(
     c,
     401,
@@ -125,16 +140,13 @@ export function requireClient(scopes: string[]): MiddlewareHandler {
       if (c.var.invalidToken) return invalidToken(c);
       const principal = c.var.principal;
       if (!principal) {
-        c.header("WWW-Authenticate", "Bearer");
+        challenge(c);
         return problem(c, 401, "unauthorized", "Unauthorized", "A valid access token is required.");
       }
       const granted = new Set(principal.kind === "client" ? principal.scopes : []);
       const missing = scopes.filter((scope) => !granted.has(scope));
       if (missing.length > 0) {
-        c.header(
-          "WWW-Authenticate",
-          `Bearer error="insufficient_scope", scope="${scopes.join(" ")}"`,
-        );
+        challenge(c, `error="insufficient_scope", scope="${scopes.join(" ")}"`);
         return problem(
           c,
           403,
@@ -195,7 +207,7 @@ export function requirePrincipal(): MiddlewareHandler {
     async (c, next) => {
       if (c.var.invalidToken) return invalidToken(c);
       if (!c.var.principal) {
-        c.header("WWW-Authenticate", "Bearer");
+        challenge(c);
         return problem(
           c,
           401,

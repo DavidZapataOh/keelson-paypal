@@ -16,6 +16,7 @@ import { CHAINS, isChainId } from "@keelson/relayer";
 import type { Context, MiddlewareHandler } from "hono";
 import type { Deps } from "../app.ts";
 import { isJudge } from "../judge.ts";
+import { challenge } from "../middleware/auth.ts";
 import { MERCHANTS, merchantOfUser, SETTLEMENT } from "../merchants.ts";
 import { purchaseView } from "../pipeline/drive.ts";
 import { ProblemSchema, problem } from "../problem.ts";
@@ -57,7 +58,7 @@ const problems = {
 export function requireMerchant(deps: Pick<Deps, "db" | "merchantSigners">): MiddlewareHandler {
   return async (c, next) => {
     if (c.var.invalidToken) {
-      c.header("WWW-Authenticate", 'Bearer error="invalid_token"');
+      challenge(c, 'error="invalid_token"');
       return problem(c, 401, "invalid-token", "Invalid token", "The access token is invalid.");
     }
     const principal = c.var.principal;

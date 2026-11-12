@@ -92,11 +92,15 @@ async function issueToken(
   return body.access_token;
 }
 
+const resourceMetadata = `${baseURL}/.well-known/oauth-protected-resource`;
+
 const bearer = (token: string) => ({ authorization: `Bearer ${token}` });
 
 async function expectInvalidToken(res: Response): Promise<void> {
   expect(res.status).toBe(401);
-  expect(res.headers.get("www-authenticate")).toBe('Bearer error="invalid_token"');
+  expect(res.headers.get("www-authenticate")).toBe(
+    `Bearer resource_metadata="${resourceMetadata}", error="invalid_token"`,
+  );
   expect((await res.json()).type).toBe("https://api.keelson.finance/problems/invalid-token");
 }
 
@@ -114,13 +118,15 @@ test("a token without the scope gets 403 insufficient-scope", async () => {
   expect(res.status).toBe(403);
   expect(res.headers.get("content-type")).toBe("application/problem+json");
   expect((await res.json()).type).toBe("https://api.keelson.finance/problems/insufficient-scope");
-  expect(res.headers.get("www-authenticate")).toContain('error="insufficient_scope"');
+  expect(res.headers.get("www-authenticate")).toBe(
+    `Bearer resource_metadata="${resourceMetadata}", error="insufficient_scope", scope="disputes:read"`,
+  );
 });
 
 test("a request without a token gets 401 with a bearer challenge", async () => {
   const res = await app.request("/v1/test/alibis");
   expect(res.status).toBe(401);
-  expect(res.headers.get("www-authenticate")).toMatch(/^Bearer/);
+  expect(res.headers.get("www-authenticate")).toBe(`Bearer resource_metadata="${resourceMetadata}"`);
   expect((await res.json()).type).toBe("https://api.keelson.finance/problems/unauthorized");
 });
 
