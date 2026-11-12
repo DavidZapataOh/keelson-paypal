@@ -5,6 +5,7 @@ export type AttestCode =
   | "debug_mode"
   | "collateral_expired"
   | "tcb_status"
+  | "advisory_not_allowed"
   | "rtmr3_mismatch"
   | "binding_mismatch"
   | "measurement_not_allowed"
