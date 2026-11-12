@@ -202,9 +202,8 @@ jobs:
           grep -rEn "paypalMockResponse|PayPal-Mock-Response" packages services apps --exclude-dir=node_modules --exclude-dir=dist || status=$?
           test "$status" -eq 1
       - run: pnpm --filter @keelson/timestamp exec playwright install chromium
-      - run: pnpm turbo run typecheck test build --filter='!./packages/db' --filter='!./packages/attest' --filter='!./packages/evidence' --filter='!./services/api' --filter='!./apps/store' --filter='!./services/monitor' --filter='!./packages/relayer' --filter='!./apps/landing' --cache-dir=.turbo
-      # On its own, after the fan-out: its e2e times a visitor's tamper flow against a 10 s budget,
-      # which the parallel builds and suites would otherwise eat into.
+      - run: pnpm turbo run typecheck test build --filter='!./packages/db' --filter='!./packages/attest' --filter='!./packages/evidence' --filter='!./services/api' --filter='!./apps/store' --filter='!./services/monitor' --filter='!./packages/relayer' --filter='!./apps/landing' --concurrency=100% --cache-dir=.turbo
+      # On its own, after the fan-out: its e2e times a visitor's tamper flow against a 10 s budget.
       - name: Landing
         run: pnpm turbo run typecheck test build --filter=@keelson/landing --cache-dir=.turbo
       - name: The captured timestamp tokens verify with OpenSSL
