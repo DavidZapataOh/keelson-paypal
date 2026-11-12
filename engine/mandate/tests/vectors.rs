@@ -8,6 +8,7 @@ use keelson_mandate::{
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
+use sha2::{Digest, Sha256};
 
 #[derive(Deserialize)]
 struct Vector {
@@ -384,4 +385,61 @@ fn fx_spread_cap() {
     }
     m["fx"] = json!({ "max_spread_bps": 600, "extra": 1 });
     assert!(parse_mandate(&m).is_err());
+}
+
+/// The literal of `pub global <name>: Field` in a Noir file the TypeScript generators write.
+fn noir_literal<'a>(src: &'a str, name: &str) -> &'a str {
+    let prefix = format!("pub global {name}: Field = ");
+    src.lines()
+        .find_map(|l| l.strip_prefix(&prefix))
+        .unwrap_or_else(|| panic!("no global {name}"))
+        .trim_end_matches(';')
+}
+
+fn noir_global(src: &str, name: &str) -> Value {
+    field_hex(&Fr::from_hex(noir_literal(src, name)).unwrap())
+}
+
+/// The salt as the circuits take it: a field whose low 16 bytes are the commitment's salt.
+fn noir_salt(src: &str) -> [u8; 16] {
+    let salt: [u8; 32] = bytes(&json!(noir_literal(src, "SALT")));
+    salt[16..].try_into().unwrap()
+}
+
+#[test]
+fn circuit_vectors_are_what_the_engine_computes() {
+    let c1 = include_str!("../../../circuits/c1/src/vectors.nr");
+    let c2a = include_str!("../../../circuits/c2a/src/vectors.nr");
+    let c3 = include_str!("../../../circuits/c3/src/vectors.nr");
+    let c3_json: Value = serde_json::from_str(include_str!(
+        "../../../packages/mandate/test/vectors/c3.json"
+    ))
+    .unwrap();
+
+    let demo_cm = mandate_commitment(&demo(), noir_salt(c1)).unwrap();
+    assert_eq!(field_hex(&demo_cm), noir_global(c1, "C_M"));
+    assert_eq!(field_hex(&demo_cm), noir_global(c2a, "C_M"));
+
+    let mut euro = demo();
+    euro["payment"]["currency"] = json!("EUR");
+    for c in euro["payment"]["constraints"].as_array_mut().unwrap() {
+        if c.get("currency").is_some() {
+            c["currency"] = json!("EUR");
+        }
+    }
+    let euro_cm = mandate_commitment(&euro, noir_salt(c2a)).unwrap();
+    assert_eq!(field_hex(&euro_cm), noir_global(c2a, "C_M_EUR"));
+
+    let cm = mandate_commitment(&c3_json["mandate"], noir_salt(c3)).unwrap();
+    assert_eq!(field_hex(&cm), noir_global(c3, "C_M"));
+    let challenge = mandate_challenge(&h_sd(&c3_json["payloadSd"]).unwrap(), &cm);
+    assert_eq!(
+        field_hex(&Fr::from_be_bytes_reduce(challenge.as_slice())),
+        noir_global(c3, "MANDATE_HASH")
+    );
+    let rp_id_hash = Sha256::digest(b"keelson.finance");
+    assert_eq!(
+        field_hex(&Fr::from_be_bytes_reduce(rp_id_hash.as_slice())),
+        noir_global(c3, "RP_ID_HASH")
+    );
 }
