@@ -40,7 +40,7 @@ async def test_buys_a_sandbox_pair_and_verifies_it(tmp_path: Path) -> None:
     signed = await client.purchases.countersign(mandate=mandate, evidence_root=sealed["evidenceRoot"], cart=q["cart"])
     assert signed.decision == "allow"
     purchase = await client.purchases.wait_for(signed.purchase_id)
-    assert purchase.state == "CAPTURED"
+    assert purchase.state == "CAPTURED", purchase.failure
     os.environ.setdefault("KEELSON_VERIFY_COMMAND", f"node {VERIFY_CLI}")
     report = keelson.verify_alibi(await client.alibis.retrieve(purchase.id))
     assert report["verdict"] in ("verified-offline", "verified-unanchored")

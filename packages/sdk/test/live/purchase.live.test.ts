@@ -99,7 +99,7 @@ describe.skipIf(!live)(
         expect(signed.decision).toBe("allow");
         purchaseId = signed.purchaseId;
         const purchase = await keelson.purchases.waitFor(purchaseId);
-        expect(purchase.state).toBe("CAPTURED");
+        expect(purchase.state, JSON.stringify(purchase.failure)).toBe("CAPTURED");
         expect(purchase.capture?.id).toBeTruthy();
         expect((await keelson.alibis.retrieve(purchaseId)).byteLength).toBeGreaterThan(1000);
       });
