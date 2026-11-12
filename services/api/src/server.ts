@@ -2,7 +2,7 @@
 import { LithicIssuer } from "./cards/issuer.ts";
 import "./tee/attest.ts";
 import { ed25519Signer } from "@keelson/interop";
-import { calculateJwkThumbprint, type JWK } from "jose";
+import { calculateJwkThumbprint } from "jose";
 import "./telemetry.ts";
 import Anthropic from "@anthropic-ai/sdk";
 import { serve } from "@hono/node-server";
@@ -46,7 +46,7 @@ import { startPayPalPoller } from "./paypal/poll.ts";
 import { startPayPalEventWorker } from "./paypal/worker.ts";
 import { createPayPalDeps } from "./paypal.ts";
 import { appEmbedPage } from "./routes/embed-page.ts";
-import { legExportSigner } from "./routes/exports.ts";
+import { legIssuer } from "./routes/exports.ts";
 import { closeServer } from "./shutdown.ts";
 import { startPipelineResumer, startPurchaseSweeper, startSettlementSweeper } from "./sweeper.ts";
 import { createTee } from "./tee/config.ts";
@@ -247,14 +247,7 @@ const agentHttpKey = env.KEELSON_AGENT_HTTP_KEY
   ? await ed25519Signer(JSON.parse(env.KEELSON_AGENT_HTTP_KEY))
   : undefined;
 // Leg A signs exports with its attested issuer key, which its health names once it can.
-const issuerJwk = tee ? (await tee.client.a.health().catch(() => undefined))?.issuer : undefined;
-const exportIssuer =
-  tee && issuerJwk
-    ? legExportSigner(tee.client.a, {
-        ...(issuerJwk as { kty: "EC"; crv: "P-256"; x: string; y: string }),
-        kid: await calculateJwkThumbprint(issuerJwk as JWK),
-      })
-    : undefined;
+const exportIssuer = tee ? legIssuer(tee.client.a) : undefined;
 const app = createApp({
   db,
   kv,

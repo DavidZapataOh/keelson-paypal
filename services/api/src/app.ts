@@ -135,7 +135,7 @@ export interface Deps {
    * Signs standard exports: leg A's attested issuer key behind `POST /v1/exports/sign`. Exports
    * answer 503 without it.
    */
-  exportIssuer?: ExportSigner;
+  exportIssuer?: ExportSigner | (() => Promise<ExportSigner | undefined>);
   /** The hosted agent's Ed25519 key for RFC 9421 requests (`KEELSON_AGENT_HTTP_KEY`). */
   agentHttpKey?: Ed25519Signer;
   /** What the hosted operator's bond backs for apps it does not know; uncapped without it. */

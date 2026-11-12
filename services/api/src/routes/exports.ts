@@ -8,17 +8,19 @@ import {
 import {
   BindingError,
   type EcPublicJwk,
+  type ExportKeys,
   ExportRefused,
   type ExportSigner,
   exportOne,
   type Format,
   jwks,
+  type PurchaseFacts,
   purchaseFacts,
   refOf,
 } from "@keelson/interop";
 import { renderEvidencePackPdf } from "@keelson/interop/visa-pdf";
 import type { Context } from "hono";
-import { loadBridge } from "../alibi/bridge.ts";
+import { calculateJwkThumbprint, type JWK } from "jose";
 import { loadAlibi, publicCopy } from "../alibi/issue.ts";
 import type { Deps } from "../app.ts";
 import { ProblemSchema, problem } from "../problem.ts";
@@ -80,23 +82,14 @@ export function registerExports(app: OpenAPIHono, deps: Deps): void {
     const level = stored && (await access(deps, c.get("principal"), stored));
     if (!stored || !level)
       return problem(c, 404, "alibi-not-found", "Not found", "No alibi with this id.");
-    const v2 = isV2(stored) ? stored : await loadBridge(deps.db, id);
-    if (!v2) return refused(c, "v1_alibi");
-    if (!deps.exportIssuer) return refused(c, "signer_unavailable", 503);
+    // Leg A signs only over a purchase statement; a v1 Alibi's bridge statement is not one.
+    if (!isV2(stored)) return refused(c, "v1_alibi");
+    const v2 = stored;
+    const issuer = await issuerOf(deps);
+    if (!issuer) return refused(c, "signer_unavailable", 503);
     const served = level === "full" ? stored : publicCopy(stored);
     const f = purchaseFacts(served);
-    const cnf = f.mandate.agent?.cnf?.jwk as { x?: string; y?: string } | undefined;
-    const agent =
-      deps.hostedAgent && cnf?.x === deps.hostedAgent.jwk.x && cnf?.y === deps.hostedAgent.jwk.y
-        ? deps.hostedAgent
-        : undefined;
-    const keys = {
-      issuer: deps.exportIssuer,
-      ...(agent ? { agent } : {}),
-      ...(deps.agentHttpKey
-        ? { agentHttp: deps.agentHttpKey, signatureAgent: SIGNATURE_AGENT }
-        : {}),
-    };
+    const keys = exportKeysFor(level, deps, issuer, f);
     const base = format === "visa.pdf" ? "visa" : format;
     try {
       const x = await exportOne(base as Format, f, refOf(v2), keys, {
@@ -132,8 +125,9 @@ export function registerExports(app: OpenAPIHono, deps: Deps): void {
     }
   }) as never);
 
-  app.get("/.well-known/jwks.json", (c) => {
-    const keys = [deps.exportIssuer?.jwk, deps.hostedAgent?.jwk].filter((k) => k !== undefined);
+  app.get("/.well-known/jwks.json", async (c) => {
+    const issuer = await issuerOf(deps).catch(() => undefined);
+    const keys = [issuer?.jwk, deps.hostedAgent?.jwk].filter((k) => k !== undefined);
     c.header("Cache-Control", "public, max-age=300");
     return c.json(jwks(...keys));
   });
@@ -147,7 +141,14 @@ export function registerExports(app: OpenAPIHono, deps: Deps): void {
   });
 }
 
-const BINDING_CODES = new Set(["export.facts", "export.binding", "export.typ", "export.statement"]);
+const BINDING_CODES = new Set([
+  "export.facts",
+  "export.binding",
+  "export.typ",
+  "export.statement",
+  "export.receipt",
+  "export.profile",
+]);
 
 /** The enclave issuer over leg A's `POST /v1/exports/sign`, its refusals mapped to theirs. */
 export function legExportSigner(
@@ -160,13 +161,68 @@ export function legExportSigner(
       try {
         return (await leg.signExport({ typ, payload, statement })).jws;
       } catch (e) {
-        if (e instanceof LegError && e.status === 404)
-          throw new ExportRefused("signer_unavailable");
-        if (e instanceof LegError && e.code && BINDING_CODES.has(e.code)) {
+        if (!(e instanceof LegError)) throw e;
+        if (e.code && BINDING_CODES.has(e.code)) {
           throw new BindingError(e.code as BindingError["code"]);
+        }
+        // No route, no log or issuer on the leg, or no answer: nothing can be signed now.
+        if (e.kind !== "problem" || e.status === 404 || e.code === "export.leg") {
+          throw new ExportRefused("signer_unavailable");
         }
         throw e;
       }
     },
   };
 }
+
+/**
+ * The keys an export is signed with. Only the owner's copy is closed by the hosted agent or signed
+ * with its HTTP key: anyone else would otherwise mint fresh agent credentials for any public Alibi.
+ */
+export function exportKeysFor(
+  level: "full" | "public",
+  deps: Pick<Deps, "hostedAgent" | "agentHttpKey">,
+  issuer: ExportSigner,
+  f: PurchaseFacts,
+): ExportKeys {
+  if (level !== "full") return { issuer };
+  const cnf = f.mandate.agent?.cnf?.jwk as { x?: string; y?: string } | undefined;
+  const agent =
+    deps.hostedAgent && cnf?.x === deps.hostedAgent.jwk.x && cnf?.y === deps.hostedAgent.jwk.y
+      ? deps.hostedAgent
+      : undefined;
+  return {
+    issuer,
+    ...(agent ? { agent } : {}),
+    ...(deps.agentHttpKey ? { agentHttp: deps.agentHttpKey, signatureAgent: SIGNATURE_AGENT } : {}),
+  };
+}
+
+/**
+ * Leg A's issuer, its public key read from the leg's health and read again once `ttlMs` has passed,
+ * so a rotation is followed without a restart.
+ */
+export function legIssuer(
+  leg: Pick<LegClient, "health" | "signExport">,
+  o: { ttlMs?: number; clock?: () => number } = {},
+): () => Promise<ExportSigner | undefined> {
+  const ttl = o.ttlMs ?? 60_000;
+  const clock = o.clock ?? Date.now;
+  let cached: { at: number; signer: ExportSigner | undefined } | undefined;
+  return async () => {
+    if (cached && clock() - cached.at < ttl) return cached.signer;
+    const jwk = (await leg.health().catch(() => undefined))?.issuer as JWK | undefined | null;
+    const signer = jwk
+      ? legExportSigner(leg, {
+          ...(jwk as { kty: "EC"; crv: "P-256"; x: string; y: string }),
+          kid: await calculateJwkThumbprint(jwk),
+        })
+      : undefined;
+    cached = { at: clock(), signer };
+    return signer;
+  };
+}
+
+/** The deps' issuer, resolved now. */
+const issuerOf = async (deps: Pick<Deps, "exportIssuer">): Promise<ExportSigner | undefined> =>
+  typeof deps.exportIssuer === "function" ? deps.exportIssuer() : deps.exportIssuer;
