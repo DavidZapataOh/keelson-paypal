@@ -25,3 +25,11 @@ Only mutants that behave like the original on every reachable input are listed, 
 - `src/KeelsonValidationRegistry.sol:192:23 count > 0 -> count != 0`: count is unsigned, so `count > 0` ⇔ `count != 0`.
 - `src/KeelsonValidationRegistry.sol:238:16 wallet != address(0) -> wallet > address(0)`: an address is unsigned, so `a != address(0)` ⇔ `a > address(0)`.
 - `src/KeelsonValidationRegistry.sol:238:16 wallet != address(0) -> wallet >= address(0)`: `wallet >= address(0)` is always true, and when `wallet` is the zero address `SignatureChecker.isValidSignatureNowCalldata(address(0), …)` is false (no ECDSA signature recovers to it, and it has no code for ERC-1271), so the conjunction is unchanged.
+
+## KeelsonReputationReporter
+
+- `src/KeelsonReputationReporter.sol:59:13 outcome == CoverageOutcome.Outcome.Open -> outcome <= CoverageOutcome.Outcome.Open`: `Open` is the enum's 0, so `outcome == Open` ⇔ `outcome <= Open`.
+- `src/KeelsonReputationReporter.sol:63:22 unratedSlashes[agentId] != 0 -> unratedSlashes[agentId] > 0`: the count is unsigned, so `x != 0` ⇔ `x > 0`.
+- `src/KeelsonReputationReporter.sol:75:17 --unratedSlashes[agentId] -> unratedSlashes[agentId]--`: the statement discards the expression's value, so `--x` and `x--` are the same.
+- `src/KeelsonReputationReporter.sol:81:17 !clean && !slashSkipped[coverageId] -> !clean == !slashSkipped[coverageId]`: the two differ only when `clean` and `slashSkipped[coverageId]` are both true. `slashSkipped[coverageId]` is set only while the coverage's outcome is `Slashed`, which needs `vault.slashed(coverageId) != 0`; a paid slash never leaves `slashed` (`CoverageOutcome`), so that coverage is never `Settled` again and `clean` is false whenever `slashSkipped[coverageId]` is true.
+- `src/KeelsonReputationReporter.sol:83:17 ++unratedSlashes[agentId] -> unratedSlashes[agentId]++`: the statement discards the expression's value, so `++x` and `x++` are the same.

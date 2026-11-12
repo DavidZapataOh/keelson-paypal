@@ -1,5 +1,10 @@
 @import "@keelson/ui/globals.css";
 
+/* The app's one stylesheet holds only what it renders: no utilities of the shared components it
+   never imports (test/css-sources.test.ts keeps this list true), nor words in its build scripts. */
+@source not "../../../packages/ui/src/components/{card,checkbox,dialog,radio-group,select,sonner,switch}.tsx";
+@source not "../scripts";
+
 :focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: 2px;
