@@ -206,6 +206,12 @@ describe("amount check", () => {
       evidence: { assertion: { credentialId: passkey.credentialId } },
     });
     expect((await answer(await passkey.assert(challenge))).status).toBe(409);
+    const view = await app.request(`/v1/purchases/${id}`, { headers: asUser(userId) });
+    expect(((await view.json()) as { live: unknown }).live).toEqual({
+      store: STORE_ORIGIN,
+      transactionId: null,
+      amountAuthority: { authority: "user_confirmed", crossCheck: "agrees" },
+    });
   });
 
   test("a declined or expired confirmation never pays", async () => {
