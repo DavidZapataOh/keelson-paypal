@@ -53,9 +53,6 @@ contract EngineProofCourtForkTest is Erc8004Base {
         );
         _readCountersign();
         realProof = realProof && proofJson.readBytes32(".countersign_digest") == _csDigest();
-        // The coverage is locked at the countersign's issue time, which precedes the fork block: the role grants must
-        // already be in force then.
-        vm.warp(cs.issuedAt - 2 * _timelock().getMinDelay() - 1);
         (address[] memory targets, uint256[] memory values, bytes[] memory payloads) =
             new DeployEngineProofCourt().grants(address(court));
         _viaTimelockBatch(targets, values, payloads);

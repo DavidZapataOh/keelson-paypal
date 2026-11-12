@@ -18,6 +18,8 @@ use common::*;
 const DEMO_AGENT_ID: &str = "351";
 /// The `VerdictVerifier` whose domain the legs sign under on Arbitrum Sepolia.
 const VERDICT_VERIFIER: Address = address!("0xe16E8767EC1DA59Ef0D9Bc7851637E4D22352d96");
+/// Unix seconds: an hour after the block the contract tests fork Arbitrum Sepolia at.
+const COUNTERSIGNED_AT: i64 = 1_794_140_000;
 
 fn input_of(r: &CountersignRequest, out: &Countersigned) -> CountersignInput {
     let reg = register_request();
@@ -70,6 +72,9 @@ fn recomputes_an_allow() {
     // the chain can lock a coverage with it and dispute that coverage with its proof.
     input.payload_sd["agent"]["operator"]["agent_id"] = json!(DEMO_AGENT_ID);
     input.verifying_contract = VERDICT_VERIFIER;
+    // Countersigned after the block the contract tests fork Arbitrum Sepolia at, inside the mandate's validity.
+    input.now_ms = COUNTERSIGNED_AT * 1000;
+    input.expires_at = COUNTERSIGNED_AT as u64 + 900;
     let got = recompute(&input).unwrap();
     assert_eq!(got.countersign.decision, 1);
     assert_eq!(got.countersign.agentId, U256::from(351));
@@ -85,6 +90,9 @@ fn recomputes_an_allow() {
         std::fs::write(&path, serde_json::to_string_pretty(&vector).unwrap() + "\n").unwrap();
     }
     let stored: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    if stored != vector {
+        eprintln!("VECTOR {}", serde_json::to_string(&vector).unwrap());
+    }
     assert_eq!(stored, vector);
 }
 
