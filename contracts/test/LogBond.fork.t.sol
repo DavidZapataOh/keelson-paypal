@@ -5,6 +5,7 @@ import {DeployLogBond} from "../script/DeployLogBond.s.sol";
 import {LogBond} from "../src/LogBond.sol";
 import {IEd25519Verifier} from "../src/interfaces/IEd25519Verifier.sol";
 import {ILogBond} from "../src/interfaces/ILogBond.sol";
+import {RFC6962} from "../src/libraries/RFC6962.sol";
 import {Ed25519Verifier} from "../src/verifiers/Ed25519Verifier.sol";
 import {ForkTest} from "./utils/Fork.sol";
 import {GasBudget} from "./utils/GasBudget.sol";
@@ -99,7 +100,10 @@ contract LogBondForkTest is ForkTest {
         vm.setEnv("LOG_BOND_NOTE", vm.toString(_note(CONFORMANCE_16)));
         DeployLogBond script = new DeployLogBond();
         LogBond deployed = script.run();
-        assertEq(address(deployed), script.predict("LogBondTestOrigin"));
+        assertEq(address(deployed), script.predict("LogBondTestOrigin@2"));
+        assertTrue(
+            address(deployed) != vm.parseJsonAddress(_json(), ".contracts.LogBondTestOrigin"), "beside the first"
+        );
         assertEq(deployed.owner(), owner);
         assertEq(deployed.withdrawalDelay(), 7 days);
         assertEq(deployed.completionWindow(), 1 days);
@@ -244,6 +248,120 @@ contract LogBondForkTest is ForkTest {
         vm.expectRevert(ILogBond.NotReady.selector);
         bond.completeWithdrawal();
         vm.stopPrank();
+    }
+
+    function test_disagreeingLeafAtTwoSizesSlashesTheWholeBond() public {
+        bytes memory a = _note(CONFORMANCE_16);
+        bytes memory b = _note(FORK_8);
+        ILogBond.Inclusion memory pa = _inclusion(false, 16, 5);
+        ILogBond.Inclusion memory pb = _inclusion(true, 8, 5);
+        vm.prank(owner);
+        bond.requestWithdrawal(30e6, owner);
+
+        vm.expectEmit(address(bond));
+        emit ILogBond.EquivocationProven(
+            prover, 8, _case(CONFORMANCE_16).root, _case(FORK_8).root, 40e6, 4e6, keccak256(a), keccak256(b)
+        );
+        uint256 gasBefore = gasleft();
+        vm.prank(prover);
+        bond.proveInconsistency(a, b, 5, pa, pb);
+        GasBudget.check("logBond_proveInconsistency", gasBefore - gasleft());
+
+        assertEq(pyusd.balanceOf(prover), 4e6, "the bounty");
+        assertEq(pyusd.balanceOf(beneficiary), 36e6, "the rest, the pending withdrawal included");
+        assertTrue(bond.slashed());
+        ILogBond.Equivocation memory e = bond.equivocation();
+        assertEq(e.size, 8, "the smaller size");
+        assertEq(e.rootA, _case(CONFORMANCE_16).root);
+        assertEq(e.rootB, _case(FORK_8).root);
+        assertEq(bond.withdrawal().amount, 0);
+
+        vm.expectRevert(ILogBond.AlreadySlashed.selector);
+        bond.proveInconsistency(a, b, 5, pa, pb);
+    }
+
+    /// @dev The first forked entry, with the larger tree on either side.
+    function test_inconsistencyEitherOrderAtTheFirstForkedEntry() public {
+        ILogBond.Inclusion memory pa = _inclusion(true, 16, 4);
+        ILogBond.Inclusion memory pb = _inclusion(false, 8, 4);
+        vm.prank(prover);
+        bond.proveInconsistency(_note(FORK_16), _note(CONFORMANCE_8), 4, pa, pb);
+        assertEq(bond.equivocation().size, 8);
+    }
+
+    function test_inconsistencyRefusesASharedLeaf() public {
+        ILogBond.Inclusion memory pa = _inclusion(false, 16, 1);
+        ILogBond.Inclusion memory pb = _inclusion(true, 8, 1);
+        vm.expectRevert(ILogBond.NotInconsistent.selector);
+        bond.proveInconsistency(_note(CONFORMANCE_16), _note(FORK_8), 1, pa, pb);
+    }
+
+    function test_inconsistencyRefusesAnIndexBeyondTheSmallerTree() public {
+        ILogBond.Inclusion memory pa = _inclusion(false, 16, 8);
+        ILogBond.Inclusion memory pb = _inclusion(true, 16, 8);
+        vm.expectRevert(ILogBond.NotInconsistent.selector);
+        bond.proveInconsistency(_note(CONFORMANCE_16), _note(FORK_8), 8, pa, pb);
+    }
+
+    function test_inconsistencyRefusesAWrongProof() public {
+        ILogBond.Inclusion memory pa = _inclusion(false, 16, 5);
+        ILogBond.Inclusion memory pb = _inclusion(true, 8, 5);
+        pb.proof[1] = bytes32(uint256(pb.proof[1]) ^ 1);
+        vm.expectRevert(ILogBond.NotInconsistent.selector);
+        bond.proveInconsistency(_note(CONFORMANCE_16), _note(FORK_8), 5, pa, pb);
+        pb.proof[1] = bytes32(uint256(pb.proof[1]) ^ 1);
+        pa.leaf = bytes32(uint256(pa.leaf) ^ 1);
+        vm.expectRevert(ILogBond.NotInconsistent.selector);
+        bond.proveInconsistency(_note(CONFORMANCE_16), _note(FORK_8), 5, pa, pb);
+    }
+
+    function test_inconsistencyRefusesANoteOfAnotherKey() public {
+        ILogBond.Inclusion memory pa = _inclusion(false, 16, 5);
+        ILogBond.Inclusion memory pb = _inclusion(true, 8, 5);
+        vm.expectRevert(abi.encodeWithSelector(ILogBond.InvalidNote.selector, 1));
+        bond.proveInconsistency(_note(CONFORMANCE_16), _note(SANDBOX), 5, pa, pb);
+    }
+
+    /// @dev Two honest checkpoints of different sizes agree on every leaf both hold.
+    function testFuzz_consistentCheckpointsNeverSlash(uint8 index) public {
+        index = uint8(bound(index, 0, 7));
+        ILogBond.Inclusion memory pa = _inclusion(false, 16, index);
+        ILogBond.Inclusion memory pb = _inclusion(false, 8, index);
+        vm.expectRevert(ILogBond.NotInconsistent.selector);
+        bond.proveInconsistency(_note(CONFORMANCE_16), _note(CONFORMANCE_8), index, pa, pb);
+    }
+
+    /// @dev The leaf hash and inclusion proof of entry `index` in the conformance tree (or its fork) of `size`, a power
+    /// of two; checked against the root the log signed.
+    function _inclusion(bool fork, uint64 size, uint64 index) internal view returns (ILogBond.Inclusion memory p) {
+        bytes32[] memory level = new bytes32[](size);
+        for (uint64 i; i < size; ++i) {
+            level[i] = sha256(bytes.concat(bytes1(0x00), _entry(fork, i)));
+        }
+        p.leaf = level[index];
+        uint256 depth;
+        for (uint64 n = size; n > 1; n >>= 1) {
+            ++depth;
+        }
+        p.proof = new bytes32[](depth);
+        uint64 node = index;
+        for (uint256 d; d < depth; ++d) {
+            p.proof[d] = level[node ^ 1];
+            bytes32[] memory up = new bytes32[](level.length / 2);
+            for (uint256 i; i < up.length; ++i) {
+                up[i] = RFC6962.hashChildren(level[2 * i], level[2 * i + 1]);
+            }
+            level = up;
+            node >>= 1;
+        }
+        uint256 vector = fork ? (size == 8 ? FORK_8 : FORK_16) : (size == 8 ? CONFORMANCE_8 : CONFORMANCE_16);
+        assertEq(level[0], _case(vector).root, "the signed root");
+    }
+
+    /// @dev `conformance.Entry` and the generator's fork, which replaces every entry from 4 on.
+    function _entry(bool fork, uint64 i) internal pure returns (bytes memory) {
+        if (fork && i >= 4) return bytes(string.concat("keelson conformance fork ", vm.toString(i)));
+        return bytes(string.concat("keelson conformance ", vm.toString(i)));
     }
 
     function _blankLine(bytes memory note) internal pure returns (uint256 i) {

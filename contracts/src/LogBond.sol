@@ -3,6 +3,7 @@ pragma solidity 0.8.38;
 
 import {IEd25519Verifier} from "./interfaces/IEd25519Verifier.sol";
 import {ILogBond} from "./interfaces/ILogBond.sol";
+import {RFC6962} from "./libraries/RFC6962.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {Base64} from "@openzeppelin/contracts/utils/Base64.sol";
@@ -16,8 +17,8 @@ interface IArbBlockNumber {
 
 /// @title LogBond
 /// @notice A bond on one transparency log's Ed25519 key. Two checkpoints of the log that both carry a valid signature
-/// of the key and state different roots for the same size are proof that the log showed two histories; they slash the
-/// whole bond, once: a bounty to whoever submits them, the rest to the beneficiary. The notes are c2sp.org/tlog-checkpoint
+/// of the key and state different roots for the same size, or whose trees hold different leaves at one index at any two
+/// sizes, are proof that the log showed two histories; they slash the whole bond, once: a bounty to whoever submits them, the rest to the beneficiary. The notes are c2sp.org/tlog-checkpoint
 /// signed notes (c2sp.org/signed-note).
 /// @dev No admin and no upgrade path. The owner can only withdraw, after `withdrawalDelay` and within
 /// `completionWindow`, and what is waiting to leave stays in the bond until it does. Whoever holds the key can always
@@ -145,7 +146,34 @@ contract LogBond is ILogBond, ReentrancyGuardTransient {
         Opened memory a = _open(noteA, 0);
         Opened memory b = _open(noteB, 1);
         if (a.size != b.size || a.root == b.root) revert NotEquivocation();
+        _slash(a, b, a.size, keccak256(noteA), keccak256(noteB));
+    }
 
+    /// @inheritdoc ILogBond
+    function proveInconsistency(
+        bytes calldata noteA,
+        bytes calldata noteB,
+        uint64 index,
+        Inclusion calldata a,
+        Inclusion calldata b
+    ) external nonReentrant {
+        if (slashed()) revert AlreadySlashed();
+        Opened memory ca = _open(noteA, 0);
+        Opened memory cb = _open(noteB, 1);
+        if (a.leaf == b.leaf || !_includes(ca, index, a) || !_includes(cb, index, b)) revert NotInconsistent();
+        _slash(ca, cb, ca.size < cb.size ? ca.size : cb.size, keccak256(noteA), keccak256(noteB));
+    }
+
+    /// @dev Whether `p` proves its leaf at `index` in the tree `c` signed. `rootFromInclusion` refuses an index at or
+    /// beyond the size.
+    function _includes(Opened memory c, uint64 index, Inclusion calldata p) internal view returns (bool) {
+        (bytes32 root, bool ok) = RFC6962.rootFromInclusion(index, c.size, p.leaf, p.proof);
+        return ok && root == c.root;
+    }
+
+    /// @dev Pays the whole bond out for the two checkpoints `a` and `b`: the bounty to the caller, the rest to the
+    /// beneficiary.
+    function _slash(Opened memory a, Opened memory b, uint64 size, bytes32 noteHashA, bytes32 noteHashB) internal {
         uint256 amount = token.balanceOf(address(this));
         uint256 bounty = amount * bountyBps / 10_000;
         _equivocation = Equivocation({
@@ -153,7 +181,7 @@ contract LogBond is ILogBond, ReentrancyGuardTransient {
             amount: amount.toUint128(),
             bounty: bounty.toUint128(),
             provenAt: block.timestamp.toUint40(),
-            size: a.size,
+            size: size,
             l2Block: _l2Block(),
             rootA: a.root,
             rootB: b.root
@@ -161,7 +189,7 @@ contract LogBond is ILogBond, ReentrancyGuardTransient {
         delete _withdrawal;
         // The calls before are static calls to the verifier and the token.
         // forge-lint: disable-next-line(reentrancy-events)
-        emit EquivocationProven(msg.sender, a.size, a.root, b.root, amount, bounty, keccak256(noteA), keccak256(noteB));
+        emit EquivocationProven(msg.sender, size, a.root, b.root, amount, bounty, noteHashA, noteHashB);
         if (bounty > 0) token.safeTransfer(msg.sender, bounty);
         // A beneficiary the token refuses (frozen) must not make the bond unslashable: its share then
         // stays here, and `release` sends it once the token accepts it.
