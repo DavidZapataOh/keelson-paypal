@@ -25,6 +25,8 @@ export interface EngineProofStatus {
     gas_used: string;
     proven_at: string;
   } | null;
+  /** Queued slashes `EngineProofCourt` vetoed with this proof. */
+  contests: { dispute_id: string; field_id: number; tx: string; explorer_url: string | null }[];
 }
 
 const millions = (n: number) => `${(n / 1_000_000).toFixed(1)}M`;
@@ -131,6 +133,32 @@ export function EngineProof({
           </DataItem>
           <DataItem label="Program key">
             <CopyValue value={proof.vkey} label="SP1 program verifying key" short />
+          </DataItem>
+          <DataItem label="Bond">
+            {p.contests.length === 0 ? (
+              <span className="text-muted-foreground">
+                Guarded: a slash for a field this evaluation passed is vetoed on chain
+              </span>
+            ) : (
+              <span className="grid gap-1">
+                {p.contests.map((c) => (
+                  <span key={c.dispute_id} className="inline-flex items-center gap-1.5">
+                    <span className="text-ok">
+                      <Check ok />
+                    </span>
+                    Slash vetoed by the proof ·{" "}
+                    {c.explorer_url ? (
+                      <a className="underline" href={c.explorer_url} target="_blank" rel="noopener">
+                        <span className="font-mono">{`${c.tx.slice(0, 8)}…${c.tx.slice(-4)}`}</span>{" "}
+                        ↗<span className="sr-only"> (opens in a new tab)</span>
+                      </a>
+                    ) : (
+                      <CopyValue value={c.tx} label="Transaction" short />
+                    )}
+                  </span>
+                ))}
+              </span>
+            )}
           </DataItem>
           <DataItem label="Verified on chain">
             {proof.explorer_url ? (

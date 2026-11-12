@@ -2,6 +2,7 @@ import {
   addresses,
   amberContradictionCourtAbi,
   checkpointAnchorAbi,
+  engineProofCourtAbi,
   keelsonBondVaultAbi,
 } from "@keelson/chain";
 import { and, chainCursors, chainEvents, type Db, eq, sql } from "@keelson/db";
@@ -48,10 +49,14 @@ const EVENTS: readonly AbiEvent[] = [
     (i): i is Extract<(typeof amberContradictionCourtAbi)[number], { type: "event" }> =>
       i.type === "event" && i.name === "AmberContradictionProven",
   ),
+  ...engineProofCourtAbi.filter(
+    (i): i is Extract<(typeof engineProofCourtAbi)[number], { type: "event" }> =>
+      i.type === "event" && i.name === "SlashContested",
+  ),
 ];
 
 /**
- * The vault and the anchor whose events are followed.
+ * The vault, the anchor and the courts whose events are followed.
  *
  * @internal
  */
@@ -59,6 +64,7 @@ export const CONTRACTS: readonly Address[] = [
   addresses[CHAIN_ID].KeelsonBondVault as Address,
   addresses[CHAIN_ID].CheckpointAnchor as Address,
   addresses[CHAIN_ID].AmberContradictionCourt as Address,
+  addresses[CHAIN_ID].EngineProofCourt as Address,
 ];
 
 /** A decoded log of one of `EVENTS`. */

@@ -46,12 +46,8 @@ export interface SweeperDeps {
   operators?: OperatorSigners | undefined;
 }
 
-/**
- * The countersignatures of a purchase in the order the VerdictVerifier checks them: TDX, then Nitro.
- *
- * @internal
- */
-export async function countersigs(db: Db, purchaseId: string, digest: Buffer): Promise<Hex[]> {
+/** The countersignatures of a purchase in the order the VerdictVerifier checks them: TDX, then Nitro. */
+async function countersigs(db: Db, purchaseId: string, digest: Buffer): Promise<Hex[]> {
   const rows = await db
     .select({ kind: teeSigners.teeKind, signature: teeSignatures.signature })
     .from(teeSignatures)
