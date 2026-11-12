@@ -132,7 +132,7 @@ describe("the developers page", () => {
   test("the language toggle swaps every snippet, and Copy for AI copies the page", async () => {
     const { context, page } = await open({ signedIn: false });
     await page.getByRole("button", { name: "Python" }).click();
-    await page.getByText("uv run --project packages/sdk-python keelson login").waitFor();
+    await page.getByText("pip install keelson-finance").waitFor();
     await page.getByRole("button", { name: "Copy for AI" }).click();
     const copied = await page.evaluate(() => navigator.clipboard.readText());
     expect(copied).toContain("# Build with Keelson");

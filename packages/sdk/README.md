@@ -13,7 +13,7 @@ npm install @keelson-finance/sdk @keelson-finance/verifier
 npx keelson login
 ```
 
-From this repository, before the packages are on npm:
+To work on the SDK from this repository:
 
 ```sh
 pnpm install && pnpm --filter @keelson-finance/sdk... --filter @keelson-finance/verifier... build

@@ -14,9 +14,25 @@ Two packages do the work: the SDK, which asks for mandates and buys under them, 
 | `@keelson-finance/verifier` | TypeScript and JavaScript, and the `keelson-verify` command | Node.js 20 or later |
 | `keelson-finance` (`import keelson`) | Python | Python 3.11 or later; Node.js 20 for `verify_alibi` |
 
+## Install
+
+{% languages label="Install" %}
+```sh {% title="TypeScript" %}
+npm install @keelson-finance/sdk @keelson-finance/verifier
+npx keelson login
+```
+
+```sh {% title="Python" %}
+pip install keelson-finance
+keelson login
+```
+{% /languages %}
+
+`keelson login` signs you in in your browser; [Authentication](/sdk/authentication/) says how.
+
 ## From the repository
 
-The packages are not on npm or PyPI yet. Until they are, build them from the repository:
+To work on the SDKs, or to run the quickstart and the verifier checks below, build them from the repository:
 
 ```sh
 git clone https://github.com/DavidZapataOh/keelson-paypal.git

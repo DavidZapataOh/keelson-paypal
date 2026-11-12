@@ -13,7 +13,7 @@ pip install keelson-finance
 keelson login
 ```
 
-From this repository, before the package is on PyPI: `uv run --project packages/sdk-python keelson login`.
+To work on the SDK from this repository: `uv run --project packages/sdk-python keelson login`.
 
 `keelson login` signs you in in your browser and saves the sign-in to
 `~/.config/keelson/credentials.json`, the same file the TypeScript SDK uses.
