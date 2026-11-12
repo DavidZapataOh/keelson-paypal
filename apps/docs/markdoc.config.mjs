@@ -48,7 +48,10 @@ export default defineMarkdocConfig({
         const items = node.children
           .filter((child) => child.type === "fence")
           .map((fence) => ({
-            name: fence.attributes.title ?? LANGUAGES[fence.attributes.language] ?? fence.attributes.language,
+            name:
+              fence.attributes.title ??
+              LANGUAGES[fence.attributes.language] ??
+              fence.attributes.language,
             lang: fence.attributes.language,
             code: fence.attributes.content.replace(/\n$/, ""),
           }));
