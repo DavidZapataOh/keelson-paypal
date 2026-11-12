@@ -85,9 +85,6 @@ fn recomputes_an_allow() {
         std::fs::write(&path, serde_json::to_string_pretty(&vector).unwrap() + "\n").unwrap();
     }
     let stored: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
-    if stored != vector {
-        eprintln!("VECTOR {}", serde_json::to_string(&vector).unwrap());
-    }
     assert_eq!(stored, vector);
 }
 

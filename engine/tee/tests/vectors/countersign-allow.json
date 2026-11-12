@@ -18,7 +18,7 @@
       "agent": {
         "operator": {
           "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
-          "agent_id": "42"
+          "agent_id": "351"
         },
         "cnf": {
           "jwk": {
@@ -197,10 +197,29 @@
     "evidence_root": "0x5555555555555555555555555555555555555555555555555555555555555555",
     "expires_at": 1793751370,
     "chain_id": 421614,
-    "verifying_contract": "0x0000000000000000000000000000000000000000",
+    "verifying_contract": "0xe16e8767ec1da59ef0d9bc7851637e4d22352d96",
     "oci_digest": "sha256:abababababababababababababababababababababababababababababababab",
     "canonicalizer": "keelson-canon/0.0.0"
   },
-  "eval_hash": "0x5ec208ec6a28c83bddf1623fccde1b504aba7857aa257e90f4cdc0724e646682",
-  "digest": "0xdb32e05790504ed2cfae6088845fa73409ffeae3769198389902227c6195a9a5"
+  "eval_hash": "0x980a202c07199d7486277f294f88fccb1f6bb9369a09d744645ce52cb7561512",
+  "digest": "0xc9fc07346143da687a19732039cbda428ddde653e8c0a5f194f69811620f3c8d",
+  "h_sd": "0x5a2fbbaab569648e6b4367f04db304884cd872ed81255cd61c366deafa0bd995",
+  "countersign": {
+    "requestId": "0x0000000000000000000000000000000001a1a3dbe66000000000000000000001",
+    "mandateHash": "0xbe8004dc470edd938442a31315979733c05e8b93ebc73d929d96e5212d52ee1b",
+    "mandateCommitment": "0x0b4ddedbcc32a4c88059552a09a459092cd3ca1dd217c714cf3c2555bb862f9f",
+    "cartHash": "0xc74c44e1b852d5134056bae404a00880cc39512ba4e0d93cdf700d03222f03a1",
+    "agentId": "351",
+    "merchantId": "0x1f0a71f468ae72a38151f84f8077b9209dfd331a519173426d07258de56c366c",
+    "amount": "9400",
+    "currency": "840",
+    "category": "21",
+    "evidenceRoot": "0x5555555555555555555555555555555555555555555555555555555555555555",
+    "evalHash": "0x980a202c07199d7486277f294f88fccb1f6bb9369a09d744645ce52cb7561512",
+    "policySetHash": "0x76e3a5959eddc084b99b80a7376d85eeb86f005a7ce447420ac67c3e80902123",
+    "decision": "1",
+    "failedFieldsMask": "0",
+    "issuedAt": "1793750470",
+    "expiresAt": "1793751370"
+  }
 }
