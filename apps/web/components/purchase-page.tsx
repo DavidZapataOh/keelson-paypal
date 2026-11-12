@@ -20,6 +20,7 @@ import { major, money, when } from "../lib/format";
 import { purchaseStatus, unknownOutcome } from "../lib/status";
 import type { Dispute, Purchase } from "../lib/types";
 import { useMandate } from "../lib/use-mandate";
+import { AlibiExports } from "./alibi-exports";
 import { AlibiStandards, useStatement } from "./alibi-standards";
 import { AnonymousProof } from "./anonymous-proof";
 import { AppShell } from "./app-shell";
@@ -533,6 +534,7 @@ function Receipt() {
               >
                 Download .alibi
               </Button>
+              <AlibiExports id={p.id} denied={p.state === "DENIED"} />
             </div>
             <p className="text-muted-foreground text-xs">
               The link checks the public log entry. Drop the .alibi file into the verifier to check

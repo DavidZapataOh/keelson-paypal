@@ -12,6 +12,7 @@ import {
 import { Loader2 } from "lucide-react";
 import { useState } from "react";
 import { post } from "../lib/api";
+import { API } from "../lib/config";
 import type { Chargeback } from "../lib/types";
 import { ErrorNotice } from "./notice";
 
@@ -95,6 +96,15 @@ export function ChargebackSheet({
               <li>alibi-{purchaseId}.pdf</li>
               {statement ? <li>{purchaseId}.cose, inside the PDF</li> : null}
             </ul>
+            {statement ? (
+              <a
+                className="text-xs underline underline-offset-4"
+                href={`${API}/v1/alibis/${purchaseId}/exports/visa.pdf`}
+                download={`${purchaseId}.visa-evidence.pdf`}
+              >
+                Attach the Visa evidence pack
+              </a>
+            ) : null}
           </div>
           <p className="text-muted-foreground">
             The card network decides. Whatever it returns to you is subtracted from any claim on the
