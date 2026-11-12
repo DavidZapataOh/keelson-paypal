@@ -639,12 +639,15 @@ components:
               type:
                 - string
                 - "null"
+            amountAuthority:
+              $ref: "#/components/schemas/AmountAuthority"
           required:
             - store
             - transactionId
           description: "A purchase the buyer pays at the store's own checkout: the store's
-            origin and the PayPal transaction id once the agent recorded it.
-            Never covered nor captured."
+            origin, what decided the amount at the pay click, and the PayPal
+            transaction id once the agent recorded it. Never covered nor
+            captured."
         disputes:
           type: array
           items:
@@ -688,6 +691,34 @@ components:
       description: "What the countersigned total is made of, in minor units: the
         items, plus tax and shipping, less discounts. Absent for purchases
         countersigned without it."
+    AmountAuthority:
+      type: object
+      properties:
+        authority:
+          type: string
+          enum:
+            - paypal_order
+            - merchant_signed_cart
+            - user_confirmed
+            - checkout_page
+        via:
+          type: string
+          enum:
+            - own
+            - partner
+            - ucp
+        crossCheck:
+          type: string
+          enum:
+            - agrees
+            - unavailable
+      required:
+        - authority
+        - crossCheck
+      description: "`paypal_order`: PayPal's Orders API returned the order at the
+        countersigned total. `user_confirmed`: the user confirmed it with the
+        passkey that signed the mandate. `crossCheck` is whether PayPal's
+        checkout stated the same order."
     PendingPurchaseHold:
       type: object
       properties:
@@ -1099,6 +1130,8 @@ components:
             - agentId
             - operator
             - bond
+        identity:
+          $ref: "#/components/schemas/ClientIdentity"
         limits:
           type: object
           properties:
@@ -1265,6 +1298,7 @@ components:
         - name
         - reason
         - agent
+        - identity
         - limits
         - parent
         - mandateId
@@ -1273,6 +1307,61 @@ components:
         - match
         - expiresAt
         - createdAt
+    ClientIdentity:
+      oneOf:
+        - type: object
+          properties:
+            kind:
+              type: string
+              enum:
+                - cimd
+            host:
+              type: string
+            clientUri:
+              type:
+                - string
+                - "null"
+          required:
+            - kind
+            - host
+            - clientUri
+        - type: object
+          properties:
+            kind:
+              type: string
+              enum:
+                - operator
+            agentId:
+              type: string
+            operator:
+              type: string
+            registry:
+              type: string
+          required:
+            - kind
+            - agentId
+            - operator
+            - registry
+        - type: object
+          properties:
+            kind:
+              type: string
+              enum:
+                - hosted
+          required:
+            - kind
+        - type: object
+          properties:
+            kind:
+              type: string
+              enum:
+                - unverified
+          required:
+            - kind
+      description: "Who stands behind the app. `cimd`: the host of the metadata
+        document the authorization server fetched. `operator`: the ERC-8004
+        registered agent that linked it. `hosted`: Keelson's hosted operator.
+        `unverified`: an app that registered itself; its name is its own claim."
     ConnectionRequestState:
       type: object
       properties:
@@ -1509,6 +1598,138 @@ components:
         - lines
         - return_days
         - returns_free
+    SsfStream:
+      type: object
+      properties:
+        stream_id:
+          type: string
+        iss:
+          type: string
+        aud:
+          type: string
+        delivery:
+          type: object
+          properties:
+            method:
+              type: string
+              enum:
+                - urn:ietf:rfc:8936
+            endpoint_url:
+              type: string
+          required:
+            - method
+            - endpoint_url
+        events_supported:
+          type: array
+          items:
+            type: string
+        events_requested:
+          type: array
+          items:
+            type: string
+        events_delivered:
+          type: array
+          items:
+            type: string
+      required:
+        - stream_id
+        - iss
+        - aud
+        - delivery
+        - events_supported
+        - events_requested
+        - events_delivered
+    AccessEvaluationResponse:
+      type: object
+      properties:
+        decision:
+          type: boolean
+        context:
+          type: object
+          properties:
+            binding:
+              type: boolean
+              enum:
+                - false
+              description: "A preview: only the TEE countersign (`POST /v1/countersign`)
+                decides a purchase."
+            reason_admin:
+              type: object
+              properties:
+                en:
+                  type: string
+              required:
+                - en
+            checks:
+              type: array
+              items:
+                type: object
+                properties: {}
+                additionalProperties: {}
+            blockers:
+              type: array
+              items:
+                type: object
+                properties: {}
+                additionalProperties: {}
+          required:
+            - binding
+            - reason_admin
+            - checks
+            - blockers
+      required:
+        - decision
+        - context
+    AccessEvaluationRequest:
+      type: object
+      properties:
+        subject:
+          type: object
+          properties:
+            type:
+              type: string
+              enum:
+                - agent
+            id:
+              type: string
+              minLength: 1
+          required:
+            - type
+            - id
+        action:
+          type: object
+          properties:
+            name:
+              type: string
+              enum:
+                - purchase
+          required:
+            - name
+        resource:
+          type: object
+          properties:
+            type:
+              type: string
+              enum:
+                - mandate
+            id:
+              type: string
+              pattern: ^[0-7][0-9A-HJKMNP-TV-Z]{25}$
+            properties:
+              type: object
+              properties:
+                cart:
+                  $ref: "#/components/schemas/Cart"
+              required:
+                - cart
+          required:
+            - type
+            - id
+            - properties
+      required:
+        - subject
+        - action
+        - resource
     EmbedOrigins:
       type: object
       properties:
@@ -1662,6 +1883,10 @@ components:
           type: string
         connected:
           type: boolean
+        signals:
+          type: boolean
+          description: Whether the app polls a Shared Signals stream (OpenID SSF), so it
+            learns at once when you stop or disconnect it.
         mandate:
           type:
             - object
@@ -1700,6 +1925,7 @@ components:
         - name
         - operator
         - connected
+        - signals
         - mandate
         - lastActivityAt
     PendingApproval:
@@ -1741,6 +1967,10 @@ components:
         revoked:
           type: integer
           description: Mandates ended.
+        cardsClosed:
+          type: integer
+          description: Single-use cards closed at the issuer, none of whose authorizations
+            was approved yet. Any authorization still reaching one is declined.
         released:
           type: array
           items:
@@ -1793,6 +2023,7 @@ components:
       required:
         - id
         - revoked
+        - cardsClosed
         - released
         - mandateHashes
         - releasing
@@ -2926,12 +3157,15 @@ components:
               type:
                 - string
                 - "null"
+            amountAuthority:
+              $ref: "#/components/schemas/AmountAuthority"
           required:
             - store
             - transactionId
           description: "A purchase the buyer pays at the store's own checkout: the store's
-            origin and the PayPal transaction id once the agent recorded it.
-            Never covered nor captured."
+            origin, what decided the amount at the pay click, and the PayPal
+            transaction id once the agent recorded it. Never covered nor
+            captured."
       required:
         - purchaseId
         - mode
@@ -3100,6 +3334,8 @@ components:
           description: The PayPal transaction the store was paid by; `null` for a DENY.
         conversion:
           $ref: "#/components/schemas/Conversion"
+        amountAuthority:
+          $ref: "#/components/schemas/AmountAuthority"
         blocked:
           type: array
           items:
@@ -3458,12 +3694,15 @@ components:
               type:
                 - string
                 - "null"
+            amountAuthority:
+              $ref: "#/components/schemas/AmountAuthority"
           required:
             - store
             - transactionId
           description: "A purchase the buyer pays at the store's own checkout: the store's
-            origin and the PayPal transaction id once the agent recorded it.
-            Never covered nor captured."
+            origin, what decided the amount at the pay click, and the PayPal
+            transaction id once the agent recorded it. Never covered nor
+            captured."
       required:
         - id
         - mandateId
@@ -3516,6 +3755,193 @@ components:
         - lastFour
         - expiresAt
         - embedUrl
+    AmountCheck:
+      type: object
+      properties:
+        v:
+          type: string
+          enum:
+            - keelson.amount_check/1
+        authority:
+          type: string
+          enum:
+            - paypal_order
+            - merchant_signed_cart
+            - user_confirmed
+            - checkout_page
+        via:
+          type: string
+          enum:
+            - own
+            - partner
+            - ucp
+        read_by:
+          type: string
+          enum:
+            - api
+            - tee:A
+        order_id_hash:
+          type: string
+          pattern: ^0x[0-9a-f]{64}$
+        total:
+          type: object
+          properties:
+            currency:
+              type: string
+            minor:
+              type: integer
+          required:
+            - currency
+            - minor
+        payee:
+          type: string
+        intent:
+          type: string
+          enum:
+            - CAPTURE
+            - AUTHORIZE
+        checked_at:
+          type: string
+        cross_check:
+          type: string
+          enum:
+            - agrees
+            - unavailable
+        evidence:
+          type: object
+          properties:
+            assertion:
+              type: object
+              properties:
+                credentialId:
+                  type: string
+                authenticatorData:
+                  type: string
+                clientDataJSON:
+                  type: string
+                signature:
+                  type: string
+              required:
+                - credentialId
+                - authenticatorData
+                - clientDataJSON
+                - signature
+      required:
+        - v
+        - authority
+        - read_by
+        - order_id_hash
+        - total
+        - payee
+        - intent
+        - checked_at
+        - cross_check
+      description: "What decided a live checkout's amount: PayPal's Orders API
+        (`paypal_order`), the store's signature (`merchant_signed_cart`) or the
+        user's passkey (`user_confirmed`). `checkout_page` is never an
+        authority."
+    AmountCheckRequest:
+      type: object
+      properties:
+        orderId:
+          type: string
+          pattern: ^(?:EC-)?[0-9A-Z]{17}$
+        crossCheck:
+          type: string
+          enum:
+            - agrees
+            - unavailable
+            - disagrees
+        order:
+          type: object
+          properties:
+            intent:
+              type: string
+              enum:
+                - SALE
+                - AUTHORIZE
+            payee:
+              type: string
+              pattern: ^[0-9A-Z]{8,20}$
+          required:
+            - intent
+            - payee
+          description: The order's intent and payee as PayPal's checkout stated them, when
+            it did.
+      required:
+        - orderId
+        - crossCheck
+    AmountConfirmation:
+      type: object
+      properties:
+        purchaseId:
+          type: string
+        store:
+          type: string
+        payee:
+          type: string
+        total:
+          type: object
+          properties:
+            currency:
+              type: string
+            minor:
+              type: string
+          required:
+            - currency
+            - minor
+        intent:
+          type: string
+          enum:
+            - CAPTURE
+            - AUTHORIZE
+        state:
+          type: string
+          enum:
+            - PENDING
+            - CONFIRMED
+            - DECLINED
+            - EXPIRED
+        expiresAt:
+          type: string
+        challenge:
+          type: string
+          description: The WebAuthn challenge, base64url.
+        credentialId:
+          type: string
+          description: The passkey that signed the mandate.
+        spc:
+          type: object
+          properties:
+            payeeName:
+              type: string
+            payeeOrigin:
+              type: string
+            total:
+              type: object
+              properties:
+                currency:
+                  type: string
+                value:
+                  type: string
+              required:
+                - currency
+                - value
+          required:
+            - payeeName
+            - payeeOrigin
+            - total
+      required:
+        - purchaseId
+        - store
+        - payee
+        - total
+        - intent
+        - state
+        - expiresAt
+        - challenge
+        - credentialId
+        - spc
     EvidenceUpload:
       type: object
       properties:
@@ -8493,6 +8919,304 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+  /ssf/streams:
+    post:
+      operationId: createSsfStream
+      tags:
+        - agents
+      summary: Create the app's Shared Signals stream
+      description: An app acting for a user creates its stream (OpenID SSF 1.0
+        §8.1.1), polled per RFC 8936, and is told by CAEP `session-revoked` when
+        the user stops every agent or disconnects it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                delivery:
+                  type: object
+                  properties:
+                    method:
+                      type: string
+                      enum:
+                        - urn:ietf:rfc:8936
+                  required:
+                    - method
+                events_requested:
+                  type: array
+                  items:
+                    type: string
+              required:
+                - delivery
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SsfStream"
+        "403":
+          description: Not an app acting for a user
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: The app already has a stream for this user
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+    delete:
+      operationId: deleteSsfStream
+      tags:
+        - agents
+      summary: Delete the app's Shared Signals stream
+      parameters:
+        - schema:
+            type: string
+          required: true
+          name: stream_id
+          in: query
+      responses:
+        "204":
+          description: Deleted
+        "403":
+          description: Not an app acting for a user
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: No such stream of this app
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /ssf/poll:
+    post:
+      operationId: pollSsfEvents
+      tags:
+        - agents
+      summary: Poll the app's security events (RFC 8936)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ack:
+                  type: array
+                  items:
+                    type: string
+                  maxItems: 100
+                maxEvents:
+                  type: integer
+                  minimum: 0
+                  maximum: 100
+                returnImmediately:
+                  type: boolean
+      responses:
+        "200":
+          description: Events not yet acknowledged
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sets:
+                    type: object
+                    additionalProperties:
+                      type: string
+                  moreAvailable:
+                    type: boolean
+                required:
+                  - sets
+                  - moreAvailable
+        "403":
+          description: Not an app acting for a user
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: The app has no stream for this user
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /access/v1/evaluation:
+    post:
+      operationId: accessEvaluation
+      tags:
+        - mandates
+      summary: Preview a cart against a mandate (OpenID AuthZEN)
+      description: "The Access Evaluation API of OpenID AuthZEN 1.0: would this
+        agent's purchase of this cart pass this mandate now? It answers from the
+        same policy set the TEE legs run, as `POST /v1/mandates/{id}/check`
+        does, and is never binding."
+      security:
+        - oauth2:
+            - countersign:write
+        - oauth2:
+            - purchases:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AccessEvaluationRequest"
+      responses:
+        "200":
+          description: The decision
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccessEvaluationResponse"
+        "401":
+          description: No valid access token
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /access/v1/evaluations:
+    post:
+      operationId: accessEvaluations
+      tags:
+        - mandates
+      summary: Preview several carts (OpenID AuthZEN boxcar)
+      description: Up to 20 evaluations in one request, in order. Each takes the
+        request's `subject`, `action` and `resource` for any it omits.
+      security:
+        - oauth2:
+            - countersign:write
+        - oauth2:
+            - purchases:write
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                subject:
+                  type: object
+                  properties:
+                    type:
+                      type: string
+                      enum:
+                        - agent
+                    id:
+                      type: string
+                      minLength: 1
+                  required:
+                    - type
+                    - id
+                action:
+                  type: object
+                  properties:
+                    name:
+                      type: string
+                      enum:
+                        - purchase
+                  required:
+                    - name
+                resource:
+                  type: object
+                  properties:
+                    type:
+                      type: string
+                      enum:
+                        - mandate
+                    id:
+                      type: string
+                      pattern: ^[0-7][0-9A-HJKMNP-TV-Z]{25}$
+                    properties:
+                      type: object
+                      properties:
+                        cart:
+                          $ref: "#/components/schemas/Cart"
+                      required:
+                        - cart
+                  required:
+                    - type
+                    - id
+                    - properties
+                evaluations:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      subject:
+                        type: object
+                        properties:
+                          type:
+                            type: string
+                            enum:
+                              - agent
+                          id:
+                            type: string
+                            minLength: 1
+                        required:
+                          - type
+                          - id
+                      action:
+                        type: object
+                        properties:
+                          name:
+                            type: string
+                            enum:
+                              - purchase
+                        required:
+                          - name
+                      resource:
+                        type: object
+                        properties:
+                          type:
+                            type: string
+                            enum:
+                              - mandate
+                          id:
+                            type: string
+                            pattern: ^[0-7][0-9A-HJKMNP-TV-Z]{25}$
+                          properties:
+                            type: object
+                            properties:
+                              cart:
+                                $ref: "#/components/schemas/Cart"
+                            required:
+                              - cart
+                        required:
+                          - type
+                          - id
+                          - properties
+                  minItems: 1
+                  maxItems: 20
+              required:
+                - evaluations
+      responses:
+        "200":
+          description: The decisions, in order
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  evaluations:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/AccessEvaluationResponse"
+                required:
+                  - evaluations
+        "401":
+          description: No valid access token
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
   /v1/embed/origins:
     put:
       operationId: setEmbedOrigins
@@ -10144,6 +10868,205 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "409":
           description: The card is not open
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/purchases/{id}/amount-check:
+    post:
+      operationId: checkPurchaseAmount
+      tags:
+        - purchases
+      summary: Decide a live checkout's amount before the pay click
+      description: "For a live purchase Keelson allowed, right before the agent pays
+        PayPal's order `orderId`. Keelson reads the order with PayPal's Orders
+        API (`GET /v2/checkout/orders/{id}`) and answers `200` when it charges
+        exactly the countersigned total to a payee the mandate names. When
+        Keelson cannot read the order, the user confirms the amount with their
+        passkey: the first call answers `202` and sends the confirmation to
+        their phone, and later calls answer `202` until they confirm (`200`),
+        decline (`409 amount-declined`) or let it expire (`410`). `crossCheck`
+        is what PayPal's checkout stated for the same order; `disagrees` always
+        holds. Decided once per purchase; only the client that asked for the
+        countersign may call it."
+      security:
+        - oauth2:
+            - countersign:write
+      parameters:
+        - schema:
+            type: string
+            minLength: 26
+            maxLength: 26
+          required: true
+          name: id
+          in: path
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AmountCheckRequest"
+      responses:
+        "200":
+          description: An authority decided the amount
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AmountCheck"
+        "202":
+          description: The user is asked to confirm the amount on their phone
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  needs:
+                    type: string
+                    enum:
+                      - user_confirmed
+                  expiresAt:
+                    type: string
+                required:
+                  - needs
+                  - expiresAt
+        "404":
+          description: No such live purchase of this client
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: PayPal's order does not charge the countersigned total
+            (`amount-mismatch`, with `field`), another order was decided for
+            this purchase, or the user declined
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "410":
+          description: The user did not confirm in time
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: PayPal did not answer
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/purchases/{id}/amount-confirmation:
+    get:
+      operationId: getAmountConfirmation
+      tags:
+        - purchases
+      summary: The amount the user is asked to confirm
+      security:
+        - session: []
+      parameters:
+        - schema:
+            type: string
+            minLength: 26
+            maxLength: 26
+          required: true
+          name: id
+          in: path
+      responses:
+        "200":
+          description: The confirmation
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AmountConfirmation"
+        "404":
+          description: No confirmation for this user
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+    post:
+      operationId: answerAmountConfirmation
+      tags:
+        - purchases
+      summary: Confirm or decline a live checkout's amount
+      description: 'Confirms the amount with the passkey that signed the mandate: a
+        WebAuthn or Secure Payment Confirmation assertion over
+        `SHA-256("keelson/amount-confirm/v1" || 0x00 || JCS({purchase_id,
+        order_id_hash, currency, minor, payee}))`. Or declines it, and the agent
+        does not pay.'
+      security:
+        - session: []
+      parameters:
+        - schema:
+            type: string
+            minLength: 26
+            maxLength: 26
+          required: true
+          name: id
+          in: path
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              anyOf:
+                - type: object
+                  properties:
+                    assertion:
+                      type: object
+                      properties:
+                        authenticatorData:
+                          type: string
+                        clientDataJSON:
+                          type: string
+                        signature:
+                          type: string
+                        credentialId:
+                          type: string
+                        userHandle:
+                          type: string
+                      required:
+                        - authenticatorData
+                        - clientDataJSON
+                        - signature
+                        - credentialId
+                  required:
+                    - assertion
+                - type: object
+                  properties:
+                    decline:
+                      type: boolean
+                      enum:
+                        - true
+                  required:
+                    - decline
+      responses:
+        "200":
+          description: The answer
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AmountConfirmation"
+        "401":
+          description: The assertion does not verify
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: No confirmation for this user
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: Already answered
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "410":
+          description: Expired
           content:
             application/problem+json:
               schema:

@@ -290,11 +290,11 @@ jobs:
       - run: sudo dpkg -i ~/debs/*.deb
       - run: pnpm install --frozen-lockfile
       - run: pnpm turbo run build --filter=@keelson/alibi...
-      - name: The Alibi PDFs embed their bundle, render the same twice and their QR decodes
+      - name: The Alibi PDFs embed their bundle, render the same twice, their QR decodes and the signed one verifies
         working-directory: packages/alibi
         env:
           ALIBI_PDF_OUT: ${{ runner.temp }}/alibi-pdf
-        run: pnpm exec vitest run test/pdf.test.ts
+        run: pnpm exec vitest run test/pdf.test.ts test/pdf-sign.test.ts
       - name: veraPDF validates every PDF as PDF/A-3b
         shell: bash
         run: packages/alibi/scripts/verapdf.sh "$RUNNER_TEMP"/alibi-pdf/*.pdf | tee -a "$GITHUB_STEP_SUMMARY"

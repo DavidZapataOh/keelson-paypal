@@ -14,7 +14,7 @@ import { agentName } from "../connections.ts";
 import { MERCHANTS } from "../merchants.ts";
 import type { StopRecord } from "../stop.ts";
 import { addressHash, type Email, sendEmail, signLink } from "./email.ts";
-import { sendPush, type Vapid } from "./push.ts";
+import { pushTopic, sendPush, type Vapid } from "./push.ts";
 
 /** Where alerts go out from and what they link to. Push needs `vapid`; email needs `resend`. */
 export interface Notifier {
@@ -40,7 +40,9 @@ export interface Alert {
   action: string;
   details?: { label: string; value: string; href?: string }[];
   /** Null for email only. */
-  push: { ttl: number; urgency: "normal" | "high" } | null;
+  push: { ttl: number; urgency: "low" | "normal" | "high" } | null;
+  /** Sent as a push only: it replaces the push about the same subject, and is never mailed. */
+  pushOnly?: boolean;
   subjectId?: string;
   logIndex?: bigint | null;
   alibiUrl?: string | null;
@@ -113,10 +115,23 @@ export async function deliver(n: Notifier, userId: string, alert: Alert): Promis
       ? sendPush(
           { db: n.db, log: n.log, vapid: n.vapid },
           userId,
-          { title: alert.title, body: alert.body, url: alert.url, tag: alert.event },
-          alert.push,
+          // One notification per subject: a newer push about it replaces the older one, shown or not.
+          {
+            title: alert.title,
+            body: alert.body,
+            url: alert.url,
+            tag: alert.subjectId ?? alert.event,
+          },
+          {
+            ...alert.push,
+            topic: alert.subjectId === undefined ? undefined : pushTopic(alert.subjectId),
+          },
         )
       : Promise.resolve(0);
+  if (alert.pushOnly) {
+    await pushed;
+    return;
+  }
   const [to] = await n.db
     .select({ address: alertEmails.address })
     .from(alertEmails)
@@ -202,6 +217,25 @@ export async function requestAlert(n: Notifier, requestId: string) {
   };
 }
 
+/** The user answered a request: its push, if still on a device, is replaced by the answer. */
+export async function decidedAlert(n: Notifier, requestId: string) {
+  const [r] = await n.db.select().from(agentConnections).where(eq(agentConnections.id, requestId));
+  if (!r?.userId || (r.state !== "APPROVED" && r.state !== "DENIED")) return undefined;
+  return {
+    userId: r.userId,
+    alert: {
+      event: "request.decided",
+      title: r.state === "APPROVED" ? `You approved ${r.name}` : `You declined ${r.name}`,
+      body: "Answered. Nothing else to do.",
+      url: `${n.appOrigin}/activity/`,
+      action: "See your activity",
+      push: { ttl: 600, urgency: "low" as const },
+      pushOnly: true,
+      subjectId: r.id,
+    },
+  };
+}
+
 /** A cart Keelson blocked, or a purchase PayPal captured (email only). */
 export async function purchaseAlert(n: Notifier, purchaseId: string, kind: "blocked" | "captured") {
   const [p] = await n.db
@@ -258,12 +292,16 @@ export function stopAlert(n: Notifier, userId: string, stop: StopRecord) {
     stop.released.length ? `${sum(stop.released)} released` : "",
     stop.releasing.length ? `${sum(stop.releasing)} releasing once pending purchases settle` : "",
   ].filter(Boolean);
+  const cards =
+    stop.cardsClosed > 0
+      ? `${stop.cardsClosed} single-use ${stop.cardsClosed === 1 ? "card" : "cards"} closed. `
+      : "";
   return Promise.resolve({
     userId,
     alert: {
       event: "agents.stopped",
       title: "All your agents are stopped",
-      body: `${stop.revoked} ${stop.revoked === 1 ? "mandate" : "mandates"} ended and every agent lost access. ${held.length ? `${held.join("; ")}.` : "Nothing was held."}`,
+      body: `${stop.revoked} ${stop.revoked === 1 ? "mandate" : "mandates"} ended and every agent lost access. ${cards}${held.length ? `${held.join("; ")}.` : "Nothing was held."}`,
       url: `${n.appOrigin}/activity/`,
       action: "See your activity",
       details: [

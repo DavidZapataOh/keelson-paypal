@@ -29,9 +29,27 @@ import { allowedPayees, decodeMandate, payeeAllowed } from "@keelson/mandate";
 import type { Deps } from "../app.ts";
 import { Amount, breakdowns, withBreakdown } from "../checkout.ts";
 import { requireClient, requirePrincipal } from "../middleware/auth.ts";
-import { cardViewOf, failedFields, type PurchaseView, purchaseView } from "../pipeline/drive.ts";
+import {
+  amountAuthorityView,
+  cardViewOf,
+  failedFields,
+  type PurchaseView,
+  purchaseView,
+} from "../pipeline/drive.ts";
 import { ProblemSchema, problem } from "../problem.ts";
 import { purchaseTimings, serverTiming } from "../server-timing.ts";
+
+/** What decided a live purchase's amount at the pay click. */
+const AmountAuthority = z
+  .object({
+    authority: z.enum(["paypal_order", "merchant_signed_cart", "user_confirmed", "checkout_page"]),
+    via: z.enum(["own", "partner", "ucp"]).optional(),
+    crossCheck: z.enum(["agrees", "unavailable"]),
+  })
+  .openapi("AmountAuthority", {
+    description:
+      "`paypal_order`: PayPal's Orders API returned the order at the countersigned total. `user_confirmed`: the user confirmed it with the passkey that signed the mandate. `crossCheck` is whether PayPal's checkout stated the same order.",
+  });
 
 /** How far the purchase got after its countersign. */
 export const PurchaseProgress = z.object({
@@ -116,10 +134,17 @@ export const PurchaseProgress = z.object({
       description:
         "A card purchase: its single-use card (never its number) and every authorization the card network sent it, with both legs' decision. `CAPTURED` once the merchant's capture settles.",
     }),
-  live: z.object({ store: z.string(), transactionId: z.string().nullable() }).optional().openapi({
-    description:
-      "A purchase the buyer pays at the store's own checkout: the store's origin and the PayPal transaction id once the agent recorded it. Never covered nor captured.",
-  }),
+  live: z
+    .object({
+      store: z.string(),
+      transactionId: z.string().nullable(),
+      amountAuthority: AmountAuthority.optional(),
+    })
+    .optional()
+    .openapi({
+      description:
+        "A purchase the buyer pays at the store's own checkout: the store's origin, what decided the amount at the pay click, and the PayPal transaction id once the agent recorded it. Never covered nor captured.",
+    }),
 });
 
 export function progressOf(view: PurchaseView | undefined): z.infer<typeof PurchaseProgress> {
@@ -270,6 +295,7 @@ const LivePurchase = z
       description:
         "When PayPal converted the charge to the buyer's currency: what the buyer paid at PayPal's rate, the reference rate and the spread, as the pay-click gate checked them. Reported by the agent; its Alibi verifies the arithmetic.",
     }),
+    amountAuthority: AmountAuthority.optional(),
     blocked: z.array(z.string()).openapi({
       description:
         "For a DENY, the mandate fields whose check failed, or leg A's reason when it denied on its read of the PayPal hold.",
@@ -463,6 +489,7 @@ export function registerPurchases(
             decision: p.state === "DENIED" ? ("deny" as const) : ("allow" as const),
             transactionId: p.paypalTransactionId,
             ...(p.conversion ? { conversion: p.conversion as unknown as Conversion } : {}),
+            ...(p.amountCheck ? { amountAuthority: amountAuthorityView(p.amountCheck) } : {}),
             blocked: p.state === "DENIED" ? denyReasons(p.evalTrace) : [],
             ...(card
               ? {

@@ -47,14 +47,7 @@ function decodeBounded(s: string, max: number, name: string): Uint8Array {
 /**
  * Verifies a passkey assertion over the mandate challenge
  * `M = SHA-256("keelson/mandate-challenge/v1" || 0x00 || H_sd || C_m)`. `cm` is taken from the
- * caller: the salt behind `C_m` never reaches the server. User verification is required, and the
- * client data may come from WebAuthn (`webauthn.get`) or Secure Payment Confirmation
- * (`payment.get`). The signature counter must increase unless the authenticator reports zero.
- * The assertion is cross-origin exactly when `expectedTopOrigin` is given: made in Keelson's approval
- * framed by that top-level origin, the mandate's `embed.top_origin`. Token binding, attested
- * credential data and extensions are refused, and input sizes are bounded. For `payment.get`, the
- * payment data the browser showed must be `spc`, the SPC details derived from the mandate (SPC
- * section "Verifying an Authentication Assertion").
+ * caller: the salt behind `C_m` never reaches the server. See {@link verifyPasskeyAssertion}.
  */
 export async function verifyMandateSignature(args: {
   payloadSd: object;
@@ -68,6 +61,28 @@ export async function verifyMandateSignature(args: {
   spc: SpcDetails;
 }): Promise<{ M: Uint8Array; newCounter: number }> {
   const M = mandateChallenge(hSd(args.payloadSd), args.cm);
+  const { newCounter } = await verifyPasskeyAssertion({ ...args, challenge: M });
+  return { M, newCounter };
+}
+
+/**
+ * Verifies a passkey assertion over `challenge`. User verification is required, and the client
+ * data may come from WebAuthn (`webauthn.get`) or Secure Payment Confirmation (`payment.get`).
+ * The signature counter must increase unless the authenticator reports zero. The assertion is
+ * cross-origin exactly when `expectedTopOrigin` is given: made in Keelson's approval framed by
+ * that top-level origin. Token binding, attested credential data and extensions are refused, and
+ * input sizes are bounded. For `payment.get`, the payment data the browser showed must be `spc`
+ * (SPC section "Verifying an Authentication Assertion").
+ */
+export async function verifyPasskeyAssertion(args: {
+  challenge: Uint8Array;
+  assertion: SignedChallenge;
+  passkey: Passkey;
+  expectedOrigin: string;
+  expectedTopOrigin?: string | undefined;
+  expectedRpId: string;
+  spc: SpcDetails;
+}): Promise<{ newCounter: number }> {
   const { credentialId, ...response } = args.assertion;
   checkClientData(
     decodeBounded(args.assertion.clientDataJSON, MAX_CLIENT_DATA_JSON, "clientDataJSON"),
@@ -94,7 +109,7 @@ export async function verifyMandateSignature(args: {
         response,
         clientExtensionResults: {},
       },
-      expectedChallenge: isoBase64URL.fromBuffer(new Uint8Array(M)),
+      expectedChallenge: isoBase64URL.fromBuffer(new Uint8Array(args.challenge)),
       expectedOrigin: args.expectedOrigin,
       expectedRPID: args.expectedRpId,
       expectedType: ["webauthn.get", "payment.get"],
@@ -106,7 +121,7 @@ export async function verifyMandateSignature(args: {
       },
     });
     if (!verified) throw new SignatureError("signature did not verify");
-    return { M, newCounter: authenticationInfo.newCounter };
+    return { newCounter: authenticationInfo.newCounter };
   } catch (err) {
     if (err instanceof SignatureError) throw err;
     throw new SignatureError(err instanceof Error ? err.message : String(err));

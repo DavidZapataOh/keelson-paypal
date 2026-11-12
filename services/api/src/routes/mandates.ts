@@ -48,6 +48,7 @@ import { hostedCapError } from "../hosted-caps.ts";
 import { currentIssuer, needsRenewal } from "../issuer.ts";
 import { passkeyJwk, SignatureError, verifyMandateSignature } from "../mandate-signature.ts";
 import { requireSession } from "../middleware/auth.ts";
+import { decidedAlert, notify } from "../notify/notifier.ts";
 import { cardViewOf, purchaseView } from "../pipeline/drive.ts";
 import { type Principal, principalChannel } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
@@ -409,6 +410,7 @@ type MandateDeps = Pick<
   | "paypal"
   | "demoAgentId"
   | "hostedCaps"
+  | "notifier"
 >;
 
 /**
@@ -842,6 +844,7 @@ export async function storeMandate(
       request.id,
       { type: "connection.approved", userCode: request.userCode, mandateId: m.mid },
     );
+    notify(deps.notifier, (n) => decidedAlert(n, request.id));
     // Its hold is released now; the sweeper voids it if PayPal is down.
     if (kindOf(request) === "change" && request.parentMandateId) {
       const parent = await queries.mandateById(request.parentMandateId);

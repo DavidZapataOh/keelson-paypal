@@ -1,5 +1,12 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { toHex } from "@keelson/core";
+import {
+  BIT_CANON,
+  BIT_CEDAR_ERROR,
+  BIT_EXTRA,
+  BIT_PAYPAL,
+  FIELD_BITS,
+} from "@keelson/core/eip712";
 import { alibis, desc, eq, inArray, mandates, purchases } from "@keelson/db";
 import { renderCard } from "@keelson/mandate";
 import type { MiddlewareHandler } from "hono";
@@ -119,15 +126,36 @@ const tour = createRoute({
 
 const NO_EVIDENCE = { merchantSignedCheckout: false, zkTlsFields: new Set<never>() };
 
-function checksOf(trace: unknown): z.infer<typeof Check>[] {
+/** The mask bits that are no mandate field, named as the card's "Checks failed" reads them. */
+const FAULT_BITS: [number, string][] = [
+  [BIT_EXTRA, "extra_rule"],
+  [BIT_CANON, "cart"],
+  [BIT_CEDAR_ERROR, "policy"],
+  [BIT_PAYPAL, "paypal_order"],
+];
+
+/**
+ * Each check the engine ran, from its trace, plus whatever the countersigned `failedFieldsMask`
+ * says failed that the trace does not carry: a cart the canonicalizer refused never reaches Cedar,
+ * so its trace has no fields.
+ */
+function checksOf(trace: unknown, mask: number | null): z.infer<typeof Check>[] {
   const fields = (trace as { fields?: { id?: unknown; color?: unknown; pass?: unknown }[] } | null)
     ?.fields;
-  if (!Array.isArray(fields)) return [];
-  return fields.flatMap((f) =>
+  const checks = (Array.isArray(fields) ? fields : []).flatMap((f) =>
     typeof f.id === "string" && typeof f.pass === "boolean"
       ? [{ field: f.id, color: typeof f.color === "string" ? f.color : "gray", pass: f.pass }]
       : [],
   );
+  if (!mask) return checks;
+  const failed = (field: string) => {
+    const seen = checks.find((c) => c.field === field);
+    if (seen) seen.pass = false;
+    else checks.push({ field, color: "gray", pass: false });
+  };
+  for (const [field, bit] of Object.entries(FIELD_BITS)) if ((mask >>> bit) & 1) failed(field);
+  for (const [bit, field] of FAULT_BITS) if ((mask >>> bit) & 1) failed(field);
+  return checks;
 }
 
 /** Admits only a judge's session. */
@@ -152,18 +180,21 @@ export function registerJudge(
   >,
 ): void {
   const { db, auth } = deps;
-  app.on(
-    "POST",
-    "/v1/judge/sessions",
-    rateLimit(deps.kv, {
-      name: "judge",
-      limit: 5,
-      anonymousLimit: 5,
-      windowSec: 3600,
-      failClosed: true,
-      trustProxy: deps.rateLimit?.trustProxy ?? false,
-    }),
-  );
+  // Twenty new judges an hour per address, so a panel behind one NAT gets in; a valid invite is
+  // not held by it, only by the invited judges' daily cap.
+  const perAddress = rateLimit(deps.kv, {
+    name: "judge",
+    limit: 20,
+    anonymousLimit: 20,
+    windowSec: 3600,
+    failClosed: true,
+    trustProxy: deps.rateLimit?.trustProxy ?? false,
+  });
+  app.on("POST", "/v1/judge/sessions", async (c, next) => {
+    const body = (await c.req.json().catch(() => undefined)) as { invite?: unknown } | undefined;
+    const invite = typeof body?.invite === "string" ? body.invite : undefined;
+    return isInvite(deps.judgeInvite, invite) ? next() : perAddress(c, next);
+  });
   app.use("/v1/judge/tour", requireJudge(deps));
 
   app.openapi(start, async (c) => {
@@ -245,7 +276,7 @@ export function registerJudge(
               capture_id: v.capture?.id ?? null,
               coverage_tx: v.coverage?.txHash ?? null,
               failure: v.failure ? `${v.failure.step}: ${v.failure.reason}` : null,
-              checks: checksOf(p.evalTrace),
+              checks: checksOf(p.evalTrace, p.failedFieldsMask),
               alibi_fragment: fragment(p),
             };
           }),

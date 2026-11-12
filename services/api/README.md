@@ -138,6 +138,15 @@ set; the API runs disputes when it has the legs and the log. Without either the 
 | Merchant          | R11, R21, R35, R40, R50 | same                                                    | `ORDER_DETAILS` with the Alibi PDF                                                                                                                   |
 | Operator, Keelson | R00, R30, R31, R60, R61 | `accept-claim` (refund to the buyer)                    | none                                                                                                                                                 |
 
+The Alibi PDF that PayPal, the card issuer and `GET /v1/alibis/{id}.pdf` receive is signed with
+PAdES baseline B-T when `KEELSON_PDF_SIGNING_KEY` and `KEELSON_PDF_SIGNING_CHAIN` are set: an
+incremental `ETSI.CAdES.detached` signature over the file as rendered, signed attributes
+`contentType`, `messageDigest` and `signingCertificateV2`, and a DigiCert RFC 3161 timestamp of the
+signature value. The embedded `.alibi` is untouched. The chain is Keelson's own
+(`packages/alibi/scripts/pdf-cert.sh`), so a reader shows the signer as unknown until it trusts
+Keelson's root; any change after signing still shows. If the TSA is down, the PDF is sent unsigned
+(`X-Keelson-Pdf-Signature: unavailable`), never failed.
+
 The rule fixes the call and the evidence type; each submission carries one evidence, because
 PayPal requires an `item_id` on each of several evidences. With `ANTHROPIC_API_KEY` set, the notes are drafted
 in two calls, because Citations cannot be combined with structured outputs: `claude-opus-5-5`
@@ -338,6 +347,33 @@ mandate, so `POST /v1/countersign` refuses an authorization that is the hold of 
 or another request, and, for a per-purchase mandate, one that is not a hold Keelson created
 (`422 authorization-not-held`).
 
+## Live checkout amounts
+
+On a live checkout the agent pays the store's PayPal order. Before each pay action on PayPal, the
+pay-click gate asks `POST /v1/purchases/{id}/amount-check` what decides that order's amount, and
+pays only on its answer:
+
+1. **PayPal's Orders API** (`paypal_order`). Keelson reads the order with
+   `GET /v2/checkout/orders/{id}` and its own credentials, which PayPal answers only for orders
+   Keelson's PayPal app created (the demo store's, for example; any other answers `404`). The order
+   must have one purchase unit, be payable (`CREATED`, `SAVED`, `APPROVED` or
+   `PAYER_ACTION_REQUIRED`), and charge exactly the countersigned currency and total, its
+   breakdown when PayPal holds one, to a payee the mandate's `payment.allowed_payees` names.
+2. **The user's passkey** (`user_confirmed`), for an order Keelson cannot read. The first call
+   answers `202`, and the user gets a push and an email that open the confirmation in the app. They
+   confirm with the passkey that signed the mandate, over
+   `SHA-256("keelson/amount-confirm/v1" || 0x00 || JCS({purchase_id, order_id_hash, currency, minor, payee}))`,
+   as WebAuthn or Secure Payment Confirmation; or they decline. The gate waits up to three minutes;
+   the confirmation expires after ten, and then the agent stops.
+
+PayPal's checkout session (`GetCheckoutDetails`, below) is a cross-check: it never decides alone,
+and when it disagrees with the countersign or the authority, the gate holds. The decision must name
+the page's order (`order_id_hash`), is stored once per purchase, and is shown on the purchase, in
+`GET /v1/live-purchases` and in the Alibi as `paypal.amount_authority`, which the verifier checks
+(`paypal.amount_authority`): a passkey confirmation verifies offline with the mandate's passkey;
+`paypal_order` is stated as read by Keelson's API, since the TEE legs do not read the store's
+order. The user confirms the amount for stores whose orders another PayPal app creates.
+
 ## Live checkouts in another currency
 
 At a store's own checkout, the mandate, the countersign and PayPal's order stay in the store's
@@ -346,7 +382,8 @@ its rate on the funding side and shows the converted total on its review page. T
 pay-click gate (`services/agent/src/gate.ts`) decides on PayPal's order itself:
 
 1. **Order.** Right before each pay action on PayPal, the page asks PayPal's own GraphQL for
-   `GetCheckoutDetails`, the query PayPal's Smart Payment Buttons send. The total's
+   `GetCheckoutDetails`, the query PayPal's Smart Payment Buttons send, as a cross-check of the
+   amount authority above. The total's
    `currencyValue` and `currencyCode` must be the countersigned total exactly; its `subtotal`,
    `shippingAndHandling` and `tax`, when PayPal holds them, the countersigned breakdown (a
    breakdown that adds tax or shipping to the countersigned items is re-quoted). The intent must
@@ -459,6 +496,12 @@ every 15 s, so no proxy closes it while no event comes: it was measured open pas
 Cloudflare and Render. A client that loses it reconnects after 3 s with `Last-Event-ID` and gets
 only the events after that id.
 
+Events reach merchants and operators only through this stream: Keelson sends no outbound webhooks.
+A second push channel would duplicate delivery, retries and secrets for no consumer that needs it.
+If outbound webhooks are ever added, they follow Standard Webhooks (`webhook-id`,
+`webhook-timestamp`, `webhook-signature`), signed with the `svix` library that already verifies
+Channel3's.
+
 A DENY is logged too and stays `DENIED`. The ERC-8004 validation of a DENY is recorded with the
 operator's signature over its `ValidationRequest`, and coverages are released
 (`releaseCoverage`) once their window has passed. Keelson signs coverage only for the operator
@@ -514,8 +557,11 @@ anchoring are off the path, and `purchase.captured` is published before any of t
 
 ## Apps acting for a user
 
-An MCP host such as claude.ai, ChatGPT, Cursor or Claude Code connects over OAuth 2.1: it registers
-itself (RFC 7591, public client, PKCE with S256), the user signs in and consents at
+An MCP host such as claude.ai, ChatGPT, Cursor or Claude Code connects over OAuth 2.1 as a public
+client with PKCE (S256). It names itself by a Client ID Metadata Document (its `client_id` is an
+HTTPS URL; the server fetches the document itself, resolving the host once, pinning the address and
+following no redirect, and advertises `client_id_metadata_document_supported`), or else registers
+itself (RFC 7591). The user signs in and consents at
 `/consent`, and the host gets a JWT access token (RFC 9068) whose `sub` is the user and `azp`
 the host. Such a token carries at most these scopes, whatever the host's registration holds; the
 API never grants it `countersign:write` or any operator scope.
@@ -543,12 +589,23 @@ that operator's private `cnf` key, `KEELSON_AGENT_KEY`, over the request id and 
 cart in the same request, the cart the TEE legs then countersign. That key signs nothing else, and
 only once every check of the countersign has passed. Without it those countersigns answer `503`.
 
-**What the hosted bond backs.** Every app that registered itself (RFC 7591) and acts through the
+**Spending in the token (RFC 9396).** The authorization server advertises
+`authorization_details_types_supported: ["keelson_mandate"]`, the type an app asks for spending
+limits with. An access token issued to an app for a user carries, as `authorization_details`, each
+mandate that user approved for it and has not ended, with its id and limits, so a resource reads
+the grant from the token itself.
+
+**Who stands behind an app.** The consent and approval pages show it as `identity`
+(`src/oauth/cimd-trust.ts`): `cimd`, the host of the metadata document the server fetched; `operator`,
+the registered agent that linked the client; or `unverified`, an app that registered itself, whose
+name is its own claim. A name that mixes alphabets (UTS #39 confusables and restriction levels) is
+flagged on both pages.
+
+**What the hosted bond backs.** Every app without an operator of its own that acts through the
 hosted operator asks in USD only and is capped (`src/hosted-caps.ts`). Its exposure is what its
 live mandates have left plus what was captured under them in the last 180 days, while a buyer can
-still dispute it. A redirect URI says where codes go, not who registered, so a host whose every
-redirect URI is a known host's (Claude, ChatGPT, Cursor; never a loopback URI) only earns the
-higher tier: one user's exposure to apps Keelson does not know may not pass
+still dispute it. A name or a redirect URI proves nothing, so only an app named by a metadata
+document on a known host (claude.ai, claude.com, chatgpt.com, cursor.com) earns the higher tier: one user's exposure to apps Keelson does not know may not pass
 `HOSTED_CAP_PER_USER_MINOR` (default `10000`), and to all such apps `HOSTED_CAP_KNOWN_PER_USER_MINOR`
 (default `50000`). All users' funded exposure, counting only holds that completed, may not pass
 `HOSTED_CAP_TOTAL_MINOR` (default `100000`); a hold is measured again when it starts, counting the
@@ -557,9 +614,29 @@ buyer approved in that time is voided, so neither counts. A request, a change, a
 over a cap answers `422 hosted-cap`; approvals and holds are measured under an advisory lock, so
 concurrent ones cannot pass a cap. The consent page shows the per-user cap of the host's tier.
 
+**Telling connected apps.** An app acting for a user can learn of a stop or a disconnect the
+moment it happens through OpenID Shared Signals 1.0 (`/.well-known/ssf-configuration`). It creates
+its stream (`POST /ssf/streams`, one per app and user) and polls `POST /ssf/poll` (RFC 8936,
+`ack` to acknowledge). Each stop of every agent, and each disconnect of that app, queues a CAEP
+1.0 `session-revoked` Security Event Token (RFC 8417, `typ: secevent+jwt`, `sub_id` in `iss_sub`
+format) signed with the authorization server's key, so it verifies against `/api/auth/jwks`. A
+stream holds only its own user's events. Push delivery (RFC 8935) is not offered: polling needs no
+outbound request to an app's URL. The agents page shows "Gets stop signals" on such an app.
+
+**Sender-constrained tokens.** A client that sends a DPoP proof (RFC 9449, ES256 or EdDSA) to the
+token endpoint gets a token bound to its key (`token_type: DPoP`, `cnf.jkt`). The REST API then
+takes it only as `Authorization: DPoP` with a fresh proof for that request's method and URL and
+the token's hash; each proof id is reserved once in Postgres, across instances. A bound token sent
+as a bearer token, with a proof for another URL, a replayed proof or another key's proof, gets
+`401` with a `DPoP` challenge. `/mcp`, whose authorization is Bearer, refuses bound tokens. Every
+challenge names the protected resource metadata (RFC 9728 §5.1).
+
 Refresh tokens rotate and can be revoked (RFC 7009, `/api/auth/oauth2/revoke`). Stopping every
 agent (`POST /v1/agents/stop`) revokes the user's refresh tokens and consents and refuses every
-access token issued before it, on the API and on `/mcp`. Disconnecting one host
+access token issued before it, on the API and on `/mcp`. It also closes at the card issuer every
+single-use card none of whose authorizations was approved yet (`cardsClosed`), and the card veto
+declines any authorization of a stopped user's card as `stopped` before asking a leg, so a card the
+issuer has not closed yet is still refused. Disconnecting one host
 (`POST /v1/agents/{agentId}/disconnect?client={clientId}`, one row per host on the agents page)
 does the same for that host only: its mandates, requests, consent and refresh tokens end, and its
 access tokens issued before then are refused. The hosted operator's mandates no app holds show as

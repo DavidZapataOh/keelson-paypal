@@ -1,5 +1,5 @@
 import AxeBuilder from "@axe-core/playwright";
-import { type Browser, chromium, devices } from "playwright";
+import { type Browser, type BrowserContext, chromium, devices } from "playwright";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { serveOut } from "./static";
 
@@ -23,6 +23,40 @@ const VIEWPORTS = {
 } as const;
 
 const AXE_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-practice"];
+
+const note = (root: string) =>
+  `log.keelson.finance/conformance/2026-1\n8\n${root}\n\n— log.keelson.finance/conformance/2026-1 ${"A".repeat(92)}=\n`;
+/** A log bond slashed by the equivocation drill, with both signed checkpoints. */
+const SLASHED_BOND = {
+  chainId: 421614,
+  address: `0x${"b8".repeat(20)}`,
+  origin: "log.keelson.finance/conformance/2026-1",
+  test: true,
+  key: `0x${"ce".repeat(32)}`,
+  owner: `0x${"11".repeat(20)}`,
+  verifier: `0x${"22".repeat(20)}`,
+  canonical: true,
+  beneficiary: `0x${"33".repeat(20)}`,
+  bountyBps: 1000,
+  completionWindowSeconds: 86_400,
+  balanceMinor: "0",
+  withdrawalDelaySeconds: 604_800,
+  withdrawal: null,
+  equivocation: {
+    prover: `0x${"44".repeat(20)}`,
+    amountMinor: "70000",
+    bountyMinor: "7000",
+    provenAt: "2026-11-11T00:41:03.000Z",
+    size: "8",
+    rootA: `0x${"8c".repeat(32)}`,
+    rootB: `0x${"0a".repeat(32)}`,
+    noteA: note("jOVg1qZjazdB7Tj8rmWD+3QWGDDY3TyhORUctiQheD8="),
+    noteB: note("ChqwfS8BauYyPx0+PcCcKXU0rv4BzXuNivf0X6gCOZs="),
+    txHash: `0x${"55".repeat(32)}`,
+    explorerUrl: `https://sepolia.arbiscan.io/tx/0x${"55".repeat(32)}`,
+  },
+  explorerUrl: `https://sepolia.arbiscan.io/address/0x${"b8".repeat(20)}`,
+};
 
 describe.each(Object.keys(VIEWPORTS) as (keyof typeof VIEWPORTS)[])("signed out on %s", (kind) => {
   for (const [path, heading] of [
@@ -50,6 +84,30 @@ describe.each(Object.keys(VIEWPORTS) as (keyof typeof VIEWPORTS)[])("signed out 
       await context.close();
     });
   }
+
+  test("/status/ lets a keyboard scroll a slashed bond's signed checkpoints", async () => {
+    const context = await browser.newContext(VIEWPORTS[kind]);
+    await context.route(`${API}/**`, (route) => {
+      if (new URL(route.request().url()).pathname !== "/v1/log/bonds") {
+        return route.abort("connectionrefused");
+      }
+      return route.fulfill({
+        headers: {
+          "access-control-allow-origin": site.base,
+          "access-control-allow-credentials": "true",
+        },
+        json: { bonds: [SLASHED_BOND] },
+      });
+    });
+    const page = await context.newPage();
+    await page.goto(`${site.base}/status/`);
+    const checkpoint = page.getByRole("region", { name: "Checkpoint A" });
+    await checkpoint.waitFor();
+    expect(await checkpoint.evaluate((el) => el.tabIndex)).toBe(0);
+    const { violations } = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
+    expect(violations.map((v) => `${v.id}: ${v.nodes.length}`)).toEqual([]);
+    await context.close();
+  });
 
   test("/status/ keeps its shape while the first report loads", async () => {
     const context = await browser.newContext(VIEWPORTS[kind]);
@@ -178,43 +236,49 @@ const GRADE = {
   bond: { requiredMinor: 13900 },
 };
 
+/** A judge's session and tour, answered from this test; the step to open is `step`. */
+async function judgeTour(context: BrowserContext, now: string, step: number) {
+  await context.route(`${API}/**`, (route) => {
+    const path = new URL(route.request().url()).pathname;
+    const json = (value: unknown) =>
+      route.fulfill({ contentType: "application/json", body: JSON.stringify(value) });
+    if (path === "/api/auth/get-session") {
+      return json({
+        session: {
+          id: "s",
+          userId: "judge",
+          token: "t",
+          expiresAt: new Date(Date.now() + DAY).toISOString(),
+          createdAt: now,
+          updatedAt: now,
+        },
+        user: {
+          id: "judge",
+          name: "Judge",
+          email: "judge@example.test",
+          emailVerified: false,
+          createdAt: now,
+          updatedAt: now,
+        },
+      });
+    }
+    if (path === "/v1/judge/tour") return json(TOUR);
+    if (path === "/v1/disputes/PP-D-27803") return json(DISPUTE);
+    if (path === "/v1/operators/351/grade") return json(GRADE);
+    if (path === "/v1/log/bonds") return json({ bonds: [SLASHED_BOND] });
+    return route.abort("connectionrefused");
+  });
+  await context.addInitScript((s) => {
+    localStorage.setItem("keelson.session", "1");
+    localStorage.setItem("keelson.judge.step", String(s));
+  }, step);
+}
+
 describe.each(Object.keys(VIEWPORTS) as (keyof typeof VIEWPORTS)[])("touring on %s", (kind) => {
   test("the role switcher jumps between the shopper's, merchant's and operator's guided steps", async () => {
     const context = await browser.newContext(VIEWPORTS[kind]);
     const now = new Date().toISOString();
-    await context.route(`${API}/**`, (route) => {
-      const path = new URL(route.request().url()).pathname;
-      const json = (value: unknown) =>
-        route.fulfill({ contentType: "application/json", body: JSON.stringify(value) });
-      if (path === "/api/auth/get-session") {
-        return json({
-          session: {
-            id: "s",
-            userId: "judge",
-            token: "t",
-            expiresAt: new Date(Date.now() + DAY).toISOString(),
-            createdAt: now,
-            updatedAt: now,
-          },
-          user: {
-            id: "judge",
-            name: "Judge",
-            email: "judge@example.test",
-            emailVerified: false,
-            createdAt: now,
-            updatedAt: now,
-          },
-        });
-      }
-      if (path === "/v1/judge/tour") return json(TOUR);
-      if (path === "/v1/disputes/PP-D-27803") return json(DISPUTE);
-      if (path === "/v1/operators/351/grade") return json(GRADE);
-      return route.abort("connectionrefused");
-    });
-    await context.addInitScript(() => {
-      localStorage.setItem("keelson.session", "1");
-      localStorage.setItem("keelson.judge.step", "0");
-    });
+    await judgeTour(context, now, 0);
     const page = await context.newPage();
     const axe = async () => {
       const { violations } = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
@@ -258,6 +322,17 @@ describe.each(Object.keys(VIEWPORTS) as (keyof typeof VIEWPORTS)[])("touring on 
     expect(
       await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
     ).toBe(true);
+    await context.close();
+  });
+  test("the log step shows the slashed bond with its headings in order", async () => {
+    const context = await browser.newContext(VIEWPORTS[kind]);
+    await judgeTour(context, new Date().toISOString(), 4);
+    const page = await context.newPage();
+    await page.goto(`${site.base}/judge/`);
+    await page.getByRole("heading", { level: 1, name: "Catch the log lying" }).waitFor();
+    await page.getByRole("region", { name: "Checkpoint A" }).waitFor();
+    const { violations } = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
+    expect(violations.map((v) => `${v.id}: ${v.nodes.length}`)).toEqual([]);
     await context.close();
   });
 });

@@ -17,6 +17,7 @@
         "src/index.ts!",
         "src/verify/index.ts!",
         "src/pdf.ts!",
+        "src/pdf-sign.ts!",
         "src/extract.ts!",
         "scripts/*.ts",
         "bench/*.bench.ts"

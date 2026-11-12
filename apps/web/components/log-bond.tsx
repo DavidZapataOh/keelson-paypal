@@ -26,9 +26,14 @@ function SignedNote({ label, note }: { label: string; note: string }) {
   return (
     <figure className="grid min-w-0 gap-1.5">
       <figcaption className="text-muted-foreground text-xs">{label}</figcaption>
-      <pre className="overflow-x-auto rounded-md border bg-muted/40 p-3 font-mono text-[11px] leading-relaxed">
-        {note}
-      </pre>
+      <section
+        // biome-ignore lint/a11y/noNoninteractiveTabindex: a scrollable region must take keyboard focus (WCAG 2.1.1)
+        tabIndex={0}
+        aria-label={label}
+        className="overflow-x-auto rounded-md border bg-muted/40 p-3 outline-none focus-visible:ring-4 focus-visible:ring-foreground/15"
+      >
+        <pre className="font-mono text-[11px] leading-relaxed">{note}</pre>
+      </section>
     </figure>
   );
 }

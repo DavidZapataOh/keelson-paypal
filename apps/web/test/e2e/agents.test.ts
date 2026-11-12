@@ -361,6 +361,7 @@ describe.each(Object.keys(VIEWPORTS) as Kind[])("an app's consent on %s", (kind)
                 name: "Inspector",
                 uri: "https://inspector.example",
                 verified: false,
+                identity: { kind: "unverified" },
               },
               agent: null,
               scopes: ["alibis:read"],
@@ -380,7 +381,8 @@ describe.each(Object.keys(VIEWPORTS) as Kind[])("an app's consent on %s", (kind)
           : undefined,
     );
     await page.getByRole("heading", { level: 1, name: "Inspector wants to connect" }).waitFor();
-    expect(await page.getByText("Unverified client").count()).toBe(1);
+    expect(await page.getByText("Unverified app").count()).toBe(1);
+    expect(await page.getByTestId("identity-lock").count()).toBe(0);
     expect(await page.getByRole("checkbox", { name: /receipt/ }).isChecked()).toBe(true);
     expect(
       await page.getByText("It cannot pay outside these rules", { exact: false }).count(),
@@ -414,7 +416,13 @@ describe.each(Object.keys(VIEWPORTS) as Kind[])("an app's consent on %s", (kind)
         }
         return path === "/v1/oauth/consent"
           ? {
-              client: { id: "c2", name: "Claude", uri: "https://claude.ai", verified: false },
+              client: {
+                id: "https://claude.ai/oauth/mcp-oauth-client-metadata",
+                name: "Claude",
+                uri: "https://claude.ai",
+                verified: true,
+                identity: { kind: "cimd", host: "claude.ai", clientUri: "https://claude.ai" },
+              },
               agent: { agentId: "351", operator: "Keelson", hosted: true },
               scopes,
               spending: null,
@@ -424,6 +432,10 @@ describe.each(Object.keys(VIEWPORTS) as Kind[])("an app's consent on %s", (kind)
       },
     );
     await page.getByRole("heading", { level: 1, name: "Claude wants to connect" }).waitFor();
+    // The host the server fetched Claude's metadata document from, next to a lock.
+    await page.getByTestId("identity-lock").waitFor();
+    expect(await page.getByText("Verified claude.ai").count()).toBe(1);
+    expect(await page.getByText("Unverified app").count()).toBe(0);
     const can = page.getByRole("region", { name: "It can" });
     for (const name of [
       /Ask you for a spending mandate/,
@@ -455,6 +467,39 @@ describe.each(Object.keys(VIEWPORTS) as Kind[])("an app's consent on %s", (kind)
   });
 });
 
+describe.each(Object.keys(VIEWPORTS) as Kind[])("a lookalike app name on %s", (kind) => {
+  test("a name that mixes alphabets is flagged with what it looks like", async () => {
+    const { context, page } = await signedIn(
+      kind,
+      "/consent/?client_id=c3&scope=alibis%3Aread&sig=x",
+      (path) =>
+        path === "/v1/oauth/consent"
+          ? {
+              client: {
+                id: "c3",
+                // A Cyrillic "а" in place of the Latin "a".
+                name: "P\u0430yPal Store",
+                uri: null,
+                verified: false,
+                identity: { kind: "unverified" },
+              },
+              agent: null,
+              scopes: ["alibis:read"],
+              spending: null,
+              spendingError: null,
+            }
+          : undefined,
+    );
+    await page
+      .getByText("Looks like “PayPal Store”. This name mixes alphabets.", { exact: false })
+      .waitFor();
+    expect(await page.getByText("Unverified app").count()).toBe(1);
+    await axe(page);
+    await shot(page, kind, "consent-lookalike");
+    await context.close();
+  });
+});
+
 describe.each(Object.keys(VIEWPORTS) as Kind[])("agents on %s", (kind) => {
   test("each agent with what is left, and a stop whose reach is said", async () => {
     const agents = [
@@ -463,6 +508,7 @@ describe.each(Object.keys(VIEWPORTS) as Kind[])("agents on %s", (kind) => {
         name: "Claude Code",
         operator: "Anthropic Labs",
         connected: true,
+        signals: true,
         mandate: {
           id: "01M7MANDATE000000000000000",
           state: "ACTIVE",
@@ -481,6 +527,7 @@ describe.each(Object.keys(VIEWPORTS) as Kind[])("agents on %s", (kind) => {
     await page.getByRole("heading", { level: 1, name: "Agents" }).waitFor();
     await page.getByText("$11.94").waitFor();
     expect(await page.getByText("left of $50.00").count()).toBe(1);
+    expect(await page.getByText("Gets stop signals").count()).toBe(1);
     expect(
       await page
         .getByRole("meter", { name: "Claude Code has spent" })
@@ -533,6 +580,7 @@ describe.each(Object.keys(VIEWPORTS) as Kind[])("agents on %s", (kind) => {
         return {
           id: "01M7STOP000000000000000000",
           revoked: 1,
+          cardsClosed: 2,
           released: [{ currency: "USD", minor: "41200" }],
           releasing: [],
           mandateHashes: ["ab".repeat(32)],
@@ -556,7 +604,9 @@ describe.each(Object.keys(VIEWPORTS) as Kind[])("agents on %s", (kind) => {
     await page.mouse.down();
     await page.waitForTimeout(1800);
     await page.mouse.up();
-    await page.getByText("All agents stopped. $412.00 of holds released.").waitFor();
+    await page
+      .getByText("All agents stopped. $412.00 of holds released. 2 single-use cards closed.")
+      .waitFor();
     expect(await page.getByText("entry #1207", { exact: false }).count()).toBe(1);
     const listed = page.getByRole("link", { name: "1 approval revoked in the public status list" });
     expect(await listed.getAttribute("href")).toBe(

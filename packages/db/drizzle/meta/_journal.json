@@ -411,8 +411,29 @@
     {
       "idx": 58,
       "version": "7",
-      "when": 1794473140576,
-      "tag": "0058_engine_proved",
+      "when": 1794473704412,
+      "tag": "0058_live_amount_check",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1794489330180,
+      "tag": "0059_stop_cards",
+      "breakpoints": true
+    },
+    {
+      "idx": 60,
+      "version": "7",
+      "when": 1794495138400,
+      "tag": "0060_ssf",
+      "breakpoints": true
+    },
+    {
+      "idx": 61,
+      "version": "7",
+      "when": 1794501309832,
+      "tag": "0061_engine_proved",
       "breakpoints": true
     }
   ]

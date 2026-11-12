@@ -17,7 +17,7 @@ fn proving_is_within_budget() {
     prover()
         .prove(&d.statement, &d.opening, &d.merchant)
         .unwrap();
-    let mut ms: Vec<f64> = (0..20)
+    let mut ms: Vec<f64> = (0..40)
         .map(|_| {
             let t = Instant::now();
             prover()
@@ -27,6 +27,7 @@ fn proving_is_within_budget() {
         })
         .collect();
     ms.sort_by(f64::total_cmp);
-    println!("C1 prove: p50 {:.1} ms, max {:.1} ms", ms[10], ms[19]);
-    assert!(ms[10] < 400.0, "p50 {:.1} ms", ms[10]);
+    let (p50, p95, max) = (ms[19], ms[37], ms[39]);
+    println!("C1 prove: p50 {p50:.1} ms, p95 {p95:.1} ms, max {max:.1} ms");
+    assert!(p50 < 400.0, "p50 {p50:.1} ms");
 }

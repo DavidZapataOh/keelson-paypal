@@ -1,6 +1,6 @@
 {
   "name": "@keelson-finance/sdk",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Keelson for TypeScript: let an AI agent spend within a mandate the user signs with a passkey, and verify the receipt of every purchase.",
   "license": "Apache-2.0",
   "type": "module",

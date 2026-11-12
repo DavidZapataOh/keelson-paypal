@@ -1,5 +1,5 @@
 {
-  "id": "761fe49f-54cf-4be2-beaf-0b2df7a6decf",
+  "id": "bdee8aa3-9387-443f-8cdc-2ee25d9a5e68",
   "prevId": "a5247b5d-0f86-4b88-b488-99c96bb28f97",
   "version": "7",
   "dialect": "postgresql",
@@ -5590,6 +5590,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "amount_check": {
+          "name": "amount_check",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "amount_confirm": {
+          "name": "amount_confirm",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
         "paypal_ref_salt": {
           "name": "paypal_ref_salt",
           "type": "bytea",
@@ -5673,31 +5685,6 @@
           "type": "jsonb",
           "primaryKey": false,
           "notNull": false
-        },
-        "engine_proved": {
-          "name": "engine_proved",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "engine_request": {
-          "name": "engine_request",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "engine_attempted_at": {
-          "name": "engine_attempted_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "engine_resumes": {
-          "name": "engine_resumes",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
         },
         "amber": {
           "name": "amber",

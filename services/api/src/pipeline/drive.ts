@@ -12,6 +12,7 @@ import {
   purchases,
   sql,
 } from "@keelson/db";
+import type { AmountCheck } from "@keelson/mandate";
 import type { Relayer } from "@keelson/relayer";
 import type { Logger } from "pino";
 import type { RedisClientType } from "redis";
@@ -73,7 +74,7 @@ export interface PurchaseView {
   /** For a countersigned purchase, each mandate field with both values and that it held. */
   checks?: FieldCheck[];
   /** A purchase the buyer pays at the store's own checkout: the store and PayPal's transaction. */
-  live?: { store: string; transactionId: string | null };
+  live?: { store: string; transactionId: string | null; amountAuthority?: AmountAuthorityView };
   /** A card purchase: its single-use card and each authorization the card network sent it. */
   card?: CardView;
 }
@@ -229,9 +230,28 @@ export function purchaseView(p: Row): PurchaseView {
       : {}),
     ...verdict(p),
     ...(p.liveStore !== null
-      ? { live: { store: p.liveStore, transactionId: p.paypalTransactionId } }
+      ? {
+          live: {
+            store: p.liveStore,
+            transactionId: p.paypalTransactionId,
+            ...(p.amountCheck ? { amountAuthority: amountAuthorityView(p.amountCheck) } : {}),
+          },
+        }
       : {}),
   };
+}
+
+/** What decided a live purchase's amount, as its views show it. */
+export interface AmountAuthorityView {
+  authority: AmountCheck["authority"];
+  via?: NonNullable<AmountCheck["via"]>;
+  crossCheck: AmountCheck["cross_check"];
+}
+
+/** The view of a stored `keelson.amount_check/1`. */
+export function amountAuthorityView(stored: Record<string, unknown>): AmountAuthorityView {
+  const c = stored as unknown as AmountCheck;
+  return { authority: c.authority, ...(c.via ? { via: c.via } : {}), crossCheck: c.cross_check };
 }
 
 /** The single-use card of a card purchase and its authorizations, oldest first. */

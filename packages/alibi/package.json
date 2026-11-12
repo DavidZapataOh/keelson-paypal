@@ -16,6 +16,10 @@
       "types": "./dist/pdf.d.ts",
       "node": "./dist/pdf.js"
     },
+    "./pdf-sign": {
+      "types": "./dist/pdf-sign.d.ts",
+      "node": "./dist/pdf-sign.js"
+    },
     "./extract": {
       "types": "./dist/extract.d.ts",
       "default": "./dist/extract.js"
@@ -40,21 +44,26 @@
     "@keelson/mandate": "workspace:*",
     "@keelson/paypal": "workspace:*",
     "@keelson/policy": "workspace:*",
+    "@keelson/scitt": "workspace:*",
     "@keelson/timestamp": "workspace:*",
+    "@signpdf/placeholder-plain": "4.0.0",
+    "@signpdf/signpdf": "4.0.0",
+    "@signpdf/utils": "4.0.0",
+    "asn1js": "4.0.0",
     "jose": "6.2.15",
     "pdfjs-dist": "6.4.299",
     "pdfkit": "0.20.2",
+    "pkijs": "4.0.1",
     "qrcode": "1.5.4",
     "viem": "catalog:",
-    "zod": "catalog:",
-    "@keelson/scitt": "workspace:*"
+    "zod": "catalog:"
   },
   "devDependencies": {
+    "@noble/hashes": "catalog:",
     "@types/node": "26.6.6",
     "@types/pdfkit": "0.17.7",
     "@types/qrcode": "1.5.6",
     "typescript": "catalog:",
-    "vitest": "catalog:",
-    "@noble/hashes": "catalog:"
+    "vitest": "catalog:"
   }
 }

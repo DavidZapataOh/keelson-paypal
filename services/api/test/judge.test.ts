@@ -3,6 +3,7 @@ import type { AddressInfo } from "node:net";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { serve } from "@hono/node-server";
 import type { OpenAPIHono } from "@hono/zod-openapi";
+import { failedFieldsMask } from "@keelson/core/eip712";
 import {
   alibis,
   disputes,
@@ -93,6 +94,7 @@ let shopperCookie = "";
 let mandateId = "";
 let capturedId = "";
 let deniedId = "";
+let canonDeniedId = "";
 let disputeId = "";
 let campaignId = "";
 
@@ -137,6 +139,21 @@ beforeAll(async () => {
         { id: "merchant", color: "green", pass: true },
       ],
     },
+  });
+  // Denied before Cedar ran: the trace has no fields, only the signed mask says why.
+  canonDeniedId = ulid();
+  await testDb.insert(purchases).values({
+    id: canonDeniedId,
+    mandateId,
+    merchantId: "mrc_runfast",
+    currency: "USD",
+    amountMinor: 47_900n,
+    cartHash: randomBytes(32),
+    state: "DENIED",
+    logIndex: BigInt(Date.now()) + 1_000n,
+    decision: 2,
+    failedFieldsMask: failedFieldsMask(["amount"], { canon: true }),
+    evalTrace: { decision: "deny", errors: ["unit price differs from the store's listing"] },
   });
   capturedId = ulid();
   await testDb.insert(purchases).values({
@@ -238,10 +255,10 @@ describe("judge sessions", () => {
   test("addresses of one IPv6 /64 share the limit", async () => {
     const prefix = `2001:db8:${(Date.now() % 65_000).toString(16)}:1`;
     const statuses: number[] = [];
-    for (let i = 1; i <= 6; i++)
+    for (let i = 1; i <= 21; i++)
       statuses.push((await startJudge(`${prefix}::${i.toString(16)}`)).status);
-    expect(statuses.filter((s) => s === 201)).toHaveLength(5);
-    expect(statuses[5]).toBe(429);
+    expect(statuses.filter((s) => s === 201)).toHaveLength(20);
+    expect(statuses[20]).toBe(429);
   });
 
   test("a judge cannot link a PayPal account to its tenant", async () => {
@@ -266,12 +283,12 @@ describe("judge sessions", () => {
     expect((await call("/v1/merchants/me", cookie)).status).toBe(401);
   });
 
-  test("five judges an hour per address", async () => {
+  test("twenty judges an hour per address", async () => {
     const statuses: number[] = [];
     const ip = `10.9.${Date.now() % 250}.9`;
-    for (let i = 0; i < 6; i++) statuses.push((await startJudge(ip)).status);
-    expect(statuses.slice(0, 5)).toEqual([201, 201, 201, 201, 201]);
-    expect(statuses[5]).toBe(429);
+    for (let i = 0; i < 21; i++) statuses.push((await startJudge(ip)).status);
+    expect(statuses.slice(0, 20)).toEqual(Array(20).fill(201));
+    expect(statuses[20]).toBe(429);
   });
 });
 
@@ -309,6 +326,10 @@ describe("tour", () => {
     expect(byId[deniedId]?.checks.filter((c) => !c.pass).map((c) => c.field)).toEqual([
       "amount",
       "line_items",
+    ]);
+    expect(byId[canonDeniedId]?.checks.filter((c) => !c.pass).map((c) => c.field)).toEqual([
+      "amount",
+      "cart",
     ]);
   });
 
@@ -579,13 +600,17 @@ describe("invite", () => {
     judgeInvite: invite,
   });
   const today = () => new Date().toISOString().slice(0, 10);
-  const open = (target: OpenAPIHono, body?: unknown) =>
+  const open = (
+    target: OpenAPIHono,
+    body?: unknown,
+    ip = `10.8.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}`,
+  ) =>
     target.request("/v1/judge/sessions", {
       method: "POST",
       headers: {
         origin: baseURL,
         "idempotency-key": ulid(),
-        "x-forwarded-for": `10.8.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}, 10.255.0.1, 10.255.0.2`,
+        "x-forwarded-for": `${ip}, 10.255.0.1, 10.255.0.2`,
         ...(body === undefined ? {} : { "content-type": "application/json" }),
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
@@ -604,6 +629,13 @@ describe("invite", () => {
     expect(res.status).toBe(201);
     expect(res.headers.getSetCookie().join()).toContain("better-auth.session_token=");
     expect(await testKv.get(`judge:invited:${today()}`)).toBe("1");
+  });
+
+  test("invited judges behind one address are not held by the per-address limit", async () => {
+    const ip = `10.7.${Date.now() % 250}.7`;
+    const statuses: number[] = [];
+    for (let i = 0; i < 25; i++) statuses.push((await open(invited, { invite }, ip)).status);
+    expect(statuses).toEqual(Array(25).fill(201));
   });
 
   test("a wrong invite gets no bypass", async () => {

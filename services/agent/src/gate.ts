@@ -6,7 +6,7 @@ import {
   type FxReference,
   spreadBps,
 } from "@keelson/core";
-import { payeeAllowed } from "@keelson/mandate";
+import { type AmountCheck, orderIdHash, payeeAllowed } from "@keelson/mandate";
 import type { Locator, Page } from "playwright";
 import {
   decimalText,
@@ -88,6 +88,52 @@ function fundingLog(total: CheckoutTotal, f: Partial<Funding>): FundingLog {
   };
 }
 
+/**
+ * Keelson's answer on what decides a PayPal order's amount (`POST /v1/purchases/{id}/amount-check`):
+ * the decision, the user still confirming it on their phone, or why the order is not paid.
+ */
+export type AuthorityAnswer =
+  | { check: AmountCheck }
+  | { needs: "user_confirmed" }
+  | { refused: string };
+
+/**
+ * Asks Keelson to decide the amount of PayPal's order `orderId` for the countersigned purchase,
+ * with what PayPal's checkout stated for it (`order`), when it did.
+ */
+export type Authority = (
+  orderId: string,
+  crossCheck: "agrees" | "unavailable",
+  order?: { intent: string; payee: string },
+) => Promise<AuthorityAnswer>;
+
+/** How long the gate waits on the user to confirm an amount on their phone, at most. */
+const CONFIRM_WAIT_MS = 180_000;
+const CONFIRM_POLL_MS = 2_000;
+const INTENT_OF: Readonly<Record<AmountCheck["intent"], string>> = {
+  CAPTURE: "SALE",
+  AUTHORIZE: "AUTHORIZE",
+};
+
+/**
+ * PayPal's order as its authority decided it, for reading the funding of a checkout whose session
+ * did not answer: the countersigned total, which the authority's equals, and its payee and intent.
+ */
+function chargeOf(check: AmountCheck, total: CheckoutTotal): PayPalCharge {
+  const digits = minorDigits(total.currency);
+  const text = (m: number) => decimalText(m, digits);
+  return {
+    intent: INTENT_OF[check.intent],
+    currency: total.currency,
+    value: text(total.minor),
+    subtotal: text(total.items),
+    shipping: text(total.shipping),
+    tax: text(total.tax),
+    discount: text(total.discount),
+    payee: check.payee,
+  };
+}
+
 /** What the agent is about to do in the browser that could commit a payment. */
 export type PayAction =
   | { kind: "click"; target: Locator }
@@ -120,6 +166,11 @@ export type PayAction =
  * of the reference rate Keelson fetched when it countersigned, at the rate the charge gives for
  * the order. Whatever PayPal's data does not state is held; the page's text can only hold: it
  * must show no larger charge, no other conversion, and rate lines that are PayPal's rate rounded.
+ *
+ * With an {@link Authority}, PayPal's checkout session is only a cross-check: before paying, the
+ * gate asks Keelson what decides the order's amount, PayPal's Orders API or the user's passkey,
+ * and pays only an order that authority decided at the countersigned total, for this page's
+ * order. While the user confirms it on their phone, the action waits.
  */
 export class PayGate {
   readonly #checkoutHosts: readonly string[];
@@ -127,13 +178,17 @@ export class PayGate {
   readonly #cart: (() => Promise<Money | undefined>) | undefined;
   readonly #payees: readonly string[];
   readonly #maxSpreadBps: number;
+  readonly #authority: Authority | undefined;
+  readonly #confirmWaitMs: number;
   #total: CheckoutTotal | undefined;
   #reference: FxReference | undefined;
   /**
    * What the last pay action let through on PayPal paid: PayPal's order, what PayPal charges the
    * buyer for it and where that was read, and its conversion to the buyer's currency, if any.
    */
-  paid: { charge: PayPalCharge; funding: FundingLog; conversion?: Conversion } | undefined;
+  paid:
+    | { charge: PayPalCharge; funding: FundingLog; conversion?: Conversion; check?: AmountCheck }
+    | undefined;
   #requote: CheckoutTotal | undefined;
   /** Actions refused so far. */
   refused = 0;
@@ -172,12 +227,18 @@ export class PayGate {
     payees?: readonly string[];
     /** The mandate's `fx.max_spread_bps`. */
     maxSpreadBps?: number;
+    /** What decides a PayPal order's amount; without it, PayPal's checkout session does. */
+    authority?: Authority;
+    /** How long a pay action waits on the user confirming its amount. */
+    confirmWaitMs?: number;
   }) {
     this.#checkoutHosts = o.checkoutHosts;
     this.#convertHosts = o.convertHosts ?? PAYPAL_HOSTS;
     this.#cart = o.cart;
     this.#payees = o.payees ?? [];
     this.#maxSpreadBps = o.maxSpreadBps ?? DEFAULT_MAX_SPREAD_BPS;
+    this.#authority = o.authority;
+    this.#confirmWaitMs = o.confirmWaitMs ?? CONFIRM_WAIT_MS;
   }
 
   /**
@@ -291,7 +352,7 @@ export class PayGate {
     const cartOk =
       !this.#cart ||
       (cart?.currency === total.currency && cart.minor === total.items - total.discount);
-    let paypal: { charge: PayPalCharge; funding: Funding } | undefined;
+    let paypal: { charge: PayPalCharge; funding: Funding; check?: AmountCheck } | undefined;
     let conversion: Conversion | undefined;
     if (converts) {
       paypal = await this.#order(page, form, total, show, read);
@@ -376,6 +437,7 @@ export class PayGate {
         charge: paypal.charge,
         funding: fundingLog(total, paypal.funding),
         ...(conversion ? { conversion } : {}),
+        ...(paypal.check ? { check: paypal.check } : {}),
       };
     }
   }
@@ -423,7 +485,7 @@ export class PayGate {
     total: CheckoutTotal,
     show: (m: number) => string,
     read: PageReading,
-  ): Promise<{ charge: PayPalCharge; funding: Funding }> {
+  ): Promise<{ charge: PayPalCharge; funding: Funding; check?: AmountCheck }> {
     let partial: Partial<Funding> | undefined;
     const fail = async (reason: string): Promise<never> => {
       this.held.push({
@@ -442,29 +504,85 @@ export class PayGate {
     if (!token || form === false) {
       return fail("PayPal's order for this page could not be read. Paying waits.");
     }
-    const charge = await readCharge(page);
-    if (!charge) return fail("PayPal's order for this page could not be read. Paying waits.");
-    const problem = chargeProblem(charge, total);
-    if (problem) {
-      const next = requoteOf(charge, total);
-      this.#requote = next;
-      return fail(
-        next
-          ? `this checkout's total is now ${show(next.minor)}, not the ${show(total.minor)} Keelson countersigned. Paying waits for Keelson to countersign the new total.`
-          : `${problem}, not the ${show(total.minor)} Keelson countersigned. Paying waits.`,
-      );
+    // PayPal's checkout session, read as PayPal's own buttons do: what decides the amount
+    // without an authority, and its cross-check with one. A disagreement always holds.
+    const session = await readCharge(page);
+    if (session) {
+      const problem = chargeProblem(session, total);
+      if (problem) {
+        const next = requoteOf(session, total);
+        this.#requote = next;
+        return fail(
+          next
+            ? `this checkout's total is now ${show(next.minor)}, not the ${show(total.minor)} Keelson countersigned. Paying waits for Keelson to countersign the new total.`
+            : `${problem}, not the ${show(total.minor)} Keelson countersigned. Paying waits.`,
+        );
+      }
+      if (!INTENTS.has(session.intent))
+        await fail(`PayPal's order is not a payment (${session.intent}).`);
+      if (!payeeAllowed(this.#payees, session.payee)) {
+        await fail("PayPal's order pays another merchant than the mandate names. Paying waits.");
+      }
     }
-    if (!INTENTS.has(charge.intent))
-      await fail(`PayPal's order is not a payment (${charge.intent}).`);
-    if (!payeeAllowed(this.#payees, charge.payee)) {
-      await fail("PayPal's order pays another merchant than the mandate names. Paying waits.");
+    let check: AmountCheck | undefined;
+    if (this.#authority) {
+      const answer = await this.#decide(token, session);
+      if ("refused" in answer) return fail(answer.refused);
+      check = answer.check;
+      if (check.order_id_hash !== orderIdHash(token)) {
+        return fail(
+          "PayPal's checkout shows a different order than PayPal's API returned. Paying waits.",
+        );
+      }
+      const field =
+        check.total.currency !== total.currency
+          ? "currency"
+          : check.total.minor !== total.minor
+            ? "total"
+            : !payeeAllowed(this.#payees, check.payee)
+              ? "payee"
+              : session && session.payee !== check.payee
+                ? "payee"
+                : session && session.intent !== INTENT_OF[check.intent]
+                  ? "intent"
+                  : undefined;
+      if (field) {
+        return fail(
+          `PayPal's order does not match what Keelson countersigned (${field}). Paying waits.`,
+        );
+      }
+    } else if (!session) {
+      return fail("PayPal's order for this page could not be read. Paying waits.");
     }
+    const charge: PayPalCharge = session ?? chargeOf(check as AmountCheck, total);
     const funding = await readFunding(page, token, form, charge);
     if (!funding.ok) {
       partial = funding.funding;
       return fail(`${funding.reason}. Paying waits.`);
     }
-    return { charge, funding: funding.funding };
+    return { charge, funding: funding.funding, ...(check ? { check } : {}) };
+  }
+
+  /** Keelson's decision on the order's amount, waiting while the user confirms it. */
+  async #decide(
+    token: string,
+    read: PayPalCharge | undefined,
+  ): Promise<{ check: AmountCheck } | { refused: string }> {
+    const authority = this.#authority as Authority;
+    const order = read ? { intent: read.intent, payee: read.payee } : undefined;
+    const until = Date.now() + this.#confirmWaitMs;
+    for (;;) {
+      const answer = await authority(token, read ? "agrees" : "unavailable", order).catch(() => ({
+        refused: "Keelson could not decide this amount. Paying waits.",
+      }));
+      if (!("needs" in answer)) return answer;
+      if (Date.now() + CONFIRM_POLL_MS > until) {
+        return {
+          refused: "Keelson is confirming this amount with you on your phone. Paying waits.",
+        };
+      }
+      await new Promise((r) => setTimeout(r, CONFIRM_POLL_MS));
+    }
   }
 
   /**

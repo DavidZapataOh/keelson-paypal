@@ -1,4 +1,4 @@
-import { generateKeyPairSync, randomBytes } from "node:crypto";
+import { createHash, generateKeyPairSync, randomBytes } from "node:crypto";
 import { readFile, stat } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -132,6 +132,38 @@ const PAGE_PERMISSIONS =
   "publickey-credentials-get=(self), publickey-credentials-create=(self), payment=(self), camera=(), microphone=(), geolocation=(), clipboard-read=()";
 
 /**
+ * The Content-Security-Policy the API sends with `html`: its inline scripts allowed by hash only,
+ * its assets from the origin the export names (the app's in production, the API's in a build
+ * without an asset origin).
+ */
+function pagePolicy(html: string, ancestors: string): string {
+  const assets = html.includes(`${APP}/_next/`) ? APP : API;
+  const hashes: string[] = [];
+  for (const [, attrs, text] of html.matchAll(/<script([^>]*)>([\s\S]*?)<\/script>/g)) {
+    if (!/\ssrc=/.test(attrs ?? "")) {
+      hashes.push(
+        `'sha256-${createHash("sha256")
+          .update(text ?? "")
+          .digest("base64")}'`,
+      );
+    }
+  }
+  return [
+    "default-src 'none'",
+    ["script-src", ...hashes, "'wasm-unsafe-eval'", assets].join(" "),
+    `worker-src blob: ${assets}`,
+    `style-src 'unsafe-inline' ${assets}`,
+    `font-src ${assets}`,
+    `img-src data: ${assets}`,
+    `connect-src 'self' data: ${assets}`,
+    "base-uri 'none'",
+    "object-src 'none'",
+    "form-action 'none'",
+    `frame-ancestors ${ancestors}`,
+  ].join("; ");
+}
+
+/**
  * A browser where `HOST` (or `EVIL`) is an agent platform page with the SDK, Keelson's API serves
  * the exported embed page with `frame-ancestors` for `HOST` only, and the app serves the export.
  */
@@ -196,12 +228,12 @@ setInterval(() => parent.postMessage({ source: "keelson", version: 1, type: "app
     const req = r.request();
     const url = new URL(req.url());
     if (url.pathname === "/embed/approve") {
-      const file = (await asset("/embed/approve")) as string;
+      const html = await readFile((await asset("/embed/approve")) as string, "utf8");
       return r.fulfill({
         contentType: "text/html",
-        body: await readFile(file),
+        body: html,
         headers: {
-          "content-security-policy": `frame-ancestors ${opts.ancestors ?? HOST}`,
+          "content-security-policy": pagePolicy(html, opts.ancestors ?? HOST),
           "permissions-policy": PAGE_PERMISSIONS,
         },
       });
@@ -308,6 +340,10 @@ setInterval(() => parent.postMessage({ source: "keelson", version: 1, type: "app
     return r.abort("connectionrefused");
   });
   const page = await context.newPage();
+  const refused: string[] = [];
+  page.on("console", (m) => {
+    if (m.text().includes("Content Security Policy")) refused.push(m.text());
+  });
   const cdp = await context.newCDPSession(page);
   await cdp.send("WebAuthn.enable");
   const { authenticatorId } = await cdp.send("WebAuthn.addVirtualAuthenticator", {
@@ -334,7 +370,7 @@ setInterval(() => parent.postMessage({ source: "keelson", version: 1, type: "app
     });
   }
   await page.goto(`${hostOrigin}/`);
-  return { context, page, api };
+  return { context, page, api, refused };
 }
 
 const frameOf = (page: Page) => page.frameLocator("#slot iframe");
@@ -386,7 +422,7 @@ describe("the embedded approval", () => {
 
   test("Allow waits until it has been visible; signing in and signing happen in the frame, with no window", async () => {
     const passkey = passkeyPair();
-    const { context, page, api } = await world({ passkey });
+    const { context, page, api, refused } = await world({ passkey });
     const frame = frameOf(page);
     const allow = frame.getByRole("button", { name: "Allow $120.00" });
     await allow.waitFor();
@@ -432,6 +468,8 @@ describe("the embedded approval", () => {
         mandateId: "01M7MANDATE000000000000000",
       });
     expect(windows).toBe(0);
+    // The page signed under the policy production sends, which allows no inline script by itself.
+    expect(refused).toEqual([]);
     await shot(page, "approved-in-frame");
     await context.close();
   });

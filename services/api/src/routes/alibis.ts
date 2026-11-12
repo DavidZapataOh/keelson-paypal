@@ -15,12 +15,12 @@ import {
   STATEMENT_MEDIA_TYPE,
   statementOf,
 } from "@keelson/alibi";
-import { renderAlibiPdf } from "@keelson/alibi/pdf";
 import { earOf, v1Shape, verifyAlibi } from "@keelson/alibi/verify";
 import { and, eq, evidenceBundles, mandates, purchases, user } from "@keelson/db";
 import type { Context } from "hono";
 import { loadBridge } from "../alibi/bridge.ts";
 import { loadAlibi, publicCopy } from "../alibi/issue.ts";
+import { alibiPdf } from "../alibi/pdf.ts";
 import type { Deps } from "../app.ts";
 import type { Principal } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
@@ -296,7 +296,7 @@ async function send(
 
 export function registerAlibis(
   app: OpenAPIHono,
-  deps: Pick<Deps, "db" | "alibiChain" | "demoAgentId">,
+  deps: Pick<Deps, "db" | "log" | "alibiChain" | "demoAgentId">,
 ): void {
   const levelOf = async (c: Context, id: string) => {
     const b = await loadAlibi(deps.db, id);
@@ -319,9 +319,18 @@ export function registerAlibis(
     const id = c.req.param("file").slice(0, 26);
     const b = await readable(c, id);
     if (!b) return missing(c);
-    return send(c, encodeAny(b), "pdf", () => renderAlibiPdf(b), {
-      "Content-Disposition": `attachment; filename="${id}.pdf"`,
-    });
+    return send(
+      c,
+      encodeAny(b),
+      "pdf",
+      async () => {
+        const { pdf, signed } = await alibiPdf(deps.log, b);
+        // Whether the file carries Keelson's PAdES signature, for clients that check it.
+        c.header("X-Keelson-Pdf-Signature", signed ? "pades-b-t" : "unavailable");
+        return pdf;
+      },
+      { "Content-Disposition": `attachment; filename="${id}.pdf"` },
+    );
   });
 
   app.openAPIRegistry.registerPath(coseRoute);
