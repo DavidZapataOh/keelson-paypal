@@ -139,6 +139,8 @@ contract BondVaultVetoForkTest is SlashBase {
         vm.prank(guardian);
         vault.vetoSlash(verdict.disputeId, "compromised leg");
         uint256 gVetoslash = _executionGas(abi.encodeCall(vault.vetoSlash, (verdict.disputeId, "compromised leg")));
+        assertFalse(vault.settled(verdict.disputeId), "reopened");
+        assertTrue(vault.vetoed(verdict.disputeId));
         emit log_named_uint("vetoSlash execution", gVetoslash);
         GasBudget.check("vetoSlash", gVetoslash);
         assertEq(vault.slashed(v.coverage.coverageId), 0);
@@ -146,8 +148,6 @@ contract BondVaultVetoForkTest is SlashBase {
         assertEq(vault.pendingSlashes(agentId), 0);
         assertEq(pyusd.balanceOf(address(vault)), vaultBalance);
         assertEq(abi.encode(_bond()), abi.encode(before));
-        assertFalse(vault.settled(verdict.disputeId), "reopened");
-        assertTrue(vault.vetoed(verdict.disputeId));
         assertEq(vault.coverages(v.coverage.coverageId).releaseAfter, reopenedUntil);
 
         vm.expectRevert(IKeelsonBondVault.NotQueued.selector);
