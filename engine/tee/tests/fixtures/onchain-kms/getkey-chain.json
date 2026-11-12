@@ -1,0 +1,28 @@
+[
+  {
+    "app_id": "4a3c4db01925b326746d1abd7b8978710f34de4e",
+    "kms_root": "02a335aea3df11d46ae0a373d3f26fbd1d208572ecc87e630e618dac693b7af721",
+    "domain": "keelson/log/log.keelson.finance/alibi/2026-1/v1",
+    "algorithm": "ed25519",
+    "origin": "log.keelson.finance/alibi/2026-1",
+    "vkey": "log.keelson.finance/alibi/2026-1+bdddc67c+AUP8v6W0TKgm6ZGJeE+DLSR4jNCgOetpzwmiLC4egkK/",
+    "public_key": "43fcbfa5b44ca826e99189784f832d24788cd0a039eb69cf09a22c2e1e8242bf",
+    "chain": [
+      "50536f1b25461fc74805d13ae0a1709811338777a39b1207b12dd972f858100e304bf6c4ed17b386bc3bd28cd06c209c383f0357b818e5bb6d50c85606f38ae701",
+      "41665d714930510ae080711dd29e1c835729f438b4c6f4619ac0a07545dbc9a66bcf9ace26c0cf020f03a5ab80369495db6c24052115e59c1af53e1c146fd8b701"
+    ]
+  },
+  {
+    "app_id": "4a3c4db01925b326746d1abd7b8978710f34de4e",
+    "kms_root": "02a335aea3df11d46ae0a373d3f26fbd1d208572ecc87e630e618dac693b7af721",
+    "domain": "keelson/log/log.keelson.finance/alibi-live/2026-1/v1",
+    "algorithm": "ed25519",
+    "origin": "log.keelson.finance/alibi-live/2026-1",
+    "vkey": "log.keelson.finance/alibi-live/2026-1+82bd1f2a+AaZN+qHJa4+joMm/Tlkp1jgJhbCW7j4LzPlYlMAK7gBm",
+    "public_key": "a64dfaa1c96b8fa3a0c9bf4e5929d6380985b096ee3e0bccf95894c00aee0066",
+    "chain": [
+      "406b490352280d1ec2b30eff4bf68df7be5174b0f1f25a039d23dbbc4ebc0319202ed1f6c2939d987574d9c74d38b6787fa0754830b92bc4b6218f3f229f706701",
+      "41665d714930510ae080711dd29e1c835729f438b4c6f4619ac0a07545dbc9a66bcf9ace26c0cf020f03a5ab80369495db6c24052115e59c1af53e1c146fd8b701"
+    ]
+  }
+]
