@@ -349,6 +349,38 @@ describe("a v2 Alibi in Chromium", () => {
     await page.close();
   });
 
+  test("a dropped standards export is checked in the page, offline, against its statement", async () => {
+    const { exportAcp, purchaseFacts } = await import("@keelson/interop");
+    const { ALLOW_PAYPAL, alibi, NOW, testIssuer } = await import(
+      "../../../../packages/interop/test/fixtures.ts"
+    );
+    const { v2Ref } = await import("../../../../packages/interop/test/v2.ts");
+    const x = await exportAcp(
+      purchaseFacts(alibi(ALLOW_PAYPAL)),
+      v2Ref("allow-2of2"),
+      {
+        issuer: await testIssuer(ALLOW_PAYPAL),
+      },
+      { now: NOW },
+    );
+    const { page, origins } = await open();
+    const before = origins.size;
+    await drop(
+      page,
+      `${ALLOW_PAYPAL}.acp.json`,
+      "application/json",
+      Buffer.from(JSON.stringify(x)),
+    );
+    const report = page.getByRole("region", { name: /Export (not )?verified/ });
+    await report.waitFor();
+    // The test issuer and receipt keys are not the pinned production ones.
+    expect(await report.getByRole("heading").textContent()).toBe("Export not verified");
+    expect(await report.getByText("The log's receipt includes that statement").count()).toBe(1);
+    expect(await report.getByText(/nothing was sent/).count()).toBe(1);
+    expect(origins.size).toBe(before);
+    await page.close();
+  });
+
   test("a v1 Alibi shows no standards panel", async () => {
     const { page } = await open();
     const f = fixtures.find((x) => x.mode === "2of2");

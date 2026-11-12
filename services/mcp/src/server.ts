@@ -204,6 +204,20 @@ const Next = z
   .describe("Exactly what the agent does next.");
 type Next = z.infer<typeof Next>;
 
+/**
+ * Who closed an export's mandates: Keelson, or nobody yet (`pending`, for the agent to close).
+ * Formats without mandates to close have no answer.
+ *
+ * @internal
+ */
+export function closedByOf(
+  format: "ap2" | "vi" | "ucp" | "acp" | "tap" | "visa",
+  artifact: Record<string, unknown>,
+): "keelson" | "pending" | undefined {
+  if (format !== "ap2" && format !== "vi" && format !== "ucp") return undefined;
+  return "pending_close" in artifact ? "pending" : "keelson";
+}
+
 /** The envelope every write tool answers with; each tool adds its own optional fields. */
 const Envelope = z.object({
   status: z.enum(STATUSES),
@@ -1390,6 +1404,59 @@ export function createKeelsonServer(o: KeelsonServerOptions): McpServer {
         },
         `The Alibi is ${report.verdict}. Anyone can check it in the browser at ${url}.`,
       );
+    },
+  );
+
+  server.registerTool(
+    "keelson.export_alibi",
+    {
+      title: "Export an Alibi to a standard",
+      description:
+        "The purchase in an agentic-commerce standard: AP2 mandates and receipts (`ap2`), a Mastercard Verifiable Intent chain (`vi`), a UCP checkout (`ucp`), an ACP allowance (`acp`), a signed Visa TAP request (`tap`) or the Visa evidence pack for a chargeback (`visa`). Each carries the purchase's SCITT transparent statement and is signed by Keelson's attested enclave.",
+      inputSchema: z.object({
+        purchaseId: Ulid,
+        format: z.enum(["ap2", "vi", "ucp", "acp", "tap", "visa"]),
+      }),
+      outputSchema: Envelope.extend({
+        reason: z.string().optional(),
+        artifact: z.record(z.string(), z.unknown()).optional(),
+        closedBy: z.enum(["keelson", "pending"]).optional(),
+      }),
+      annotations: { readOnlyHint: true, openWorldHint: true },
+      ...scopes("alibis:read"),
+    },
+    async ({ purchaseId, format }) => {
+      try {
+        const res = await call(keelson, `/v1/alibis/${purchaseId}/exports/${format}`);
+        const artifact = (await res.json()) as Record<string, unknown>;
+        const closedBy = closedByOf(format, artifact);
+        return envelope(
+          "success",
+          {
+            action: "tell_user",
+            say:
+              closedBy === "pending"
+                ? "Close the open mandates with your own agent key before presenting them."
+                : `Hand the ${format} export to whoever asked for it.`,
+          },
+          `The purchase as ${format}, signed by Keelson's attested enclave.`,
+          { artifact, ...(closedBy ? { closedBy } : {}) },
+        );
+      } catch (err) {
+        if (err instanceof KeelsonError && (err.status === 409 || err.status === 503)) {
+          const reason = String(err.problem.reason ?? "unavailable");
+          return envelope(
+            "blocked",
+            {
+              action: "tell_user",
+              say: `Tell the user this export is not available: ${err.message}`,
+            },
+            err.message,
+            { reason },
+          );
+        }
+        return failed(err, "keelson.export_alibi");
+      }
     },
   );
 

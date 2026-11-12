@@ -99,6 +99,15 @@ paths = [
 ]
 
 [[allowlists]]
+description = "The standards exports' pinned upstream schemas and vectors, the git commits they are pinned at, and published production Alibis"
+paths = [
+  '''packages/interop/vendor/.*''',
+  '''packages/interop/scripts/vendor\.ts''',
+  '''packages/interop/test/vendor\.test\.ts''',
+  '''packages/interop/test/fixtures/.*\.alibi''',
+]
+
+[[allowlists]]
 description = "Throwaway keys of the SCITT statement and receipt golden vectors (0x01..01, 0x02..02, 0x03..03 and a hashed test seed), never deployed"
 paths = [
   '''internal/scitt/testdata/.*\.json''',

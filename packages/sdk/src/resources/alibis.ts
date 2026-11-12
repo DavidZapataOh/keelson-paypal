@@ -3,6 +3,10 @@ import type { AlibiReceipt, AlibiReport } from "../types.ts";
 
 const ALIBI = "application/vnd.keelson.alibi.v1+json";
 
+/** The standards an Alibi exports to. */
+export const EXPORT_FORMATS = ["ap2", "vi", "ucp", "acp", "tap", "visa"] as const;
+export type ExportFormat = (typeof EXPORT_FORMATS)[number];
+
 export class Alibis {
   private readonly keelson: Keelson;
 
@@ -30,6 +34,17 @@ export class Alibis {
   async pdf(purchaseId: string): Promise<Uint8Array> {
     const path = `/v1/alibis/${encodeURIComponent(purchaseId)}.pdf`;
     return (await this.keelson.request<Uint8Array>("GET", path, { as: "bytes", auth: "optional" }))
+      .data;
+  }
+
+  /**
+   * The purchase in an agentic-commerce standard (AP2, Verifiable Intent, UCP, ACP, a Visa TAP
+   * request or the Visa evidence pack), signed by Keelson's attested enclave. Check it offline
+   * with `verifyExport` from `@keelson/interop`.
+   */
+  async export(purchaseId: string, format: ExportFormat): Promise<Record<string, unknown>> {
+    const path = `/v1/alibis/${encodeURIComponent(purchaseId)}/exports/${format}`;
+    return (await this.keelson.request<Record<string, unknown>>("GET", path, { auth: "optional" }))
       .data;
   }
 

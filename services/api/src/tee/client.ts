@@ -212,6 +212,8 @@ const HealthSchema = z.looseObject({
   now_ms: z.number(),
   /** 1 on a leg that signs SCITT statements. */
   statements: z.number().optional(),
+  /** Leg A's credential issuer public JWK, which signs standard exports. */
+  issuer: z.record(z.string(), z.unknown()).nullish(),
   /** 1 on a leg that resolves decoy digests by their salts. */
   decoys: z.number().optional(),
   /** 1 on a leg that checks the mandate status list. */
@@ -500,6 +502,18 @@ export class LegClient {
     return this.parse(
       z.strictObject({ token: z.string() }),
       await this.call("POST", "/v1/status/sign", req),
+    );
+  }
+
+  /** `POST /v1/exports/sign` on leg A: a standard export signed with the attested issuer key. */
+  async signExport(req: {
+    typ: string;
+    payload: unknown;
+    statement: string;
+  }): Promise<{ jws: string }> {
+    return this.parse(
+      z.strictObject({ jws: z.string() }),
+      await this.call("POST", "/v1/exports/sign", req),
     );
   }
 

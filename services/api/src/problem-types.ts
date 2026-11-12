@@ -298,6 +298,18 @@ export const PROBLEM_TYPES = {
     explain: "You are authenticated but not allowed to perform this action.",
     fix: "Use an account or session with the required role.",
   },
+  "export-binding": {
+    title: "Export not signed",
+    explain:
+      "The enclave issuer refused to sign this export: a fact it states does not match the purchase's logged statement.",
+    fix: "Do not retry the same export. Report the purchase id and format to Keelson.",
+  },
+  "export-refused": {
+    title: "Export refused",
+    explain:
+      "This standard cannot state this purchase, or the enclave issuer is unavailable; the reason member names which.",
+    fix: "On signer_unavailable, retry later. Otherwise use another format: the reason names what this one lacks.",
+  },
   "forbidden-channel": {
     title: "Forbidden channel",
     explain: "You may not subscribe to this channel.",

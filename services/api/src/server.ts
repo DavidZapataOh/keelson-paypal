@@ -1,6 +1,8 @@
 // Loads reflect-metadata before anything pulls in @keelson/attest (see tee/attest.ts).
 import { LithicIssuer } from "./cards/issuer.ts";
 import "./tee/attest.ts";
+import { ed25519Signer } from "@keelson/interop";
+import { calculateJwkThumbprint } from "jose";
 import "./telemetry.ts";
 import Anthropic from "@anthropic-ai/sdk";
 import { serve } from "@hono/node-server";
@@ -44,6 +46,7 @@ import { startPayPalPoller } from "./paypal/poll.ts";
 import { startPayPalEventWorker } from "./paypal/worker.ts";
 import { createPayPalDeps } from "./paypal.ts";
 import { appEmbedPage } from "./routes/embed-page.ts";
+import { legIssuer } from "./routes/exports.ts";
 import { timings } from "./server-timing.ts";
 import { closeServer } from "./shutdown.ts";
 import { startPipelineResumer, startPurchaseSweeper, startSettlementSweeper } from "./sweeper.ts";
@@ -234,9 +237,19 @@ const cards = env.LITHIC_API_KEY
   : undefined;
 // Keelson's hosted operator closes, with its own cnf key, the mandates of apps that have no
 // operator of their own (see delegated.ts).
-const hostedAgentKey = env.KEELSON_AGENT_KEY
-  ? (await agentKey(env.KEELSON_AGENT_KEY)).privateKey
+const hosted = env.KEELSON_AGENT_KEY ? await agentKey(env.KEELSON_AGENT_KEY) : undefined;
+const hostedAgentKey = hosted?.privateKey;
+const hostedAgent = hosted
+  ? {
+      jwk: { ...hosted.publicJwk, kid: await calculateJwkThumbprint(hosted.publicJwk) },
+      key: hosted.privateKey,
+    }
   : undefined;
+const agentHttpKey = env.KEELSON_AGENT_HTTP_KEY
+  ? await ed25519Signer(JSON.parse(env.KEELSON_AGENT_HTTP_KEY))
+  : undefined;
+// Leg A signs exports with its attested issuer key, which its health names once it can.
+const exportIssuer = tee ? legIssuer(tee.client.a) : undefined;
 const app = createApp({
   db,
   kv,
@@ -253,6 +266,9 @@ const app = createApp({
   authBaseUrl: env.BETTER_AUTH_URL,
   demoAgentId: env.DEMO_AGENT_ID,
   ...(hostedAgentKey ? { hostedAgentKey } : {}),
+  ...(hostedAgent ? { hostedAgent } : {}),
+  ...(agentHttpKey ? { agentHttpKey } : {}),
+  ...(exportIssuer ? { exportIssuer } : {}),
   hostedCaps: {
     perUserMinor: env.HOSTED_CAP_PER_USER_MINOR,
     knownPerUserMinor: env.HOSTED_CAP_KNOWN_PER_USER_MINOR,

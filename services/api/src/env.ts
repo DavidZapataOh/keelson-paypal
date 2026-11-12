@@ -53,6 +53,8 @@ const schema = z
      * apps that act for a user through Keelson's hosted operator with it (see `delegated.ts`).
      */
     KEELSON_AGENT_KEY: z.string().min(1).optional(),
+    /** The hosted agent's private Ed25519 JWK; it signs RFC 9421 requests (TAP, Web Bot Auth). */
+    KEELSON_AGENT_HTTP_KEY: z.string().min(1).optional(),
     /**
      * What the hosted operator's bond backs for apps that registered themselves (see
      * `hosted-caps.ts`), in minor units: one user's exposure to apps it does not know, one user's

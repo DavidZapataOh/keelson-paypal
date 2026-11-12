@@ -28,6 +28,7 @@ import { major, money, when } from "../lib/format";
 import { purchaseStatus, unknownOutcome } from "../lib/status";
 import type { Dispute, Purchase } from "../lib/types";
 import { useMandate } from "../lib/use-mandate";
+import { AlibiExports } from "./alibi-exports";
 import { AlibiStandards, useStatement } from "./alibi-standards";
 import { AmountAuthorityLine } from "./amount-authority";
 import { AnonymousProof } from "./anonymous-proof";
@@ -548,6 +549,7 @@ function Receipt() {
               >
                 Download .alibi
               </Button>
+              <AlibiExports id={p.id} denied={p.state === "DENIED"} />
             </div>
             {pdfSigned ? (
               <p className="flex items-center gap-1.5 text-xs">

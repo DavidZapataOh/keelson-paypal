@@ -1,8 +1,11 @@
 import type { ChainReader, Check, Report as VerifyReport } from "@keelson/alibi/verify";
+import type { ExportReport as ExportReportValue } from "@keelson/interop";
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Anonymous } from "./Anonymous.tsx";
 import { Bonds } from "./Bonds.tsx";
 import { EngineProof } from "./EngineProof.tsx";
+import { ExportReport } from "./ExportReport.tsx";
+import { checkExport, exportOf } from "./exports.ts";
 import type { Loaded } from "./load.ts";
 import { Report } from "./Report.tsx";
 import { parseRoute, type Route, verifyLinkOf } from "./route.ts";
@@ -53,6 +56,7 @@ export function App() {
   const [rpcInput, setRpcInput] = useState(route.rpc ?? "");
   const [error, setErrorState] = useState<string | undefined>(route.rpcRefused);
   const [dragging, setDragging] = useState(false);
+  const [exported, setExported] = useState<{ name: string; report: ExportReportValue }>();
   const runId = useRef(0);
   const fromUser = useRef(false);
 
@@ -122,7 +126,7 @@ export function App() {
 
   const onFile = async (file: File) => {
     try {
-      const { fromFile, isImage, qrTextOf } = await loader;
+      const { fromFile, isImage, MAX_INPUT_BYTES, qrTextOf } = await loader;
       if (isImage(file)) {
         const text = await qrTextOf(file);
         const next = verifyLinkOf(text, [VERIFY_ORIGIN, location.origin]);
@@ -134,6 +138,24 @@ export function App() {
         setRoute(parseRoute(location));
         return;
       }
+      const json = file.type === "application/json" || file.name.endsWith(".json");
+      if (json && file.size <= MAX_INPUT_BYTES) {
+        let value: unknown;
+        try {
+          value = JSON.parse(await file.text());
+        } catch {
+          value = undefined;
+        }
+        const kind = exportOf(value);
+        if (kind) {
+          setExported({
+            name: kind.name,
+            report: await checkExport(value, { now: Math.floor(Date.now() / 1000) }),
+          });
+          return;
+        }
+      }
+      setExported(undefined);
       const l = await fromFile(file);
       fromUser.current = true;
       await accept(l);
@@ -316,6 +338,8 @@ export function App() {
             {error}
           </p>
         )}
+
+        {exported && <ExportReport name={exported.name} report={exported.report} />}
 
         {route.alibiId && !run && !error && (
           // Holds the report's place, so what follows does not move when the receipt lands.

@@ -1,5 +1,6 @@
 import type { Keelson } from "./client.ts";
 import { APIError, KeelsonError, OutcomeUnknownError } from "./errors.ts";
+import { EXPORT_FORMATS, type ExportFormat } from "./resources/alibis.ts";
 import type { Mandate } from "./resources/mandates.ts";
 import { quote } from "./sandbox.ts";
 import type { Cart } from "./types.ts";
@@ -505,6 +506,44 @@ export function tools(keelson: Keelson, o: { agentId?: string } = {}): KeelsonTo
           })),
           verifyUrl,
         };
+      },
+    ),
+    tool(
+      "keelson_export_alibi",
+      "The purchase in an agentic-commerce standard: AP2 mandates and receipts (ap2), a Mastercard Verifiable Intent chain (vi), a UCP checkout (ucp), an ACP allowance (acp), a signed Visa TAP request (tap) or the Visa evidence pack for a chargeback (visa). Each carries the purchase's SCITT transparent statement and is signed by Keelson's attested enclave.",
+      { purchaseId: ULID, format: { type: "string", enum: [...EXPORT_FORMATS] } },
+      ["purchaseId", "format"],
+      true,
+      async (i) => {
+        const format = i.format as ExportFormat;
+        try {
+          const artifact = await keelson.alibis.export(i.purchaseId as string, format);
+          const pending = "pending_close" in artifact;
+          return {
+            status: "success",
+            next: {
+              action: "tell_user",
+              say: pending
+                ? "Close the open mandates with your own agent key before presenting them."
+                : `Hand the ${format} export to whoever asked for it.`,
+            },
+            message: `The purchase as ${format}, signed by Keelson's attested enclave.`,
+            artifact,
+          };
+        } catch (err) {
+          if (err instanceof APIError && (err.status === 409 || err.status === 503)) {
+            return {
+              status: "blocked",
+              next: {
+                action: "tell_user",
+                say: `Tell the user this export is not available: ${err.message}`,
+              },
+              message: err.message,
+              reason: String(err.problem.reason ?? "unavailable"),
+            };
+          }
+          throw err;
+        }
       },
     ),
     tool(

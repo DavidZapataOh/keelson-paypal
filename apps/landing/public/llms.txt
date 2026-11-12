@@ -11,7 +11,7 @@ How to connect:
 - Claude Code: `claude mcp add --transport http keelson https://api.keelson.finance/mcp`, then `/mcp` to sign in.
 - The user approves requests at https://app.keelson.finance/connect/ with a passkey.
 
-Tools: `keelson.compile_mandate`, `keelson.request_mandate`, `keelson.get_request`, `keelson.request_mandate_change`, `keelson.confirm_mandate`, `keelson.submit_evidence`, `keelson.check_cart`, `keelson.request_countersign`, `keelson.get_purchase`, `keelson.get_alibi`, `keelson.verify_alibi`, `keelson.get_trust_grade`. Resource: `keelson://policy`, the Cedar policy set the TEEs evaluate.
+Tools: `keelson.compile_mandate`, `keelson.request_mandate`, `keelson.get_request`, `keelson.request_mandate_change`, `keelson.confirm_mandate`, `keelson.submit_evidence`, `keelson.check_cart`, `keelson.request_countersign`, `keelson.get_purchase`, `keelson.get_alibi`, `keelson.verify_alibi`, `keelson.export_alibi`, `keelson.get_trust_grade`. Resource: `keelson://policy`, the Cedar policy set the TEEs evaluate.
 
 Every write tool answers `{status, next, message}` plus its own fields. `status` is one of `pending_approval`, `approved`, `denied`, `blocked`, `success` or `error`; on `error`, `retryable` says whether calling again is safe. `next` says exactly what to do: `show_user_then_poll`, `poll`, `call`, `tell_user` or `stop`, with the tool, its arguments, `afterSeconds` and one sentence to say. A purchase also carries `outcome`: `known`, `pending` or `unknown`; on `unknown` the money may have moved, so never start it again.
 

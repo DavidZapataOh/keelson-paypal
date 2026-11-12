@@ -5,13 +5,31 @@ import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gzipSync } from "node:zlib";
 import AxeBuilder from "@axe-core/playwright";
+import { exportAcp, purchaseFacts } from "@keelson/interop";
 import { buildSdPayload, parseMandate, renderCard } from "@keelson/mandate";
 import { type Browser, type BrowserContext, chromium, devices, type Page } from "playwright";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { parse } from "yaml";
 import { statementOf } from "../../../../packages/alibi/src/codec.ts";
 import { v2Bundle } from "../../../../packages/alibi/test/v2.ts";
+import {
+  ALLOW_PAYPAL,
+  alibi,
+  NOW,
+  testIssuer,
+} from "../../../../packages/interop/test/fixtures.ts";
+import { v2Ref } from "../../../../packages/interop/test/v2.ts";
 import { CSP } from "../../csp";
+import { EXPORTS } from "../../lib/exports";
+
+/** A real ACP export of a production Alibi, signed by a test issuer. */
+const realAcpExport = async () =>
+  exportAcp(
+    purchaseFacts(alibi(ALLOW_PAYPAL)),
+    v2Ref("allow-2of2"),
+    { issuer: await testIssuer(ALLOW_PAYPAL) },
+    { now: NOW },
+  );
 
 // Serves the static export, which turbo builds before the tests, as the static site does.
 const out = fileURLToPath(new URL("../../out", import.meta.url));
@@ -907,6 +925,50 @@ describe("receipts and disputes", () => {
     );
     await page.getByRole("link", { name: "Verify in your browser" }).waitFor();
     expect(await page.locator("[data-standards]").count()).toBe(0);
+    await context.close();
+  });
+
+  test("an Alibi exports to the industry's standards, each named with the tool that checks it", async () => {
+    const acp = await realAcpExport();
+    const { context, page } = await signedIn(
+      "desktop",
+      `/purchase/?mandate=${id}&id=${bought.id}`,
+      (path) =>
+        path === `/v1/mandates/${id}`
+          ? viewIn(id, "ACTIVE", [bought])
+          : path === `/v1/alibis/${bought.id}/exports/acp`
+            ? acp
+            : undefined,
+    );
+    await page.getByRole("button", { name: "Use this Alibi elsewhere" }).click();
+    const sheet = page.getByRole("dialog", { name: "Use this Alibi elsewhere" });
+    await sheet.waitFor();
+    expect(await sheet.getByRole("listitem").count()).toBe(7);
+    for (const e of EXPORTS)
+      expect(await sheet.getByText(`Checked with ${e.checkedWith}`).count()).toBeGreaterThan(0);
+    const download = page.waitForEvent("download");
+    await sheet.getByRole("button", { name: "Download ACP allowance" }).click();
+    const file = await download;
+    expect(file.suggestedFilename()).toBe(`${bought.id}.acp.json`);
+    const saved = JSON.parse(await readFile((await file.path()) as string, "utf8"));
+    expect(saved).toEqual(acp);
+    const { violations } = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
+    expect(violations.map((v) => `${v.id}: ${v.nodes.length}`)).toEqual([]);
+    await context.close();
+  });
+
+  test("on a refused cart the payment exports say why they are not offered", async () => {
+    const refused = { ...bought, id: "01M7PURCHASE00000000000009", state: "DENIED" };
+    const { context, page } = await signedIn(
+      "mobile",
+      `/purchase/?mandate=${id}&id=${refused.id}`,
+      (path) => (path === `/v1/mandates/${id}` ? viewIn(id, "ACTIVE", [refused]) : undefined),
+    );
+    await page.getByRole("button", { name: "Use this Alibi elsewhere" }).click();
+    const sheet = page.getByRole("dialog", { name: "Use this Alibi elsewhere" });
+    expect(
+      await sheet.getByText("Not available: this cart was refused, so nothing was paid.").count(),
+    ).toBe(2);
     await context.close();
   });
 

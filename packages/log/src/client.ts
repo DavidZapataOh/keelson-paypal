@@ -105,7 +105,14 @@ export const LOG_WITNESSES: Readonly<Record<string, { vkeys: readonly string[]; 
  * The Ed25519 keys (hex) each origin signs RFC 9942 receipts with: pinned when leg A first serves
  * them, never removed, so every receipt keeps verifying.
  */
-export const LOG_RECEIPT_KEYS: Readonly<Record<string, readonly string[]>> = {};
+export const LOG_RECEIPT_KEYS: Readonly<Record<string, readonly string[]>> = {
+  [`${LOG_HOST}/alibi/2026-1`]: [
+    "a25f7a39a8204dc28105d028817b71d1fd6d812ae0a785d2fcc2a7139473a965",
+  ],
+  [`${LOG_HOST}/alibi-live/2026-1`]: [
+    "e382f5191e7b1d76f2196dbb8f215a5fd3b49798118edf41a60989a66982ee5d",
+  ],
+};
 
 /** The pinned receipt keys of every origin, by hex SHA-256 key id. */
 export function receiptKeyMap(): Map<string, Uint8Array> {

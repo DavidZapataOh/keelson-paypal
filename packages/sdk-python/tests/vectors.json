@@ -330,6 +330,35 @@
       }
     },
     {
+      "name": "keelson_export_alibi",
+      "readOnly": true,
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "purchaseId": {
+            "type": "string",
+            "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$"
+          },
+          "format": {
+            "type": "string",
+            "enum": [
+              "ap2",
+              "vi",
+              "ucp",
+              "acp",
+              "tap",
+              "visa"
+            ]
+          }
+        },
+        "required": [
+          "purchaseId",
+          "format"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
       "name": "keelson_get_trust_grade",
       "readOnly": true,
       "inputSchema": {

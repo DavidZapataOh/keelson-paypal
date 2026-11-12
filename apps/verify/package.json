@@ -13,6 +13,7 @@
   "dependencies": {
     "@keelson/alibi": "workspace:*",
     "@keelson/chain": "workspace:*",
+    "@keelson/interop": "workspace:*",
     "@keelson/ui": "workspace:*",
     "pdfjs-dist": "6.4.299",
     "react": "19.3.1",

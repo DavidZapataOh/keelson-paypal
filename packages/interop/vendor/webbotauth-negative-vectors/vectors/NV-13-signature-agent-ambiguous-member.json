@@ -1,0 +1,65 @@
+{
+  "id": "NV-13",
+  "title": "Several Signature-Agent members and none matches this signature",
+  "group": "signature-agent",
+  "class": "request",
+  "provenance": "constructed",
+  "expected": {
+    "outcome": "invalid",
+    "reason": "signature-agent-ambiguous-member"
+  },
+  "enforcement": "verifier-must",
+  "basis": {
+    "document": "draft-ietf-webbotauth-httpsig-protocol-01",
+    "section": "5.2.2",
+    "requirement": "Each signer MUST provide a Signature-Agent member for its label. A verifier MUST NOT attribute a signature to a member that signature does not cover.",
+    "note": "The MUST NOT binds attribution, not the outcome: a verifier is forbidden from picking one of the two members, and the text does not say which failing outcome follows. Reported here as invalid because the signer broke a stated MUST that the operator can fix. A verifier reporting unverified on the same request is not obviously wrong, and the question is worth settling — see COVERAGE.md."
+  },
+  "note": "Two members, a covered signature-agent component with no key parameter, and no member named after the signature label. Related to issue #128, which -01 closed by keying the draft's own E vectors after their signature label. Here the ambiguity is explicit, so the reported reason can be checked whatever a document example does.",
+  "now": 1735689660,
+  "request": {
+    "method": "GET",
+    "url": "https://example.com/",
+    "headers": {
+      "Signature-Agent": "first=\"https://signature-agent.test/.well-known/http-message-signatures-directory\", second=\"https://other-agent.test/.well-known/http-message-signatures-directory\"",
+      "Signature-Input": "sig1=(\"@authority\" \"signature-agent\");created=1735689600;keyid=\"poqkLGiymh_W0uP6PZFw-dvez3QJT5SolqXBCW38r0U\";alg=\"ed25519\";expires=4889289600;tag=\"web-bot-auth\"",
+      "Signature": "sig1=:kHSSZkEPaFvhQtupO9hy5/ISEiPgc62logahDr+FZVoNNFd9vst56YVTCZBjfOLaYnpTbbwTAyy2nuErHh7DBA==:"
+    }
+  },
+  "signature": {
+    "label": "sig1",
+    "components": [
+      "\"@authority\"",
+      "\"signature-agent\""
+    ],
+    "paramsValue": "(\"@authority\" \"signature-agent\");created=1735689600;keyid=\"poqkLGiymh_W0uP6PZFw-dvez3QJT5SolqXBCW38r0U\";alg=\"ed25519\";expires=4889289600;tag=\"web-bot-auth\"",
+    "signedValues": {
+      "\"@authority\"": "example.com",
+      "\"signature-agent\"": "first=\"https://signature-agent.test/.well-known/http-message-signatures-directory\", second=\"https://other-agent.test/.well-known/http-message-signatures-directory\""
+    },
+    "expectedValues": {
+      "\"@authority\"": "example.com",
+      "\"signature-agent\"": "first=\"https://signature-agent.test/.well-known/http-message-signatures-directory\", second=\"https://other-agent.test/.well-known/http-message-signatures-directory\""
+    },
+    "signedBase": "\"@authority\": example.com\n\"signature-agent\": first=\"https://signature-agent.test/.well-known/http-message-signatures-directory\", second=\"https://other-agent.test/.well-known/http-message-signatures-directory\"\n\"@signature-params\": (\"@authority\" \"signature-agent\");created=1735689600;keyid=\"poqkLGiymh_W0uP6PZFw-dvez3QJT5SolqXBCW38r0U\";alg=\"ed25519\";expires=4889289600;tag=\"web-bot-auth\"",
+    "expectedBase": "\"@authority\": example.com\n\"signature-agent\": first=\"https://signature-agent.test/.well-known/http-message-signatures-directory\", second=\"https://other-agent.test/.well-known/http-message-signatures-directory\"\n\"@signature-params\": (\"@authority\" \"signature-agent\");created=1735689600;keyid=\"poqkLGiymh_W0uP6PZFw-dvez3QJT5SolqXBCW38r0U\";alg=\"ed25519\";expires=4889289600;tag=\"web-bot-auth\"",
+    "baseDiffers": false
+  },
+  "key": {
+    "source": "RFC 9421 Appendix B.1.4",
+    "keyid": "poqkLGiymh_W0uP6PZFw-dvez3QJT5SolqXBCW38r0U",
+    "jwk": {
+      "kty": "OKP",
+      "crv": "Ed25519",
+      "x": "JrQLj5P_89iXES9-vFgrIy29clF9CC_oPPsw3c5D0bs"
+    }
+  },
+  "directory": {
+    "url": "https://signature-agent.test/.well-known/http-message-signatures-directory",
+    "status": 200,
+    "headers": {
+      "Content-Type": "application/http-message-signatures-directory+json"
+    },
+    "body": "{\"keys\":[{\"kty\":\"OKP\",\"crv\":\"Ed25519\",\"kid\":\"poqkLGiymh_W0uP6PZFw-dvez3QJT5SolqXBCW38r0U\",\"x\":\"JrQLj5P_89iXES9-vFgrIy29clF9CC_oPPsw3c5D0bs\",\"use\":\"sig\"}]}"
+  }
+}
