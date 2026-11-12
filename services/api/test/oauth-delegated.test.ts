@@ -516,7 +516,7 @@ test("the consent page shows the hosted operator answering for a host with none,
     });
   const read = await consent("/v1/oauth/consent");
   expect(await read.json()).toMatchObject({
-    client: { id: host, verified: false },
+    client: { id: host, verified: false, identity: { kind: "unverified" } },
     agent: { agentId: HOSTED.toString(), operator: "Keelson", hosted: true },
     scopes: [...DELEGATED, "offline_access"],
     // A loopback redirect URI names no host, so it gets the lower tier.
@@ -642,6 +642,11 @@ test("the consent page shows the cap on Keelson's bond for the host's tier, and 
   // A known host is capped too, at the higher tier.
   const known = await consentFor(60_000, CLAUDE);
   expect(await (await known("/v1/oauth/consent")).json()).toMatchObject({
+    client: {
+      name: "Claude",
+      verified: true,
+      identity: { kind: "cimd", host: "claude.ai", clientUri: "https://claude.ai" },
+    },
     hostedCap: { perUserMinor: "60000", currency: "USD", knownHost: true },
     spendingError: null,
   });

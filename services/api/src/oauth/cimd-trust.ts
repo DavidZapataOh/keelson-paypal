@@ -1,4 +1,5 @@
 import { isCimdClientIdUrlCandidate } from "@better-auth/cimd";
+import { z } from "@hono/zod-openapi";
 import { type Db, eq, oauthClient, operators } from "@keelson/db";
 
 /**
@@ -41,3 +42,20 @@ export async function verifiedClient(
   }
   return { kind: "unverified" };
 }
+
+export const ClientIdentitySchema = z
+  .discriminatedUnion("kind", [
+    z.object({ kind: z.literal("cimd"), host: z.string(), clientUri: z.string().nullable() }),
+    z.object({
+      kind: z.literal("operator"),
+      agentId: z.string(),
+      operator: z.string(),
+      registry: z.string(),
+    }),
+    z.object({ kind: z.literal("hosted") }),
+    z.object({ kind: z.literal("unverified") }),
+  ])
+  .openapi("ClientIdentity", {
+    description:
+      "Who stands behind the app. `cimd`: the host of the metadata document the authorization server fetched. `operator`: the ERC-8004 registered agent that linked it. `hosted`: Keelson's hosted operator. `unverified`: an app that registered itself; its name is its own claim.",
+  });

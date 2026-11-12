@@ -7,6 +7,7 @@ import type { Auth } from "../auth.ts";
 import { HOSTED_CAP_CURRENCY, hostedCapError, hostTier, tierCap } from "../hosted-caps.ts";
 import { requireSession } from "../middleware/auth.ts";
 import { notify, requestAlert } from "../notify/notifier.ts";
+import { type ClientIdentity, ClientIdentitySchema, verifiedClient } from "../oauth/cimd-trust.ts";
 import type { Principal } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
 import { ConnectionRequest, invalidLimits, storeRequest } from "./connections.ts";
@@ -36,8 +37,9 @@ const Consent = z
       uri: z.string().nullable(),
       verified: z.boolean().openapi({
         description:
-          "Whether the client is bound to a registered agent operator; a dynamically registered client never is until its operator links it.",
+          "Whether Keelson knows who stands behind the client: a metadata document it fetched, or a registered agent operator that linked it.",
       }),
+      identity: ClientIdentitySchema,
     }),
     agent: z
       .object({
@@ -57,7 +59,7 @@ const Consent = z
         currency: z.string(),
         knownHost: z.boolean().openapi({
           description:
-            "Whether every redirect URI the app registered is a known host's, which earns the higher tier.",
+            "Whether a known host's metadata document names the app, which earns the higher tier.",
         }),
       })
       .nullable()
@@ -124,6 +126,7 @@ const connect = createRoute({
 
 interface Parsed {
   client: typeof oauthClient.$inferSelect;
+  identity: ClientIdentity;
   /** The client's own operator, or else the hosted one. */
   operator: typeof operators.$inferSelect | undefined;
   hosted: boolean;
@@ -206,6 +209,7 @@ export function registerOAuthConsent(
         : undefined;
     return {
       client,
+      identity: await verifiedClient(db, clientId, hosted?.clientId),
       operator,
       hosted: !own && hosted !== undefined,
       cap:
@@ -229,14 +233,15 @@ export function registerOAuthConsent(
   app.openapi(read, async (c) => {
     const parsed = await parse(c, auth, c.req.valid("json").oauthQuery);
     if (parsed instanceof Response) return parsed as never;
-    const { client, operator, hosted } = parsed;
+    const { client, identity, operator, hosted } = parsed;
     return c.json(
       {
         client: {
           id: client.clientId,
           name: client.name ?? client.clientId,
           uri: client.uri,
-          verified: operator !== undefined && !hosted,
+          verified: identity.kind !== "unverified",
+          identity,
         },
         agent: operator
           ? { agentId: operator.agentId.toString(), operator: operator.name, hosted }

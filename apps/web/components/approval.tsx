@@ -16,6 +16,7 @@ import { untilIn } from "../lib/connections";
 import { deviceId } from "../lib/device";
 import { money } from "../lib/format";
 import type { Compiled } from "../lib/types";
+import { ConfusableChip, IdentityRow } from "./identity-row";
 import { MandateVisual } from "./mandate-visual";
 import { ErrorNotice } from "./notice";
 import { OnboardingFrame } from "./onboarding/frame";
@@ -145,6 +146,7 @@ function CartDiff({ request }: { request: ConnectionView }) {
           <span className="tnum">{money(BigInt(cart.totalMinor), cart.currency)}</span>
         </li>
       </ul>
+      <ConfusableChip name={cart.merchant.name} />
       <table className="w-full table-fixed text-sm">
         <caption className="sr-only">Each field of your mandate against the cart</caption>
         <thead>
@@ -596,6 +598,7 @@ export function Approval({
             Code <span className="font-mono tracking-wider">{request.code}</span>
           </Chip>
         </div>
+        <IdentityRow identity={request.identity} name={request.name} />
         <h1 className="text-balance font-semibold text-[1.75rem] leading-[1.1] tracking-[-0.025em] sm:text-[2rem]">
           {once
             ? `${request.name} wants ${cap}`
