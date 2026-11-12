@@ -368,8 +368,8 @@ const TOTAL = [
   "الإجمالي",
 ];
 /**
- * Words that label money the buyer is not charged: a balance, a credit line, rewards, a rate of
- * exchange. The nearest of these, the total words, and the tax and shipping words, decides.
+ * Words that label money the buyer is not charged: a balance, a credit line and its installments,
+ * rewards, a rate of exchange. The nearest of these, the total words, and the tax and shipping words, decides.
  */
 const ASIDE = [
   "balance",
@@ -393,6 +393,12 @@ const ASIDE = [
   "solde",
   "taux de change",
   "wechselkurs",
+  "as low as",
+  "payments of",
+  "pay monthly",
+  "pay in 4",
+  "pagos de",
+  "pagos mensuales",
   "eligible",
   "elegible",
   "elegibles",
