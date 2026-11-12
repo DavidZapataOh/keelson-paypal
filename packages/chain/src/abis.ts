@@ -2211,9 +2211,36 @@ export const iKeelsonReserveAbi = [
   },
   {
     type: "function",
+    name: "claimableRedeemRequest",
+    inputs: [
+      { name: "requestId", type: "uint256", internalType: "uint256" },
+      { name: "controller", type: "address", internalType: "address" },
+    ],
+    outputs: [{ name: "shares", type: "uint256", internalType: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
     name: "domainSeparator",
     inputs: [],
     outputs: [{ name: "", type: "bytes32", internalType: "bytes32" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "fulfillRedeem",
+    inputs: [{ name: "controller", type: "address", internalType: "address" }],
+    outputs: [{ name: "assets", type: "uint256", internalType: "uint256" }],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "isOperator",
+    inputs: [
+      { name: "controller", type: "address", internalType: "address" },
+      { name: "operator", type: "address", internalType: "address" },
+    ],
+    outputs: [{ name: "", type: "bool", internalType: "bool" }],
     stateMutability: "view",
   },
   {
@@ -2249,6 +2276,16 @@ export const iKeelsonReserveAbi = [
   },
   {
     type: "function",
+    name: "pendingRedeemRequest",
+    inputs: [
+      { name: "requestId", type: "uint256", internalType: "uint256" },
+      { name: "controller", type: "address", internalType: "address" },
+    ],
+    outputs: [{ name: "shares", type: "uint256", internalType: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
     name: "rateLimitAvailable",
     inputs: [],
     outputs: [{ name: "", type: "uint256", internalType: "uint256" }],
@@ -2256,19 +2293,37 @@ export const iKeelsonReserveAbi = [
   },
   {
     type: "function",
-    name: "requestCooldown",
-    inputs: [],
-    outputs: [],
+    name: "redeemReadyAt",
+    inputs: [{ name: "controller", type: "address", internalType: "address" }],
+    outputs: [{ name: "", type: "uint256", internalType: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "requestRedeem",
+    inputs: [
+      { name: "shares", type: "uint256", internalType: "uint256" },
+      { name: "controller", type: "address", internalType: "address" },
+      { name: "owner", type: "address", internalType: "address" },
+    ],
+    outputs: [{ name: "requestId", type: "uint256", internalType: "uint256" }],
     stateMutability: "nonpayable",
   },
   {
     type: "function",
     name: "setCooldown",
-    inputs: [
-      { name: "cooldown", type: "uint40", internalType: "uint40" },
-      { name: "unstakeWindow", type: "uint40", internalType: "uint40" },
-    ],
+    inputs: [{ name: "cooldown", type: "uint40", internalType: "uint40" }],
     outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "setOperator",
+    inputs: [
+      { name: "operator", type: "address", internalType: "address" },
+      { name: "approved", type: "bool", internalType: "bool" },
+    ],
+    outputs: [{ name: "", type: "bool", internalType: "bool" }],
     stateMutability: "nonpayable",
   },
   {
@@ -2290,7 +2345,21 @@ export const iKeelsonReserveAbi = [
   },
   {
     type: "function",
+    name: "share",
+    inputs: [],
+    outputs: [{ name: "", type: "address", internalType: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
     name: "totalClaimable",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256", internalType: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "totalClaimableRedeem",
     inputs: [],
     outputs: [{ name: "", type: "uint256", internalType: "uint256" }],
     stateMutability: "view",
@@ -2314,19 +2383,17 @@ export const iKeelsonReserveAbi = [
   },
   {
     type: "event",
-    name: "CooldownRequested",
-    inputs: [
-      { name: "owner", type: "address", indexed: true, internalType: "address" },
-      { name: "start", type: "uint40", indexed: false, internalType: "uint40" },
-    ],
+    name: "CooldownSet",
+    inputs: [{ name: "cooldown", type: "uint40", indexed: false, internalType: "uint40" }],
     anonymous: false,
   },
   {
     type: "event",
-    name: "CooldownSet",
+    name: "OperatorSet",
     inputs: [
-      { name: "cooldown", type: "uint40", indexed: false, internalType: "uint40" },
-      { name: "unstakeWindow", type: "uint40", indexed: false, internalType: "uint40" },
+      { name: "controller", type: "address", indexed: true, internalType: "address" },
+      { name: "operator", type: "address", indexed: true, internalType: "address" },
+      { name: "approved", type: "bool", indexed: false, internalType: "bool" },
     ],
     anonymous: false,
   },
@@ -2351,6 +2418,28 @@ export const iKeelsonReserveAbi = [
   },
   {
     type: "event",
+    name: "RedeemFulfilled",
+    inputs: [
+      { name: "controller", type: "address", indexed: true, internalType: "address" },
+      { name: "shares", type: "uint256", indexed: false, internalType: "uint256" },
+      { name: "assets", type: "uint256", indexed: false, internalType: "uint256" },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "RedeemRequest",
+    inputs: [
+      { name: "controller", type: "address", indexed: true, internalType: "address" },
+      { name: "owner", type: "address", indexed: true, internalType: "address" },
+      { name: "requestId", type: "uint256", indexed: true, internalType: "uint256" },
+      { name: "sender", type: "address", indexed: false, internalType: "address" },
+      { name: "shares", type: "uint256", indexed: false, internalType: "uint256" },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
     name: "WarrantyPaid",
     inputs: [
       { name: "disputeId", type: "bytes32", indexed: true, internalType: "bytes32" },
@@ -2362,7 +2451,7 @@ export const iKeelsonReserveAbi = [
     anonymous: false,
   },
   { type: "error", name: "AlreadySettled", inputs: [] },
-  { type: "error", name: "CooldownActive", inputs: [] },
+  { type: "error", name: "AsyncRedeem", inputs: [] },
   { type: "error", name: "ExceedsCoverage", inputs: [] },
   { type: "error", name: "Expired", inputs: [] },
   { type: "error", name: "InsufficientReserve", inputs: [] },
@@ -2370,6 +2459,8 @@ export const iKeelsonReserveAbi = [
   { type: "error", name: "InvalidVerdictSignature", inputs: [] },
   { type: "error", name: "NotAnchored", inputs: [] },
   { type: "error", name: "NotKeelsonLiable", inputs: [] },
+  { type: "error", name: "NotOperator", inputs: [] },
+  { type: "error", name: "RedeemNotReady", inputs: [] },
   { type: "error", name: "UnknownCoverage", inputs: [] },
   { type: "error", name: "WarrantyWindowClosed", inputs: [] },
   { type: "error", name: "ZeroAmount", inputs: [] },
@@ -4362,7 +4453,6 @@ export const keelsonReserveAbi = [
       { name: "logOrigin_", type: "bytes32", internalType: "bytes32" },
       { name: "authority", type: "address", internalType: "address" },
       { name: "cooldown_", type: "uint40", internalType: "uint40" },
-      { name: "unstakeWindow_", type: "uint40", internalType: "uint40" },
       { name: "rateLimitWindow", type: "uint48", internalType: "uint48" },
       { name: "rateLimitCapacity", type: "uint208", internalType: "uint208" },
     ],
@@ -4438,6 +4528,16 @@ export const keelsonReserveAbi = [
   },
   {
     type: "function",
+    name: "claimableRedeemRequest",
+    inputs: [
+      { name: "", type: "uint256", internalType: "uint256" },
+      { name: "controller", type: "address", internalType: "address" },
+    ],
+    outputs: [{ name: "", type: "uint256", internalType: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
     name: "convertToAssets",
     inputs: [{ name: "shares", type: "uint256", internalType: "uint256" }],
     outputs: [{ name: "", type: "uint256", internalType: "uint256" }],
@@ -4454,13 +4554,6 @@ export const keelsonReserveAbi = [
     type: "function",
     name: "cooldown",
     inputs: [],
-    outputs: [{ name: "", type: "uint40", internalType: "uint40" }],
-    stateMutability: "view",
-  },
-  {
-    type: "function",
-    name: "cooldownStart",
-    inputs: [{ name: "owner", type: "address", internalType: "address" }],
     outputs: [{ name: "", type: "uint40", internalType: "uint40" }],
     stateMutability: "view",
   },
@@ -4505,9 +4598,26 @@ export const keelsonReserveAbi = [
   },
   {
     type: "function",
+    name: "fulfillRedeem",
+    inputs: [{ name: "controller", type: "address", internalType: "address" }],
+    outputs: [{ name: "assets", type: "uint256", internalType: "uint256" }],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
     name: "isConsumingScheduledOp",
     inputs: [],
     outputs: [{ name: "", type: "bytes4", internalType: "bytes4" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "isOperator",
+    inputs: [
+      { name: "controller", type: "address", internalType: "address" },
+      { name: "operator", type: "address", internalType: "address" },
+    ],
+    outputs: [{ name: "", type: "bool", internalType: "bool" }],
     stateMutability: "view",
   },
   {
@@ -4534,14 +4644,14 @@ export const keelsonReserveAbi = [
   {
     type: "function",
     name: "maxRedeem",
-    inputs: [{ name: "owner", type: "address", internalType: "address" }],
+    inputs: [{ name: "controller", type: "address", internalType: "address" }],
     outputs: [{ name: "", type: "uint256", internalType: "uint256" }],
     stateMutability: "view",
   },
   {
     type: "function",
     name: "maxWithdraw",
-    inputs: [{ name: "owner", type: "address", internalType: "address" }],
+    inputs: [{ name: "controller", type: "address", internalType: "address" }],
     outputs: [{ name: "", type: "uint256", internalType: "uint256" }],
     stateMutability: "view",
   },
@@ -4602,6 +4712,16 @@ export const keelsonReserveAbi = [
   },
   {
     type: "function",
+    name: "pendingRedeemRequest",
+    inputs: [
+      { name: "", type: "uint256", internalType: "uint256" },
+      { name: "controller", type: "address", internalType: "address" },
+    ],
+    outputs: [{ name: "", type: "uint256", internalType: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
     name: "previewDeposit",
     inputs: [{ name: "assets", type: "uint256", internalType: "uint256" }],
     outputs: [{ name: "", type: "uint256", internalType: "uint256" }],
@@ -4617,16 +4737,16 @@ export const keelsonReserveAbi = [
   {
     type: "function",
     name: "previewRedeem",
-    inputs: [{ name: "shares", type: "uint256", internalType: "uint256" }],
+    inputs: [{ name: "", type: "uint256", internalType: "uint256" }],
     outputs: [{ name: "", type: "uint256", internalType: "uint256" }],
-    stateMutability: "view",
+    stateMutability: "pure",
   },
   {
     type: "function",
     name: "previewWithdraw",
-    inputs: [{ name: "assets", type: "uint256", internalType: "uint256" }],
+    inputs: [{ name: "", type: "uint256", internalType: "uint256" }],
     outputs: [{ name: "", type: "uint256", internalType: "uint256" }],
-    stateMutability: "view",
+    stateMutability: "pure",
   },
   {
     type: "function",
@@ -4641,16 +4761,27 @@ export const keelsonReserveAbi = [
     inputs: [
       { name: "shares", type: "uint256", internalType: "uint256" },
       { name: "receiver", type: "address", internalType: "address" },
-      { name: "owner", type: "address", internalType: "address" },
+      { name: "controller", type: "address", internalType: "address" },
     ],
-    outputs: [{ name: "", type: "uint256", internalType: "uint256" }],
+    outputs: [{ name: "assets", type: "uint256", internalType: "uint256" }],
     stateMutability: "nonpayable",
   },
   {
     type: "function",
-    name: "requestCooldown",
-    inputs: [],
-    outputs: [],
+    name: "redeemReadyAt",
+    inputs: [{ name: "controller", type: "address", internalType: "address" }],
+    outputs: [{ name: "", type: "uint256", internalType: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "requestRedeem",
+    inputs: [
+      { name: "shares", type: "uint256", internalType: "uint256" },
+      { name: "controller", type: "address", internalType: "address" },
+      { name: "owner", type: "address", internalType: "address" },
+    ],
+    outputs: [{ name: "", type: "uint256", internalType: "uint256" }],
     stateMutability: "nonpayable",
   },
   {
@@ -4663,11 +4794,18 @@ export const keelsonReserveAbi = [
   {
     type: "function",
     name: "setCooldown",
-    inputs: [
-      { name: "cooldown_", type: "uint40", internalType: "uint40" },
-      { name: "unstakeWindow_", type: "uint40", internalType: "uint40" },
-    ],
+    inputs: [{ name: "cooldown_", type: "uint40", internalType: "uint40" }],
     outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "setOperator",
+    inputs: [
+      { name: "operator", type: "address", internalType: "address" },
+      { name: "approved", type: "bool", internalType: "bool" },
+    ],
+    outputs: [{ name: "", type: "bool", internalType: "bool" }],
     stateMutability: "nonpayable",
   },
   {
@@ -4689,6 +4827,20 @@ export const keelsonReserveAbi = [
   },
   {
     type: "function",
+    name: "share",
+    inputs: [],
+    outputs: [{ name: "", type: "address", internalType: "address" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "supportsInterface",
+    inputs: [{ name: "interfaceId", type: "bytes4", internalType: "bytes4" }],
+    outputs: [{ name: "", type: "bool", internalType: "bool" }],
+    stateMutability: "pure",
+  },
+  {
+    type: "function",
     name: "symbol",
     inputs: [],
     outputs: [{ name: "", type: "string", internalType: "string" }],
@@ -4704,6 +4856,13 @@ export const keelsonReserveAbi = [
   {
     type: "function",
     name: "totalClaimable",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256", internalType: "uint256" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "totalClaimableRedeem",
     inputs: [],
     outputs: [{ name: "", type: "uint256", internalType: "uint256" }],
     stateMutability: "view",
@@ -4738,13 +4897,6 @@ export const keelsonReserveAbi = [
   },
   {
     type: "function",
-    name: "unstakeWindow",
-    inputs: [],
-    outputs: [{ name: "", type: "uint40", internalType: "uint40" }],
-    stateMutability: "view",
-  },
-  {
-    type: "function",
     name: "vault",
     inputs: [],
     outputs: [{ name: "", type: "address", internalType: "contract IKeelsonBondVault" }],
@@ -4770,9 +4922,9 @@ export const keelsonReserveAbi = [
     inputs: [
       { name: "assets", type: "uint256", internalType: "uint256" },
       { name: "receiver", type: "address", internalType: "address" },
-      { name: "owner", type: "address", internalType: "address" },
+      { name: "controller", type: "address", internalType: "address" },
     ],
-    outputs: [{ name: "", type: "uint256", internalType: "uint256" }],
+    outputs: [{ name: "shares", type: "uint256", internalType: "uint256" }],
     stateMutability: "nonpayable",
   },
   {
@@ -4803,20 +4955,8 @@ export const keelsonReserveAbi = [
   },
   {
     type: "event",
-    name: "CooldownRequested",
-    inputs: [
-      { name: "owner", type: "address", indexed: true, internalType: "address" },
-      { name: "start", type: "uint40", indexed: false, internalType: "uint40" },
-    ],
-    anonymous: false,
-  },
-  {
-    type: "event",
     name: "CooldownSet",
-    inputs: [
-      { name: "cooldown", type: "uint40", indexed: false, internalType: "uint40" },
-      { name: "unstakeWindow", type: "uint40", indexed: false, internalType: "uint40" },
-    ],
+    inputs: [{ name: "cooldown", type: "uint40", indexed: false, internalType: "uint40" }],
     anonymous: false,
   },
   {
@@ -4833,6 +4973,16 @@ export const keelsonReserveAbi = [
   { type: "event", name: "EIP712DomainChanged", inputs: [], anonymous: false },
   {
     type: "event",
+    name: "OperatorSet",
+    inputs: [
+      { name: "controller", type: "address", indexed: true, internalType: "address" },
+      { name: "operator", type: "address", indexed: true, internalType: "address" },
+      { name: "approved", type: "bool", indexed: false, internalType: "bool" },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
     name: "PayoutFailed",
     inputs: [
       { name: "disputeId", type: "bytes32", indexed: true, internalType: "bytes32" },
@@ -4847,6 +4997,28 @@ export const keelsonReserveAbi = [
     inputs: [
       { name: "window", type: "uint48", indexed: false, internalType: "uint48" },
       { name: "capacity", type: "uint208", indexed: false, internalType: "uint208" },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "RedeemFulfilled",
+    inputs: [
+      { name: "controller", type: "address", indexed: true, internalType: "address" },
+      { name: "shares", type: "uint256", indexed: false, internalType: "uint256" },
+      { name: "assets", type: "uint256", indexed: false, internalType: "uint256" },
+    ],
+    anonymous: false,
+  },
+  {
+    type: "event",
+    name: "RedeemRequest",
+    inputs: [
+      { name: "controller", type: "address", indexed: true, internalType: "address" },
+      { name: "owner", type: "address", indexed: true, internalType: "address" },
+      { name: "requestId", type: "uint256", indexed: true, internalType: "uint256" },
+      { name: "sender", type: "address", indexed: false, internalType: "address" },
+      { name: "shares", type: "uint256", indexed: false, internalType: "uint256" },
     ],
     anonymous: false,
   },
@@ -4903,7 +5075,7 @@ export const keelsonReserveAbi = [
     inputs: [{ name: "caller", type: "address", internalType: "address" }],
   },
   { type: "error", name: "AlreadySettled", inputs: [] },
-  { type: "error", name: "CooldownActive", inputs: [] },
+  { type: "error", name: "AsyncRedeem", inputs: [] },
   {
     type: "error",
     name: "ERC20InsufficientAllowance",
@@ -4994,7 +5166,9 @@ export const keelsonReserveAbi = [
   { type: "error", name: "InvalidVerdictSignature", inputs: [] },
   { type: "error", name: "NotAnchored", inputs: [] },
   { type: "error", name: "NotKeelsonLiable", inputs: [] },
+  { type: "error", name: "NotOperator", inputs: [] },
   { type: "error", name: "RateLimitExceeded", inputs: [] },
+  { type: "error", name: "RedeemNotReady", inputs: [] },
   { type: "error", name: "ReentrancyGuardReentrantCall", inputs: [] },
   {
     type: "error",

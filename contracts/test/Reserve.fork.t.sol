@@ -144,12 +144,7 @@ contract ReserveForkTest is SlashBase {
 
     function test_payWarranty_insufficientReserve() public {
         Vector memory v = _locked(WEBAUTHN);
-        vm.prank(treasury);
-        reserve.requestCooldown();
-        vm.warp(vm.getBlockTimestamp() + reserve.cooldown());
-        uint256 shares = reserve.balanceOf(treasury);
-        vm.prank(treasury);
-        reserve.redeem(shares, treasury, treasury);
+        _fulfil(treasury, reserve.balanceOf(treasury));
         KeelsonTypes.Verdict memory verdict = _green(v, AMOUNT);
         bytes memory sigs = _sign2of2(verdict);
         vm.expectRevert(IKeelsonReserve.InsufficientReserve.selector);
@@ -187,36 +182,217 @@ contract ReserveForkTest is SlashBase {
         assertEq(reserve.totalAssets(), assetsBefore - AMOUNT);
     }
 
-    function test_withdraw_needsCooldown() public {
-        uint256 shares = reserve.balanceOf(treasury);
-        vm.startPrank(treasury);
-        vm.expectRevert(abi.encodeWithSelector(ERC4626.ERC4626ExceededMaxRedeem.selector, treasury, shares, 0));
-        reserve.redeem(shares, treasury, treasury);
-
-        reserve.requestCooldown();
-        uint256 start = vm.getBlockTimestamp();
-        vm.warp(start + reserve.cooldown() - 1);
-        assertEq(reserve.maxRedeem(treasury), 0);
-        vm.warp(start + reserve.cooldown() + reserve.unstakeWindow() + 1);
-        assertEq(reserve.maxWithdraw(treasury), 0);
-        vm.expectRevert(abi.encodeWithSelector(ERC4626.ERC4626ExceededMaxRedeem.selector, treasury, shares, 0));
-        reserve.redeem(shares, treasury, treasury);
-
-        reserve.requestCooldown();
-        vm.warp(vm.getBlockTimestamp() + reserve.cooldown());
-        reserve.redeem(shares / 2, treasury, treasury);
-        vm.stopPrank();
-        assertApproxEqAbs(pyusd.balanceOf(treasury), SEED / 2, 1);
+    /// @dev Requests `shares` of `owner` for itself, waits the cooldown and fulfils them.
+    function _fulfil(address owner, uint256 shares) internal returns (uint256 assets) {
+        vm.prank(owner);
+        reserve.requestRedeem(shares, owner, owner);
+        vm.warp(reserve.redeemReadyAt(owner));
+        assets = reserve.fulfillRedeem(owner);
     }
 
-    /// @dev Moving shares to an owner whose window is already open would skip the cooldown.
-    function test_transferToCoolingOwnerReverts() public {
-        address other = makeAddr("other staker");
-        vm.prank(other);
-        reserve.requestCooldown();
+    function _assertClaimsBacked() internal view {
+        assertGe(pyusd.balanceOf(address(reserve)), reserve.totalClaimable() + reserve.totalClaimableRedeem());
+    }
+
+    function test_supportsTheErc7540Interfaces() public view {
+        assertEq(
+            IKeelsonReserve.isOperator.selector ^ IKeelsonReserve.setOperator.selector, bytes4(0xe3bc4e65), "operator"
+        );
+        assertEq(
+            IKeelsonReserve.requestRedeem.selector ^ IKeelsonReserve.pendingRedeemRequest.selector
+                ^ IKeelsonReserve.claimableRedeemRequest.selector,
+            bytes4(0x620ee8e4),
+            "async redeem"
+        );
+        assertTrue(reserve.supportsInterface(0xe3bc4e65));
+        assertTrue(reserve.supportsInterface(0x620ee8e4));
+        assertTrue(reserve.supportsInterface(0x2f0a18c5));
+        assertTrue(reserve.supportsInterface(0x01ffc9a7));
+        assertFalse(reserve.supportsInterface(0xce3bbe50), "deposits are synchronous");
+        assertFalse(reserve.supportsInterface(0xffffffff));
+        assertEq(reserve.share(), address(reserve));
+    }
+
+    function test_previewsOfARedemptionRevert() public {
+        vm.expectRevert(IKeelsonReserve.AsyncRedeem.selector);
+        reserve.previewRedeem(1e6);
+        vm.expectRevert(IKeelsonReserve.AsyncRedeem.selector);
+        reserve.previewWithdraw(1e6);
+    }
+
+    /// @dev Shares move into the reserve on request, wait exactly the cooldown, and are claimable once fulfilled.
+    function test_requestThenFulfilAfterTheCooldown() public {
+        uint256 shares = reserve.balanceOf(treasury);
+        assertEq(reserve.maxRedeem(treasury), 0);
+        vm.expectEmit(address(reserve));
+        emit IKeelsonReserve.RedeemRequest(treasury, treasury, 0, treasury, shares);
         vm.prank(treasury);
-        vm.expectRevert(IKeelsonReserve.CooldownActive.selector);
-        reserve.transfer(other, 1);
+        assertEq(reserve.requestRedeem(shares, treasury, treasury), 0);
+        uint256 requestedAt = vm.getBlockTimestamp();
+        assertEq(reserve.balanceOf(treasury), 0);
+        assertEq(reserve.balanceOf(address(reserve)), shares);
+        assertEq(reserve.pendingRedeemRequest(0, treasury), shares);
+        assertEq(reserve.redeemReadyAt(treasury), requestedAt + reserve.cooldown());
+
+        vm.warp(requestedAt + reserve.cooldown() - 1);
+        vm.expectRevert(IKeelsonReserve.RedeemNotReady.selector);
+        reserve.fulfillRedeem(treasury);
+        vm.warp(requestedAt + reserve.cooldown());
+        uint256 expected = reserve.convertToAssets(shares);
+        vm.expectEmit(address(reserve));
+        emit IKeelsonReserve.RedeemFulfilled(treasury, shares, expected);
+        vm.prank(makeAddr("anyone"));
+        assertEq(reserve.fulfillRedeem(treasury), expected);
+        assertEq(reserve.pendingRedeemRequest(0, treasury), 0);
+        assertEq(reserve.claimableRedeemRequest(0, treasury), shares);
+        assertEq(reserve.maxRedeem(treasury), shares);
+        assertEq(reserve.maxWithdraw(treasury), expected);
+        assertEq(reserve.totalClaimableRedeem(), expected);
+        assertEq(reserve.totalAssets(), 0, "set aside for the claim");
+        vm.expectRevert(IKeelsonReserve.RedeemNotReady.selector);
+        reserve.fulfillRedeem(treasury);
+
+        vm.prank(treasury);
+        reserve.redeem(shares / 2, treasury, treasury);
+        assertApproxEqAbs(pyusd.balanceOf(treasury), expected / 2, 1);
+        uint256 owed = reserve.maxWithdraw(treasury);
+        vm.prank(treasury);
+        reserve.withdraw(owed, treasury, treasury);
+        assertEq(pyusd.balanceOf(treasury), expected);
+        assertEq(reserve.maxRedeem(treasury), 0);
+        assertEq(reserve.totalClaimableRedeem(), 0);
+        _assertClaimsBacked();
+    }
+
+    /// @dev A new request restarts the controller's cooldown, so shares added late cannot ride an early request.
+    function test_aNewRequestRestartsTheCooldown() public {
+        vm.prank(treasury);
+        reserve.requestRedeem(1e6, treasury, treasury);
+        vm.warp(vm.getBlockTimestamp() + reserve.cooldown() - 1);
+        uint256 rest = reserve.balanceOf(treasury);
+        vm.prank(treasury);
+        reserve.requestRedeem(rest, treasury, treasury);
+        vm.warp(vm.getBlockTimestamp() + 1);
+        vm.expectRevert(IKeelsonReserve.RedeemNotReady.selector);
+        reserve.fulfillRedeem(treasury);
+        vm.warp(reserve.redeemReadyAt(treasury));
+        reserve.fulfillRedeem(treasury);
+        assertEq(reserve.claimableRedeemRequest(0, treasury), SEED * 1e6);
+    }
+
+    /// @dev Requested shares still bear a warranty paid before their fulfilment.
+    function test_aWarrantyDuringTheCooldownReducesThePayout() public {
+        Vector memory v = _locked(WEBAUTHN);
+        uint256 shares = reserve.balanceOf(treasury);
+        vm.prank(treasury);
+        reserve.requestRedeem(shares, treasury, treasury);
+        uint256 before = reserve.convertToAssets(shares);
+        _pay(_green(v, AMOUNT));
+        vm.warp(reserve.redeemReadyAt(treasury));
+        uint256 assets = reserve.fulfillRedeem(treasury);
+        assertApproxEqAbs(assets, before - AMOUNT, 1);
+    }
+
+    /// @dev A fulfilled claim is fixed: a later warranty comes out of the stakers who stayed.
+    function test_aFulfilledClaimIsFixed() public {
+        Vector memory v = _locked(WEBAUTHN);
+        address staker = makeAddr("staker who stays");
+        _fundFromHolder(staker, 50e6);
+        _stake(staker, 50e6);
+        uint256 assets = _fulfil(treasury, reserve.balanceOf(treasury));
+        _pay(_green(v, AMOUNT));
+        assertEq(reserve.maxWithdraw(treasury), assets);
+        uint256 claimable = reserve.maxRedeem(treasury);
+        vm.prank(treasury);
+        reserve.redeem(claimable, treasury, treasury);
+        assertEq(pyusd.balanceOf(treasury), assets);
+        assertLt(reserve.convertToAssets(reserve.balanceOf(staker)), 50e6);
+        _assertClaimsBacked();
+    }
+
+    /// @dev An operator requests and claims for its controller; nobody else can, even with an allowance.
+    function test_operatorsActForTheirControllerAndNobodyElse() public {
+        address operator = makeAddr("operator");
+        address stranger = makeAddr("stranger");
+        uint256 shares = reserve.balanceOf(treasury);
+        vm.prank(stranger);
+        vm.expectRevert(IKeelsonReserve.NotOperator.selector);
+        reserve.requestRedeem(1, treasury, treasury);
+
+        vm.expectEmit(address(reserve));
+        emit IKeelsonReserve.OperatorSet(treasury, operator, true);
+        vm.prank(treasury);
+        assertTrue(reserve.setOperator(operator, true));
+        assertTrue(reserve.isOperator(treasury, operator));
+        vm.prank(operator);
+        reserve.requestRedeem(shares, treasury, treasury);
+        vm.warp(reserve.redeemReadyAt(treasury));
+        reserve.fulfillRedeem(treasury);
+
+        vm.prank(treasury);
+        assertTrue(reserve.approve(stranger, type(uint256).max));
+        vm.startPrank(stranger);
+        vm.expectRevert(IKeelsonReserve.NotOperator.selector);
+        reserve.redeem(1, stranger, treasury);
+        vm.expectRevert(IKeelsonReserve.NotOperator.selector);
+        reserve.withdraw(1, stranger, treasury);
+        vm.stopPrank();
+
+        vm.prank(operator);
+        reserve.redeem(shares, operator, treasury);
+        assertEq(pyusd.balanceOf(operator), SEED);
+    }
+
+    /// @dev Spending an allowance, a third party may move an owner's shares into a request of a controller it operates.
+    function test_requestSpendsTheOwnersAllowance() public {
+        address controller = makeAddr("controller");
+        vm.prank(treasury);
+        assertTrue(reserve.approve(controller, 1e6));
+        vm.prank(controller);
+        reserve.requestRedeem(1e6, controller, treasury);
+        assertEq(reserve.pendingRedeemRequest(0, controller), 1e6);
+        assertEq(reserve.allowance(treasury, controller), 0);
+        vm.prank(controller);
+        vm.expectRevert();
+        reserve.requestRedeem(1, controller, treasury);
+    }
+
+    function test_claimsBeyondWhatWasFulfilledRevert() public {
+        _fulfil(treasury, 1e6);
+        uint256 shares = reserve.maxRedeem(treasury);
+        uint256 assets = reserve.maxWithdraw(treasury);
+        vm.startPrank(treasury);
+        vm.expectRevert(abi.encodeWithSelector(ERC4626.ERC4626ExceededMaxRedeem.selector, treasury, shares + 1, shares));
+        reserve.redeem(shares + 1, treasury, treasury);
+        vm.expectRevert(
+            abi.encodeWithSelector(ERC4626.ERC4626ExceededMaxWithdraw.selector, treasury, assets + 1, assets)
+        );
+        reserve.withdraw(assets + 1, treasury, treasury);
+        vm.expectRevert(IKeelsonReserve.ZeroAmount.selector);
+        reserve.redeem(0, treasury, treasury);
+        vm.expectRevert(IKeelsonReserve.ZeroAmount.selector);
+        reserve.requestRedeem(0, treasury, treasury);
+        vm.stopPrank();
+    }
+
+    /// @dev With no cooldown guard on transfers, `maxDeposit` and `maxMint` hold for every receiver.
+    function test_depositsAndTransfersReachAnyReceiver() public {
+        address other = makeAddr("requesting staker");
+        _fundFromHolder(other, 2e6);
+        _stake(other, 1e6);
+        vm.prank(other);
+        reserve.requestRedeem(1e6 * 1e6, other, other);
+        assertEq(reserve.maxDeposit(other), type(uint256).max);
+        _stake(other, 1e6);
+        vm.prank(treasury);
+        assertTrue(reserve.transfer(other, 1));
+    }
+
+    function test_setCooldownTakesTheTimelock() public {
+        vm.expectRevert();
+        reserve.setCooldown(1 days);
+        _viaTimelock(address(reserve), abi.encodeCall(reserve.setCooldown, (1 days)));
+        assertEq(reserve.cooldown(), 1 days);
     }
 
     /// @dev OpenZeppelin's donation attack on a fresh reserve: with the 6-decimal virtual offset the attacker loses
@@ -230,7 +406,6 @@ contract ReserveForkTest is SlashBase {
             vault.logOrigin(),
             address(this),
             10 minutes,
-            1 days,
             1 hours,
             1_000e6
         );
@@ -297,19 +472,6 @@ contract ReserveForkTest is SlashBase {
         vm.warp(closes);
         green = _green(v, AMOUNT);
         _pay(green);
-    }
-
-    /// @dev Fresh deposits into an owner whose window is open would skip the cooldown too.
-    function test_depositToCoolingOwnerReverts() public {
-        address other = makeAddr("pre-cooled");
-        vm.prank(other);
-        reserve.requestCooldown();
-        _fundFromHolder(other, 1e6);
-        vm.startPrank(other);
-        pyusd.approve(address(reserve), 1e6);
-        vm.expectRevert(IKeelsonReserve.CooldownActive.selector);
-        reserve.deposit(1e6, other);
-        vm.stopPrank();
     }
 
     function test_payWarranty_paysThePayoutAddress() public {

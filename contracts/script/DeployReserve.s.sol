@@ -38,9 +38,9 @@ contract DeployReserve is KeelsonDeploy {
         _timelock().execute(address(_manager()), 0, _wiring(), bytes32(0), _wiringSalt());
     }
 
-    /// @notice `(pyusd, verifier, anchor, vault, logOrigin, authority, cooldown, unstakeWindow, rateLimitWindow,
-    /// rateLimitCapacity)`: the chain's PYUSD, the `VerdictVerifier`, `CheckpointAnchor` and `KeelsonBondVault`
-    /// CREATE3 addresses, and the registry's log origin, cooldown and warranty rate limit.
+    /// @notice `(pyusd, verifier, anchor, vault, logOrigin, authority, cooldown, rateLimitWindow, rateLimitCapacity)`:
+    /// the chain's PYUSD, the `VerdictVerifier`, `CheckpointAnchor` and `KeelsonBondVault` CREATE3 addresses, and the
+    /// registry's log origin, cooldown and warranty rate limit.
     function constructorArgs() public view returns (bytes memory) {
         string memory json = _registry();
         return abi.encode(
@@ -51,7 +51,6 @@ contract DeployReserve is KeelsonDeploy {
             keccak256(bytes(json.readString(".params.logOrigin"))),
             json.readAddress(".contracts.AccessManager"),
             uint40(json.readUint(".params.reserveCooldown")),
-            uint40(json.readUint(".params.reserveUnstakeWindow")),
             uint48(json.readUint(".params.warrantyRateWindow")),
             uint208(json.readUint(".params.warrantyRateCapacity"))
         );

@@ -72,7 +72,6 @@ abstract contract SymbolicSetup is SymTest, Test {
     uint40 internal constant WITHDRAWAL_DELAY = 3 days;
     uint256 internal constant RESERVE_ASSETS = 1_000e6;
     uint40 internal constant COOLDOWN = 10 days;
-    uint40 internal constant UNSTAKE_WINDOW = 2 days;
     uint64 internal constant TREE_SIZE = 1;
     string internal constant ORIGIN = "keelson.finance/symbolic";
     bytes32 internal constant TDX_MEASUREMENT = keccak256("tdx measurement");
@@ -81,8 +80,8 @@ abstract contract SymbolicSetup is SymTest, Test {
     uint256 internal constant COVERAGES_SLOT = 7;
     uint256 internal constant WITHDRAWALS_SLOT = 14;
     uint256 internal constant ANCHOR_ROOTS_SLOT = 1;
-    /// @dev `_warrantyLimit`, the reserve's last non-mapping slot, takes slots 15 and 16.
-    uint256 internal constant RESERVE_LAST_SLOT = 16;
+    /// @dev `_warrantyLimit`, the reserve's last non-mapping slot, takes slots 17 and 18.
+    uint256 internal constant RESERVE_LAST_SLOT = 18;
     address internal constant RESERVE = address(0x4e5e7e);
     /// @dev Never read: only `lockCoverage` checks passkey assertions.
     bytes32 internal constant RP_ID_HASH = keccak256("rp id");
@@ -146,7 +145,6 @@ abstract contract SymbolicSetup is SymTest, Test {
             logOrigin,
             address(manager),
             COOLDOWN,
-            UNSTAKE_WINDOW,
             1 days,
             uint208(RESERVE_ASSETS)
         );
