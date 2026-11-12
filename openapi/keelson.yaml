@@ -10724,9 +10724,9 @@ paths:
         - schema:
             type: string
             pattern: ^[0-7][0-9A-HJKMNP-TV-Z]{25}$
-            description: "The alibi id: the purchase's ULID."
+            description: "The Alibi id: the purchase's ULID."
           required: true
-          description: "The alibi id: the purchase's ULID."
+          description: "The Alibi id: the purchase's ULID."
           name: id
           in: path
       responses:
@@ -10738,7 +10738,7 @@ paths:
                 type: string
                 format: binary
         "404":
-          description: No alibi with this id that the caller may read
+          description: No Alibi with this id that the caller may read
           content:
             application/problem+json:
               schema:
