@@ -8,11 +8,12 @@ import { type AgentSigner, type EcPublicJwk, ExportRefused, type ExportSigner } 
 import type { AlibiRef } from "./statement.ts";
 import type { CheckId, ExportReport } from "./verify.ts";
 
+/** @internal */
 export const UCP_VERSION = "2026-08-25";
 /** The export profile of the issuer's attestation over a UCP checkout. */
-export const UCP_CHECKOUT = "ucp.checkout/1";
+const UCP_CHECKOUT = "ucp.checkout/1";
 /** The reverse-domain signal that carries the purchase's SCITT Transparent Statement. */
-export const ALIBI_SIGNAL = "finance.keelson.alibi";
+const ALIBI_SIGNAL = "finance.keelson.alibi";
 
 /** A purchase as a UCP checkout, with the AP2 checkout mandate that completes it. */
 export interface UcpExport {
@@ -26,7 +27,7 @@ export interface UcpExport {
 }
 
 /** The UCP checkout response for a purchase, with its statement as a signal. */
-export function ucpCheckout(f: PurchaseFacts, ref: AlibiRef): Record<string, unknown> {
+function ucpCheckout(f: PurchaseFacts, ref: AlibiRef): Record<string, unknown> {
   return {
     ucp: { version: UCP_VERSION, payment_handlers: {} },
     ...checkoutObject(f),

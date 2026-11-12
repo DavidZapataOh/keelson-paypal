@@ -24,6 +24,8 @@ import type { CheckId, ExportReport } from "./verify.ts";
 /**
  * The signature tags agent requests carry: Visa TAP's browsing and payment tags, Mastercard Agent
  * Pay's tag and Web Bot Auth's.
+ *
+ * @internal
  */
 export type AgentTag =
   | "agent-browser-auth"
@@ -31,10 +33,18 @@ export type AgentTag =
   | "agent-pay-auth"
   | "web-bot-auth";
 
-/** Visa TAP's limit on `expires − created`, and how long its nonces are remembered. */
+/**
+ * Visa TAP's limit on `expires − created`, and how long its nonces are remembered.
+ *
+ * @internal
+ */
 export const TAP_MAX_WINDOW_SECONDS = 480;
 
-/** The covered header that names the purchase's logged statement. */
+/**
+ * The covered header that names the purchase's logged statement.
+ *
+ * @internal
+ */
 export const ALIBI_HEADER = "keelson-alibi";
 
 const LABEL = "sig2";
@@ -47,7 +57,11 @@ export interface Ed25519Signer {
   key: CryptoKey;
 }
 
-/** A request as signed: header names in lower case. */
+/**
+ * A request as signed: header names in lower case.
+ *
+ * @internal
+ */
 export interface SignedRequest {
   method: string;
   url: string;
@@ -98,7 +112,11 @@ export async function ed25519Signer(privateJwk: JWK): Promise<Ed25519Signer> {
   return { kid, jwk: { kty: "OKP", crv: "Ed25519", x, kid }, key };
 }
 
-/** An RFC 9421 `ed25519` verifier for a public OKP JWK. */
+/**
+ * An RFC 9421 `ed25519` verifier for a public OKP JWK.
+ *
+ * @internal
+ */
 export async function ed25519Verifier(jwk: { x?: unknown }): Promise<Verifier> {
   const key = await crypto.subtle.importKey(
     "jwk",

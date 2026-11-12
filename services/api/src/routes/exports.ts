@@ -164,7 +164,11 @@ const BINDING_CODES = new Set([
   "export.profile",
 ]);
 
-/** The enclave issuer over leg A's `POST /v1/exports/sign`, its refusals mapped to theirs. */
+/**
+ * The enclave issuer over leg A's `POST /v1/exports/sign`, its refusals mapped to theirs.
+ *
+ * @internal
+ */
 export function legExportSigner(
   leg: Pick<LegClient, "signExport">,
   jwk: EcPublicJwk,
@@ -192,6 +196,8 @@ export function legExportSigner(
 /**
  * The keys an export is signed with. Only the owner's copy is closed by the hosted agent or signed
  * with its HTTP key: anyone else would otherwise mint fresh agent credentials for any public Alibi.
+ *
+ * @internal
  */
 export function exportKeysFor(
   level: "full" | "public",

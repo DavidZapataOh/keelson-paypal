@@ -9,12 +9,20 @@ import { type EcPublicJwk, ExportRefused, type ExportSigner } from "./signer.ts"
 import type { AlibiRef } from "./statement.ts";
 import type { CheckId, ExportReport } from "./verify.ts";
 
-/** ACP lets an allowance live briefly; Keelson's lives at most 15 minutes past the countersign. */
+/**
+ * ACP lets an allowance live briefly; Keelson's lives at most 15 minutes past the countersign.
+ *
+ * @internal
+ */
 export const ACP_MAX_TTL_SECONDS = 900;
 /** The export profile of the issuer's attestation over an ACP allowance. */
-export const ACP_ALLOWANCE = "acp.allowance/1";
+const ACP_ALLOWANCE = "acp.allowance/1";
 
-/** ACP 2026-04-17 `Allowance` (`schema.delegate_payment.json#/$defs/Allowance`). */
+/**
+ * ACP 2026-04-17 `Allowance` (`schema.delegate_payment.json#/$defs/Allowance`).
+ *
+ * @internal
+ */
 export interface AcpAllowance {
   reason: "one_time";
   max_amount: number;

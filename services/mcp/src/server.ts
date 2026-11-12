@@ -207,6 +207,8 @@ type Next = z.infer<typeof Next>;
 /**
  * Who closed an export's mandates: Keelson, or nobody yet (`pending`, for the agent to close).
  * Formats without mandates to close have no answer.
+ *
+ * @internal
  */
 export function closedByOf(
   format: "ap2" | "vi" | "ucp" | "acp" | "tap" | "visa",

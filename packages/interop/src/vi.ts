@@ -8,10 +8,15 @@ import type { AgentSigner, EcPublicJwk, ExportSigner } from "./signer.ts";
 import type { AlibiRef } from "./statement.ts";
 import type { CheckId, ExportReport } from "./verify.ts";
 
-/** The `vct` of Keelson's Layer 1 credential. */
+/**
+ * The `vct` of Keelson's Layer 1 credential.
+ *
+ * @internal
+ */
 export const VI_L1_VCT = "https://keelson.finance/credentials/paypal/v1";
 /** The export profiles of the issuer-signed layers. */
-export const VI_L1 = "vi.l1/1";
+const VI_L1 = "vi.l1/1";
+/** @internal */
 export const VI_L2 = "vi.l2/1";
 
 const ISSUER = "https://keelson.finance";

@@ -9,7 +9,11 @@ import { parseStatementLeaf, ulidOfRequestId } from "@keelson/log";
 import { type Disclosed, decodeDisclosed, type Mandate, type UserAuth } from "@keelson/mandate";
 import { ExportRefused } from "./signer.ts";
 
-/** One purchased line, in minor units of the purchase currency. */
+/**
+ * One purchased line, in minor units of the purchase currency.
+ *
+ * @internal
+ */
 export interface Line {
   sku: string;
   title: string;
@@ -17,7 +21,11 @@ export interface Line {
   unitMinor: number;
 }
 
-/** A merchant as the standards name it. */
+/**
+ * A merchant as the standards name it.
+ *
+ * @internal
+ */
 export interface Merchant {
   id: string;
   name: string;

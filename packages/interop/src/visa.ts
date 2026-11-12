@@ -12,8 +12,13 @@ import type { CheckId, ExportReport } from "./verify.ts";
  * Condition 10.4 (§11.8.5.3, Table 11-29), each claim pointing at the signed value that proves it.
  */
 export const PACK_TYPE = "keelson.visa-evidence-pack/1";
+/** @internal */
 export const RULES_EDITION = "Visa Core Rules and Visa Product and Service Rules, 24 October 2026";
-/** The export profile of the issuer's attestation over a pack. */
+/**
+ * The export profile of the issuer's attestation over a pack.
+ *
+ * @internal
+ */
 export const VISA_PACK = "visa.pack/1";
 
 /** §4.1.23.8: an order confirmation stays available for at least 120 days. */
@@ -22,9 +27,14 @@ const RETENTION_DAYS = 120;
 const MIN_FINGERPRINT = 20;
 const DAY_MS = 86_400_000;
 
+/** @internal */
 export type ItemStatus = "evidenced" | "not_evidenced" | "withheld" | "not_available";
 
-/** A value the pack relies on: where it is signed, and what it is. */
+/**
+ * A value the pack relies on: where it is signed, and what it is.
+ *
+ * @internal
+ */
 export interface EvidenceRef {
   /** `statement`: the countersigned facts; `mandate`: the passkey-signed mandate as disclosed; `bundle`: the Alibi. */
   source: "statement" | "mandate" | "bundle";
@@ -33,6 +43,7 @@ export interface EvidenceRef {
   value: unknown;
 }
 
+/** @internal */
 export interface PackItem {
   rule: string;
   title: string;

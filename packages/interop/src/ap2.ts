@@ -9,10 +9,10 @@ import type { AlibiRef } from "./statement.ts";
 import type { CheckId, ExportReport } from "./verify.ts";
 
 /** The export profiles of AP2's issuer-signed artifacts. */
-export const AP2_OPEN = "ap2.open/1";
-export const AP2_CHECKOUT_JWT = "ap2.checkout_jwt/1";
-export const AP2_CHECKOUT_RECEIPT = "ap2.checkout_receipt/1";
-export const AP2_PAYMENT_RECEIPT = "ap2.payment_receipt/1";
+const AP2_OPEN = "ap2.open/1";
+const AP2_CHECKOUT_JWT = "ap2.checkout_jwt/1";
+const AP2_CHECKOUT_RECEIPT = "ap2.checkout_receipt/1";
+const AP2_PAYMENT_RECEIPT = "ap2.payment_receipt/1";
 const JWT = "JWT";
 /** `typ` of a terminal delegation hop (AP2 `kb_sd_jwt.TYP_TERMINAL`). */
 const KB_SD_JWT = "kb+sd-jwt";
@@ -60,13 +60,19 @@ async function rootSdJwt(
   return `${jwt}~${disclosures.map((d) => `${d.encode()}~`).join("")}`;
 }
 
-/** The issuer-signed payload of a root SD-JWT. */
+/**
+ * The issuer-signed payload of a root SD-JWT.
+ *
+ * @internal
+ */
 export const openPayload = (token: string): Record<string, unknown> => jwtPayload(token);
 
 /**
  * The purchase's mandate as AP2 v0.2 open checkout and payment mandates, signed in the issuer
  * slot and delegated to the agent's `cnf` key. The payment mandate's `payment.reference` is the
  * `sd_hash` of the open checkout mandate.
+ *
+ * @internal
  */
 export async function issueAp2Open(
   f: PurchaseFacts,
@@ -171,7 +177,11 @@ export const signCheckoutJwt = (f: PurchaseFacts, ref: AlibiRef, issuer: ExportS
     ref.statement,
   );
 
-/** A receipt's `reference`: the hash of the final segment of a closed mandate chain. */
+/**
+ * A receipt's `reference`: the hash of the final segment of a closed mandate chain.
+ *
+ * @internal
+ */
 export const receiptReference = (chain: string): string =>
   b64uSha256(chain.split("~~").at(-1) as string);
 
@@ -461,7 +471,11 @@ export async function verifyAp2(
 const segmentsOf = (chain: string): string[] =>
   chain.split("~~").map((s) => (s.endsWith("~") ? s : `${s}~`));
 
-/** One segment's canonical form and binding hashes, as AP2's SDK computes them. */
+/**
+ * One segment's canonical form and binding hashes, as AP2's SDK computes them.
+ *
+ * @internal
+ */
 export interface SegmentHashes {
   compact: string;
   issuerJwt: string;
@@ -475,7 +489,11 @@ export interface SegmentHashes {
   disclosureDigests: Record<string, string>;
 }
 
-/** The canonical form and hashes of every segment of a chain. */
+/**
+ * The canonical form and hashes of every segment of a chain.
+ *
+ * @internal
+ */
 export function segmentHashes(chain: string): SegmentHashes[] {
   return segmentsOf(chain).map((sdJwt) => {
     const [issuerJwt, ...rest] = sdJwt.split("~");

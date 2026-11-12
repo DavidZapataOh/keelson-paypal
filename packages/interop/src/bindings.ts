@@ -1,7 +1,11 @@
 import { CURRENCIES, type CurrencyCode } from "@keelson/core";
 import type { StatementFacts } from "./facts.ts";
 
-/** A statement fact an export payload may bind. */
+/**
+ * A statement fact an export payload may bind.
+ *
+ * @internal
+ */
 export type Fact = keyof StatementFacts;
 
 /** How a fact is stated in a standard's payload. */
@@ -13,6 +17,7 @@ export type Transform =
   | "UlidOfRequest"
   | "StatusOfDecision";
 
+/** @internal */
 export interface BindingRow {
   /** RFC 6901 pointer into the payload. */
   pointer: string;
@@ -21,7 +26,11 @@ export interface BindingRow {
   transform?: Transform;
 }
 
-/** What the issuer signs for one export profile: its JWS `typ` and the values it binds. */
+/**
+ * What the issuer signs for one export profile: its JWS `typ` and the values it binds.
+ *
+ * @internal
+ */
 export interface Profile {
   typ: string;
   rows: BindingRow[];
@@ -115,7 +124,11 @@ export function transform(
   }
 }
 
-/** The value at an RFC 6901 pointer, or `undefined`. */
+/**
+ * The value at an RFC 6901 pointer, or `undefined`.
+ *
+ * @internal
+ */
 export function valueAt(doc: unknown, pointer: string): unknown {
   if (pointer === "") return doc;
   let at: unknown = doc;
