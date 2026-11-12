@@ -600,6 +600,7 @@ function EquivocationStep() {
         signatures itself; no one at Keelson is asked. Below is a real slash on Arbitrum Sepolia,
         from our drill on a test origin.
       </Lead>
+      <h2 className="sr-only">Bonds on the log</h2>
       <LogBonds />
     </div>
   );

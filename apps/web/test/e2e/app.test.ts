@@ -1169,11 +1169,12 @@ function board(id: string, attacks: number, complete: boolean) {
 }
 
 /** The scoreboard against the API's public red-team routes, answered from this test. */
-async function scoreboardVisit(kind: keyof typeof VIEWPORTS, live: boolean) {
+async function scoreboardVisit(kind: keyof typeof VIEWPORTS, live: boolean, delayMs = 0) {
   const id = "01M72AN4VSH4FYYT9X7RF01P3N";
   const context = await browser.newContext(VIEWPORTS[kind]);
-  await context.route("https://api.keelson.finance/**", (route) => {
+  await context.route("https://api.keelson.finance/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
     const json = (body: unknown) =>
       route.fulfill({ json: body, headers: { "access-control-allow-origin": "*" } });
     if (path === "/v1/redteam/campaigns") {
@@ -1200,6 +1201,14 @@ async function scoreboardVisit(kind: keyof typeof VIEWPORTS, live: boolean) {
     return route.abort("connectionrefused");
   });
   const page = await context.newPage();
+  await page.addInitScript(() => {
+    (window as unknown as { cls: number }).cls = 0;
+    new PerformanceObserver((list) => {
+      for (const e of list.getEntries() as unknown as { value: number }[]) {
+        (window as unknown as { cls: number }).cls += e.value;
+      }
+    }).observe({ type: "layout-shift", buffered: true });
+  });
   await page.goto(`${base}/scoreboard/`);
   await page.getByRole("heading", { level: 1 }).waitFor();
   return { context, page };
@@ -1225,6 +1234,16 @@ describe.each(Object.keys(VIEWPORTS) as (keyof typeof VIEWPORTS)[])("scoreboard 
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= screen.width)).toBe(
       true,
     );
+    await context.close();
+  });
+
+  test("keeps its shape while the scoreboard loads", async () => {
+    // The API answers after first paint, as it does over a real network.
+    const { context, page } = await scoreboardVisit(kind, false, 600);
+    await page.getByText("0 of 237").first().waitFor();
+    await page.waitForTimeout(300);
+    const cls = await page.evaluate(() => (window as unknown as { cls: number }).cls);
+    expect(cls).toBeLessThan(0.1);
     await context.close();
   });
 });
