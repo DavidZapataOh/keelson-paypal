@@ -22,22 +22,26 @@ contract ReserveSymbolicTest is SymbolicSetup {
         assert(!_slash(slash, _sign2of2(_digest(slash))));
     }
 
-    /// @notice RSV2: shares are redeemed only inside the owner's window after its cooldown.
-    function check_reserveCooldown(uint40 requestAt, uint40 redeemAt) public {
+    /// @notice RSV2: requested shares are fulfilled only once the cooldown has passed since the request, and nothing is
+    /// claimable before.
+    function check_reserveCooldown(uint40 requestAt, uint40 fulfilAt) public {
         address staker = STAKER;
         assertTrue(token.transfer(staker, 10e6));
         vm.startPrank(staker);
         token.approve(address(reserve), 10e6);
         uint256 shares = reserve.deposit(10e6, staker);
-        vm.assume(requestAt > start && redeemAt >= requestAt);
+        vm.assume(requestAt > start && fulfilAt >= requestAt);
         vm.warp(requestAt);
-        reserve.requestCooldown();
-        vm.warp(redeemAt);
-        (bool ok,) = address(reserve).call(abi.encodeCall(reserve.redeem, (shares, staker, staker)));
+        reserve.requestRedeem(shares, staker, staker);
+        assert(reserve.maxRedeem(staker) == 0);
+        vm.warp(fulfilAt);
+        (bool ok,) = address(reserve).call(abi.encodeCall(reserve.fulfillRedeem, (staker)));
         vm.stopPrank();
         if (ok) {
-            assert(uint256(redeemAt) >= uint256(requestAt) + COOLDOWN);
-            assert(uint256(redeemAt) <= uint256(requestAt) + COOLDOWN + UNSTAKE_WINDOW);
+            assert(uint256(fulfilAt) >= uint256(requestAt) + COOLDOWN);
+            assert(reserve.maxRedeem(staker) == shares);
+        } else {
+            assert(reserve.maxRedeem(staker) == 0);
         }
     }
 }

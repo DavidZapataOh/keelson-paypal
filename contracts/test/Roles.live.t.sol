@@ -50,7 +50,11 @@ contract RolesLiveTest is ForkTest {
         _assertRole(manager, vault, KeelsonBondVault.pause.selector, KeelsonRoles.GUARDIAN_ROLE, chain);
         _assertRole(manager, vault, KeelsonBondVault.unpause.selector, KeelsonRoles.GUARDIAN_ROLE, chain);
         _assertRole(manager, vault, KeelsonBondVault.vetoSlash.selector, KeelsonRoles.GUARDIAN_ROLE, chain);
-        _assertRole(manager, reserve, KeelsonReserve.setCooldown.selector, KeelsonRoles.PARAMETERS_ROLE, chain);
+        // The first reserve's `setCooldown(uint40,uint40)` also set its unstake window.
+        bytes4 setCooldown = reserve.code.length > 0 && _hasUnstakeWindow(reserve)
+            ? bytes4(keccak256("setCooldown(uint40,uint40)"))
+            : KeelsonReserve.setCooldown.selector;
+        _assertRole(manager, reserve, setCooldown, KeelsonRoles.PARAMETERS_ROLE, chain);
         _assertRole(manager, reserve, KeelsonReserve.setRateLimit.selector, KeelsonRoles.PARAMETERS_ROLE, chain);
 
         _assertMember(manager, KeelsonRoles.ADMIN_ROLE, timelock, 0, chain);
@@ -119,5 +123,10 @@ contract RolesLiveTest is ForkTest {
         (bool member, uint32 executionDelay) = manager.hasRole(role, account);
         assertTrue(member, chain);
         assertEq(executionDelay, delay, chain);
+    }
+
+    function _hasUnstakeWindow(address reserve) internal view returns (bool) {
+        (bool ok,) = reserve.staticcall(abi.encodeWithSignature("unstakeWindow()"));
+        return ok;
     }
 }

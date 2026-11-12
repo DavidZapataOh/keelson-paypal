@@ -60,29 +60,29 @@ rule warrantyOnlyForHeldCoverageReachable(env e, KeelsonTypes.Verdict v, uint64 
 
 // ---------------------------------------------------------------- RSV2
 
-/// Assets leave the pool for a staker only inside that staker's window, from `cooldown` to `cooldown + unstakeWindow`
-/// after it requested the cooldown.
-rule reserveCooldown(env e, method f, address receiver, address owner)
+/// Assets leave the pool for a staker only from a fulfilled redemption, and never more than it fixed.
+rule reserveCooldown(env e, method f, address receiver, address controller)
     filtered {
         f -> f.selector == sig:withdraw(uint256, address, address).selector
             || f.selector == sig:redeem(uint256, address, address).selector
     }
 {
-    bool open = inWindow(e, owner);
+    require receiver != currentContract;
+    mathint owed = maxWithdraw(e, controller);
     uint256 assetsBefore = token.balanceOf(currentContract);
     if (f.selector == sig:withdraw(uint256, address, address).selector) {
         uint256 assets;
-        withdraw(e, assets, receiver, owner);
+        withdraw(e, assets, receiver, controller);
     } else {
         uint256 shares;
-        redeem(e, shares, receiver, owner);
+        redeem(e, shares, receiver, controller);
     }
-    assert token.balanceOf(currentContract) < assetsBefore => open;
+    assert assetsBefore - token.balanceOf(currentContract) <= owed;
 }
 
-rule reserveCooldownReachable(env e, uint256 shares, address receiver, address owner) {
+rule reserveCooldownReachable(env e, uint256 shares, address receiver, address controller) {
     require receiver != currentContract;
     uint256 assetsBefore = token.balanceOf(currentContract);
-    redeem(e, shares, receiver, owner);
+    redeem(e, shares, receiver, controller);
     satisfy token.balanceOf(currentContract) < assetsBefore;
 }

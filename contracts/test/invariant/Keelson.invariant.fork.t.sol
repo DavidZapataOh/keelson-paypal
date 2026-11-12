@@ -234,7 +234,13 @@ contract KeelsonInvariantForkTest is SlashBase, Properties {
         assertEq(MedusaFork.vaultArgs(), deployScript.constructorArgs(), "vault constructor args");
         assertEq(MedusaFork.reserveArgs(), reserveScript.constructorArgs(), "reserve constructor args");
         assertEq(MedusaFork.vaultArgs(), json.readBytes(".constructorArgs.KeelsonBondVault"), "registry vault args");
-        assertEq(MedusaFork.reserveArgs(), json.readBytes(".constructorArgs.KeelsonReserve"), "registry reserve args");
+        // The deployed reserve's constructor also took an unstake window, its eighth argument.
+        bytes memory deployed = json.readBytes(".constructorArgs.KeelsonReserve");
+        bytes memory current = new bytes(deployed.length - 32);
+        for (uint256 i; i < current.length; ++i) {
+            current[i] = deployed[i < 7 * 32 ? i : i + 32];
+        }
+        assertEq(MedusaFork.reserveArgs(), current, "registry reserve args");
 
         IVerdictVerifier vv = IVerdictVerifier(MedusaFork.VERIFIER);
         assertTrue(vv.allowedMeasurement(MedusaFork.TDX_MEASUREMENT), "tdx measurement allowed at the fork");

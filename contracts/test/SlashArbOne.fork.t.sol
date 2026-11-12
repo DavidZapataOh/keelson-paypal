@@ -71,7 +71,6 @@ contract SlashArbOneForkTest is ForkTest, VerdictSigners {
             keccak256(bytes(ORIGIN)),
             address(manager),
             10 minutes,
-            1 days,
             1 hours,
             1_000e6
         );
