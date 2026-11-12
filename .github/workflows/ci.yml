@@ -319,6 +319,12 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm turbo run build --filter=@keelson/sdk... --filter=@keelson/verifier... --filter=@keelson/paypal...
       - run: pnpm --filter @keelson/sdk exec playwright install --with-deps chromium
+      # One Judge Mode user for the whole run, which makes one purchase; the suite that buys
+      # rotates with the run number, so four runs cover all four.
+      - name: Pick this run's purchase
+        run: |
+          suites=(purchase-ts quickstart-ts purchase-py quickstart-py)
+          echo "KEELSON_LIVE_BUY=${suites[$((GITHUB_RUN_NUMBER % 4))]}" >> "$GITHUB_ENV"
       - name: TypeScript SDK and verifier
         run: |
           pnpm --filter @keelson/sdk exec vitest run --no-file-parallelism --reporter=verbose test/live | tee -a "$GITHUB_STEP_SUMMARY"

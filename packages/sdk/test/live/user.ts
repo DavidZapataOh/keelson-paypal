@@ -18,6 +18,15 @@ interface Cached {
 }
 
 export const APP_ORIGIN: string = process.env.KEELSON_APP_URL ?? "https://app.keelson.finance";
+/**
+ * In CI one Judge Mode user serves the whole run and makes one purchase, named by
+ * `KEELSON_LIVE_BUY` (`purchase-ts`, `quickstart-ts`, `purchase-py` or `quickstart-py`): Judge Mode
+ * admits five sessions an hour per address, and the hosted operator backs one $99 purchase per
+ * user. Unset, every buying suite runs, each as a user of its own.
+ */
+export const BUY: string | undefined = process.env.KEELSON_LIVE_BUY;
+export const buys = (suite: string): boolean => BUY === undefined || BUY === suite;
+
 export const hasBuyer: boolean = Boolean(
   process.env.PAYPAL_SANDBOX_BUYER_EMAIL && process.env.PAYPAL_SANDBOX_BUYER_PASSWORD,
 );
@@ -47,7 +56,10 @@ export interface User {
  * through the hosted operator is capped.
  */
 export async function judge(o: { cache?: string } = {}): Promise<User> {
-  const CACHE = o.cache ? join(tmpdir(), `keelson-live-judge-${o.cache}.json`) : DEFAULT_CACHE;
+  const CACHE =
+    o.cache && BUY === undefined
+      ? join(tmpdir(), `keelson-live-judge-${o.cache}.json`)
+      : DEFAULT_CACHE;
   const browser: Browser = await chromium.launch({
     headless: process.env.PLAYWRIGHT_HEADED !== "1",
   });

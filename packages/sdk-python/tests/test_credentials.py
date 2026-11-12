@@ -94,3 +94,11 @@ async def test_two_refreshes_at_once_send_one_request(server: Scripted, tmp_path
     assert tokens == ["a9", "a9", "a9"]
     assert len(server.seen) == 1
     assert not (tmp_path / "e.json.lock").exists()
+
+
+async def test_a_refresh_goes_to_the_clients_api_not_the_files(server: Scripted, tmp_path: Path) -> None:
+    path = tmp_path / "f.json"
+    write_credentials(saved(server, apiUrl="https://elsewhere.invalid", expiresAt=0), path)
+    server.script(json_reply(200, {"access_token": "a2", "expires_in": 3600}))
+    assert await stored_login(path, base_url=server.url).token() == "a2"
+    assert len(server.seen) == 1
