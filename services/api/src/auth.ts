@@ -23,6 +23,9 @@ import { ownsLinkedOperator } from "./operators/owners.ts";
 /** RFC 8707 resource identifier of this API; the `aud` of every access token it accepts. */
 export const apiAudience = "https://api.keelson.finance";
 
+/** The DPoP proof algorithms the authorization server and the API accept. */
+export const DPOP_ALGORITHMS = ["ES256", "EdDSA"] as const;
+
 /** Keelson's own hosts, which never name a client. */
 const isOwnHost = (host: string) => host === "keelson.finance" || host.endsWith(".keelson.finance");
 
@@ -280,6 +283,8 @@ export function createAuth(
         clientRegistrationAllowedResources: [apiAudience],
         resources: [apiAudience],
         clientPrivileges: ({ user }) => user?.role === "admin",
+        // A client that sends a DPoP proof (RFC 9449) gets a token bound to its key.
+        dpop: { signingAlgorithms: [...DPOP_ALGORITHMS], proofMaxAgeSeconds: 60 },
         extensions: [rarExtension(db)],
       }),
       // The server fetches a client's metadata document itself, resolving its host once and

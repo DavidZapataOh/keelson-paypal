@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { OpenAPIHono } from "@hono/zod-openapi";
 import type { MiddlewareHandler } from "hono";
 import type { Deps } from "../app.ts";
@@ -15,15 +16,41 @@ export const noFraming: MiddlewareHandler = async (c, next) => {
 };
 
 /**
+ * The CSP hash source (`'sha256-…'`) of every inline `<script>` in `html`, over its exact text.
+ * The markup is the app's own static export, so a script element is found by its tags.
+ * @internal
+ */
+export function inlineScriptHashes(html: string): string[] {
+  const hashes: string[] = [];
+  let at = html.indexOf("<script");
+  while (at !== -1) {
+    const open = html.indexOf(">", at);
+    const close = html.indexOf("</script>", open);
+    if (open === -1 || close === -1) break;
+    if (!/\ssrc=/.test(html.slice(at, open))) {
+      const text = html.slice(open + 1, close);
+      hashes.push(`'sha256-${createHash("sha256").update(text).digest("base64")}'`);
+    }
+    at = html.indexOf("<script", close);
+  }
+  return hashes;
+}
+
+/**
  * The embed page's policy. Its HTML and scripts are the app's static export, loaded from the
  * app's origin; it calls only this API. The mandate's Poseidon2 commitment runs in a worker.
  * @internal
  */
-export function embedPolicy(appOrigin: string, ancestor: string | undefined): string {
+export function embedPolicy(
+  appOrigin: string,
+  ancestor: string | undefined,
+  scriptHashes: string[],
+): string {
   return [
     "default-src 'none'",
-    // A static export has no per-request nonce; its inline bootstrap needs 'unsafe-inline'.
-    `script-src 'unsafe-inline' 'wasm-unsafe-eval' ${appOrigin}`,
+    // A static export has no per-request nonce: its inline scripts are allowed by hash, and its
+    // chunks, which carry no nonce or integrity for 'strict-dynamic' to trust, by origin.
+    ["script-src", ...scriptHashes, "'wasm-unsafe-eval'", appOrigin].join(" "),
     `worker-src blob: ${appOrigin}`,
     `style-src 'unsafe-inline' ${appOrigin}`,
     `font-src ${appOrigin}`,
@@ -67,7 +94,7 @@ export function registerEmbedPage(
       });
     }
     return c.html(page, 200, {
-      "content-security-policy": embedPolicy(appOrigin, embed?.origin),
+      "content-security-policy": embedPolicy(appOrigin, embed?.origin, inlineScriptHashes(page)),
       "permissions-policy": PERMISSIONS,
       "referrer-policy": "no-referrer",
       "x-content-type-options": "nosniff",

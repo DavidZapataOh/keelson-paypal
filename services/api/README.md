@@ -605,9 +605,20 @@ buyer approved in that time is voided, so neither counts. A request, a change, a
 over a cap answers `422 hosted-cap`; approvals and holds are measured under an advisory lock, so
 concurrent ones cannot pass a cap. The consent page shows the per-user cap of the host's tier.
 
+**Sender-constrained tokens.** A client that sends a DPoP proof (RFC 9449, ES256 or EdDSA) to the
+token endpoint gets a token bound to its key (`token_type: DPoP`, `cnf.jkt`). The REST API then
+takes it only as `Authorization: DPoP` with a fresh proof for that request's method and URL and
+the token's hash; each proof id is reserved once in Postgres, across instances. A bound token sent
+as a bearer token, with a proof for another URL, a replayed proof or another key's proof, gets
+`401` with a `DPoP` challenge. `/mcp`, whose authorization is Bearer, refuses bound tokens. Every
+challenge names the protected resource metadata (RFC 9728 §5.1).
+
 Refresh tokens rotate and can be revoked (RFC 7009, `/api/auth/oauth2/revoke`). Stopping every
 agent (`POST /v1/agents/stop`) revokes the user's refresh tokens and consents and refuses every
-access token issued before it, on the API and on `/mcp`. Disconnecting one host
+access token issued before it, on the API and on `/mcp`. It also closes at the card issuer every
+single-use card none of whose authorizations was approved yet (`cardsClosed`), and the card veto
+declines any authorization of a stopped user's card as `stopped` before asking a leg, so a card the
+issuer has not closed yet is still refused. Disconnecting one host
 (`POST /v1/agents/{agentId}/disconnect?client={clientId}`, one row per host on the agents page)
 does the same for that host only: its mandates, requests, consent and refresh tokens end, and its
 access tokens issued before then are refused. The hosted operator's mandates no app holds show as

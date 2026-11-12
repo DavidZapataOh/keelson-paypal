@@ -1,6 +1,7 @@
 import { createHmac, randomBytes } from "node:crypto";
 import { cardAuthorizationDigest, countersignDigest, keelsonDomain } from "@keelson/core/eip712";
 import {
+  agentStops,
   cardAuthorizations,
   cardChargebacks,
   eq,
@@ -194,7 +195,7 @@ async function cardPurchase(state: "OPEN" | "PAUSED" = "OPEN") {
     state,
     expiresAt: new Date((now + 900) * 1000),
   });
-  return { id, cardToken };
+  return { id, cardToken, userId };
 }
 
 const coffee = (
@@ -338,6 +339,38 @@ describe("the card authorization veto", () => {
     expect(calls).toHaveLength(0);
     const unknown = await decide(deps, coffee("card-unknown"), performance.now());
     expect(unknown.result).toBe("SUSPECTED_FRAUD");
+  });
+});
+
+describe("the card authorization veto after a stop", () => {
+  test("declines a card of a user who stopped every agent, asking neither leg", async () => {
+    answers = { a: () => ({ mask: 0 }), b: () => ({ mask: 0 }) };
+    const { cardToken, userId } = await cardPurchase();
+    // The stop is stored, but the issuer has not closed the card yet.
+    await testDb.insert(agentStops).values({ id: ulid(), userId });
+    calls.length = 0;
+    const n = coffee(cardToken);
+    expect(await decide(deps, n, performance.now())).toEqual({
+      approved: false,
+      result: "CARD_PAUSED",
+      failedMask: 0,
+    });
+    expect(calls).toHaveLength(0);
+    const [stored] = await testDb
+      .select()
+      .from(cardAuthorizations)
+      .where(eq(cardAuthorizations.id, n.id));
+    expect(stored).toMatchObject({ approved: false, reason: "stopped" });
+  });
+
+  test("an authorization approved before the stop stays approved", async () => {
+    answers = { a: () => ({ mask: 0 }), b: () => ({ mask: 0 }) };
+    const { cardToken, userId } = await cardPurchase();
+    const n = coffee(cardToken);
+    const first = await decide(deps, n, performance.now());
+    expect(first.approved).toBe(true);
+    await testDb.insert(agentStops).values({ id: ulid(), userId });
+    expect(await decide(deps, n, performance.now())).toEqual(first);
   });
 });
 

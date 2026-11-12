@@ -15,7 +15,7 @@ import { isAPIError } from "better-auth/api";
 import { verifyBearerToken } from "better-auth/oauth2";
 import { bodyLimit } from "hono/body-limit";
 import type { Deps } from "./app.ts";
-import { apiAudience, delegatedUser, tokenScopes } from "./auth.ts";
+import { apiAudience, DPOP_ALGORITHMS, delegatedUser, tokenScopes } from "./auth.ts";
 import { tokenStopped } from "./stopped.ts";
 
 /**
@@ -44,6 +44,8 @@ export function registerMcp(
         resource: apiAudience,
         authorization_servers: [issuer],
         bearer_methods_supported: ["header"],
+        // The REST API takes DPoP-bound tokens with their proofs; `/mcp` takes Bearer tokens only.
+        dpop_signing_alg_values_supported: [...DPOP_ALGORITHMS],
         resource_name: "Keelson",
         resource_documentation: "https://keelson.finance",
       },

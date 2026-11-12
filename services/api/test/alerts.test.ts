@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { createECDH, randomBytes } from "node:crypto";
+import { createECDH, createHash, randomBytes } from "node:crypto";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { globalAgent, createServer as httpsServer } from "node:https";
 import type { AddressInfo } from "node:net";
@@ -30,6 +30,7 @@ import {
   purchaseAlert,
   stopAlert,
 } from "../src/notify/notifier.ts";
+import { declarativePush, pushTopic } from "../src/notify/push.ts";
 import { principalChannel } from "../src/principal.ts";
 import { testDb, testKv } from "./setup.ts";
 import { headerPrincipal } from "./tee-live.ts";
@@ -232,6 +233,55 @@ describe("phone approvals over Web Push", () => {
   });
 });
 
+describe("pushes about one subject", () => {
+  test("carry its RFC 8030 topic and a Declarative Web Push message", async () => {
+    const sub = await newUser();
+    await testDb.insert(pushSubscriptions).values({
+      id: ulid(),
+      userId: sub,
+      endpoint: `${pushService.origin}/201/${ulid()}`,
+      ...browserKeys(),
+    });
+    const request = ulid();
+    const before = pushService.seen.length;
+    await deliver({ ...notifier, vapid: VAPID }, sub, {
+      event: "approval.requested",
+      title: "Shopping agent wants $94.00 at RunFast",
+      body: "Paused until you answer.",
+      url: "https://app.keelson.finance/connect/?c=BCDF-GHJK",
+      action: "Review and approve",
+      push: { ttl: 600, urgency: "high" },
+      subjectId: request,
+    });
+    const [got] = pushService.seen.slice(before);
+    const topic = createHash("sha256").update(request).digest("base64url").slice(0, 32);
+    expect(got?.headers.topic).toBe(topic);
+    expect(pushTopic(request)).toMatch(/^[\w-]{32}$/);
+    expect(got?.headers.urgency).toBe("high");
+  });
+
+  test("the message is what Safari shows with no service worker", () => {
+    const message = declarativePush({
+      title: "You approved Shopping agent",
+      body: "Answered.",
+      url: "https://app.keelson.finance/activity/",
+      tag: "01M7REQUEST000000000000000",
+    });
+    expect(message).toEqual({
+      web_push: 8030,
+      notification: {
+        title: "You approved Shopping agent",
+        body: "Answered.",
+        navigate: "https://app.keelson.finance/activity/",
+        tag: "01M7REQUEST000000000000000",
+        lang: "en",
+        dir: "ltr",
+        silent: false,
+      },
+    });
+  });
+});
+
 describe("email alerts", () => {
   /** The confirmation link's token for the user's current nonce, as the email carries it. */
   async function confirmToken(sub: string, exp = Math.floor(Date.now() / 1000) + 3600) {
@@ -426,6 +476,7 @@ describe("email alerts", () => {
     const alert = await stopAlert(notifier, sub, {
       id: stop,
       revoked: 2,
+      cardsClosed: 1,
       released: [{ currency: "USD", minor: "5000" }],
       releasing: [{ currency: "USD", minor: "1400" }],
       mandateHashes: [],
@@ -434,7 +485,7 @@ describe("email alerts", () => {
       createdAt: new Date().toISOString(),
     });
     expect(alert.alert.body).toBe(
-      "2 mandates ended and every agent lost access. $50.00 released; $14.00 releasing once pending purchases settle.",
+      "2 mandates ended and every agent lost access. 1 single-use card closed. $50.00 released; $14.00 releasing once pending purchases settle.",
     );
     expect(alert.alert.details).toEqual([
       { label: "Public log", value: "Recorded once pending purchases are logged" },

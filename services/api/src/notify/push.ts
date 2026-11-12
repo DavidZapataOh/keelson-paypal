@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { type Db, eq, pushSubscriptions } from "@keelson/db";
 import type { Logger } from "pino";
 import { sendNotification, WebPushError } from "web-push";
@@ -19,6 +20,35 @@ export interface PushPayload {
 }
 
 /**
+ * The RFC 8030 §5.4 topic of every push about `subject`: a newer one replaces an older one the
+ * push service still holds. At most 32 URL-safe base64 characters.
+ */
+export function pushTopic(subject: string): string {
+  return createHash("sha256").update(subject).digest("base64url").slice(0, 32);
+}
+
+/**
+ * The payload as a Declarative Web Push message, which Safari shows with no service worker code;
+ * the service worker shows the same `notification` elsewhere.
+ * @see https://webkit.org/blog/16535/meet-declarative-web-push/
+ * @internal
+ */
+export function declarativePush(payload: PushPayload, silent = false) {
+  return {
+    web_push: 8030,
+    notification: {
+      title: payload.title,
+      body: payload.body,
+      navigate: payload.url,
+      tag: payload.tag,
+      lang: "en",
+      dir: "ltr",
+      silent,
+    },
+  } as const;
+}
+
+/**
  * Sends the payload to every browser the user subscribed, encrypted to each (RFC 8291). A
  * subscription the push service no longer knows (404, 410) is deleted. Resolves to how many push
  * services accepted it.
@@ -27,7 +57,7 @@ export async function sendPush(
   deps: { db: Db; log: Logger; vapid: Vapid },
   userId: string,
   payload: PushPayload,
-  options: { ttl: number; urgency: "normal" | "high" },
+  options: { ttl: number; urgency: "low" | "normal" | "high"; topic?: string | undefined },
 ): Promise<number> {
   const subs = await deps.db
     .select()
@@ -38,11 +68,12 @@ export async function sendPush(
       try {
         await sendNotification(
           { endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
-          JSON.stringify(payload),
+          JSON.stringify(declarativePush(payload, options.urgency === "low")),
           {
             vapidDetails: deps.vapid,
             TTL: options.ttl,
             urgency: options.urgency,
+            ...(options.topic === undefined ? {} : { topic: options.topic }),
             timeout: 10_000,
           },
         );

@@ -31,6 +31,8 @@ const short = (iso: string) =>
 interface Stop {
   id: string;
   revoked: number;
+  /** Single-use cards closed at the issuer. */
+  cardsClosed: number;
   released: { currency: string; minor: string }[];
   releasing: { currency: string; minor: string }[];
   logIndexes: Record<string, string>;
@@ -54,6 +56,9 @@ function Stopped({ stop }: { stop: Stop }) {
           : stop.releasing.length > 0
             ? ""
             : "Nothing was held."}
+        {stop.cardsClosed > 0
+          ? ` ${stop.cardsClosed} single-use ${stop.cardsClosed === 1 ? "card" : "cards"} closed.`
+          : ""}
       </p>
       <p className="text-bone/75 text-sm">
         {stop.revoked} {stop.revoked === 1 ? "mandate" : "mandates"} ended, every request denied and
