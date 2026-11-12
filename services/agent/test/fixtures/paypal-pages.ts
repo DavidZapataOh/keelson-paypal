@@ -197,3 +197,26 @@ export function fundingConversion(o: {
     },
   };
 }
+
+/**
+ * A funding options answer that states PayPal's rate per unit, not the order converted: two
+ * options, each `1 COP = 0.000290145 USD`, as a signed-in Colombian buyer's review page answers.
+ */
+export function fundingUnitRate(o: { currency: string; rate: string; options?: number }) {
+  const option = {
+    id: "card",
+    currencyConversion: {
+      rate: o.rate,
+      type: "PAYPAL",
+      from: { currencyValue: "1", currencyCode: o.currency },
+      to: { currencyValue: o.rate, currencyCode: "USD" },
+    },
+  };
+  return {
+    data: {
+      checkoutSession: {
+        fundingOptions: Array.from({ length: o.options ?? 2 }, () => structuredClone(option)),
+      },
+    },
+  };
+}

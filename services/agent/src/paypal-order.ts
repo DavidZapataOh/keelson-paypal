@@ -1,6 +1,6 @@
 import { type CheckoutTotal, checkoutTotal, decimalParts } from "@keelson/core";
 import type { Page } from "playwright";
-import { minorDigits } from "./amounts.ts";
+import { minorDigits, type Quote, rateBetween } from "./amounts.ts";
 
 /** What PayPal's checkout session charges, as PayPal's own Smart Payment Buttons read it. */
 export interface PayPalCharge {
@@ -126,11 +126,11 @@ export function chargeProblem(charge: PayPalCharge, total: CheckoutTotal): strin
  * buttons read it, and PayPal's conversions of it for the buyer's funding options. The requests go
  * to the page's origin with the session's cookies, outside the page, so no script on it can answer
  * them. Undefined when the page names no order or PayPal does not answer one charge. Neither the
- * token nor the answers leave this function but as the charge and the conversions.
+ * token nor the answers leave this function but as the charge, the conversions and the rates.
  */
 export async function readCharge(
   page: Page,
-): Promise<{ charge: PayPalCharge; conversions: KnownConversion[] } | undefined> {
+): Promise<{ charge: PayPalCharge; conversions: KnownConversion[]; quotes: Quote[] } | undefined> {
   const token = orderToken(page.url());
   const origin = URL.parse(page.url())?.origin;
   if (!token || !origin) return undefined;
@@ -153,7 +153,7 @@ export async function readCharge(
     ask("GetFundingOptions", FUNDING),
   ]);
   const charge = chargeOf(details);
-  return charge ? { charge, conversions: conversionsOf(funding, charge) } : undefined;
+  return charge ? { charge, ...conversionsOf(funding, charge) } : undefined;
 }
 
 /** PayPal's conversion of an order's total to the buyer's funding currency. */
@@ -169,22 +169,6 @@ export interface KnownConversion {
    * (`1 COP = 0.0002882 USD`); `rate` is then the one its two amounts give.
    */
   inverse?: string;
-}
-
-/**
- * `buyer / merchant` with 10 significant digits, rounded half up: the rate two amounts give.
- */
-function rateBetween(merchant: string, buyer: string): string {
-  const m = decimalParts(merchant);
-  const b = decimalParts(buyer);
-  if (m.int === 0n) return "0";
-  const den = m.int * 10n ** BigInt(b.scale);
-  const at = (decimals: number) => b.int * 10n ** BigInt(m.scale + decimals);
-  const digits = (at(20) / den).toString().length;
-  const decimals = Math.min(20, Math.max(0, 30 - digits));
-  const q = ((2n * at(decimals) + den) / (2n * den)).toString().padStart(decimals + 1, "0");
-  const text = decimals ? `${q.slice(0, -decimals)}.${q.slice(-decimals)}` : q;
-  return text.includes(".") ? text.replace(/\.?0+$/, "") : text;
 }
 
 /**
@@ -207,13 +191,18 @@ export function agrees(amount: string, rate: string, converted: string): boolean
  * values and ISO codes only; nothing else of the answer is kept. PayPal states some from the
  * buyer's currency to the order's, as its page writes the rate (`1 COP = 0.0002882 USD`): those
  * are turned to the order's total converted to the buyer's currency, at the rate the two amounts
- * give, with PayPal's own rate kept as `inverse`.
+ * give, with PayPal's own rate kept as `inverse`. Others state only the rate per unit, between
+ * 1 unit of either currency and the other (`1 COP = 0.000290145 USD`): those are `quotes`.
  */
-function conversionsOf(answer: unknown, charge: PayPalCharge): KnownConversion[] {
+function conversionsOf(
+  answer: unknown,
+  charge: PayPalCharge,
+): { conversions: KnownConversion[]; quotes: Quote[] } {
   const options = (answer as { data?: { checkoutSession?: { fundingOptions?: unknown } } } | null)
     ?.data?.checkoutSession?.fundingOptions;
-  if (!Array.isArray(options)) return [];
   const out: KnownConversion[] = [];
+  const quotes: Quote[] = [];
+  if (!Array.isArray(options)) return { conversions: out, quotes };
   for (const option of options) {
     const c = (option as { currencyConversion?: unknown } | null)?.currencyConversion as
       | {
@@ -260,9 +249,18 @@ function conversionsOf(answer: unknown, charge: PayPalCharge): KnownConversion[]
         buyer: from.value,
         inverse: rate,
       });
+    } else if (
+      Number(from.value) === 1 &&
+      from.currency !== to.currency &&
+      [from.currency, to.currency].includes(charge.currency) &&
+      Number(to.value) === Number(rate) &&
+      Number(rate) > 0
+    ) {
+      const inverse = to.currency === charge.currency;
+      quotes.push({ currency: inverse ? from.currency : to.currency, rate, inverse });
     } else out.push({ from, currency: to.currency, rate, buyer: to.value });
   }
-  return out;
+  return { conversions: out, quotes };
 }
 
 /**

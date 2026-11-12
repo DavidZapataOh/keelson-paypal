@@ -3,12 +3,14 @@ import { describe, expect, test } from "vitest";
 import {
   charges,
   judge,
+  judgeQuoted,
   minorDigits,
   pageLocale,
   readAmounts,
   readPage,
   scan,
   values,
+  withinQuote,
 } from "../src/amounts.ts";
 import { ES_CO_CARD_CONVERSION, ES_CO_CARD_REVIEW } from "./fixtures/paypal-pages.ts";
 
@@ -674,5 +676,52 @@ describe("a card's or an account's last digits are never an amount", () => {
       ),
       { numRuns: 2_000 },
     );
+  });
+});
+
+describe("PayPal's rate stated per unit", () => {
+  const cop = { currency: "COP", rate: "0.000290145", inverse: true };
+
+  test("bounds a converted total by the mandate's spread and the digits PayPal shows, exactly", () => {
+    // 10236 × 0.000290145 / 2.95 = 1.0067540…: 67.54 basis points over PayPal's rate.
+    expect(withinQuote("2.95", "10236", cop, 68)).toBe(true);
+    expect(withinQuote("2.95", "10236", cop, 67)).toBe(false);
+    // The rate's last digit rounds: 1 / 0.0002901455 to 1 / 0.0002901445 is 3446.547… to 3446.559….
+    expect(withinQuote("1", "3446.55", cop, 0)).toBe(true);
+    expect(withinQuote("1", "3446.56", cop, 0)).toBe(false);
+    // The same quote stated the other way round.
+    expect(
+      withinQuote("2.95", "10236", { currency: "COP", rate: "3446.55", inverse: false }, 68),
+    ).toBe(true);
+    expect(
+      withinQuote("2.95", "10236", { currency: "COP", rate: "3446.55", inverse: false }, 67),
+    ).toBe(false);
+  });
+
+  test("reads the es-CO page's converted total and holds what it cannot tie to PayPal's rate", () => {
+    const page = (text: string) => readPage(text, ["es"], "USD");
+    const text = ES_CO_CARD_REVIEW.join("\n");
+    expect(judgeQuoted(page(text), 295, "USD", cop, 750)).toEqual({
+      ok: true,
+      conversion: { currency: "COP", rate: "3469.830508", buyer: "10236", locale: "es" },
+    });
+    const reason = (t: string, capBps = 750) => {
+      const j = judgeQuoted(page(t), 295, "USD", cop, capBps);
+      return j.ok ? undefined : j.reason;
+    };
+    expect(reason(text, 67)).toBe(
+      "a converted total off PayPal's rate by more than the mandate's spread",
+    );
+    expect(reason(text.replace("0,00029", "0,00031"))).toBe(
+      "a rate line that is not PayPal's rate",
+    );
+    expect(reason(`${text}\nComisión $ 30.000`)).toBe("converted totals that disagree");
+    expect(reason(`${text}\nTotal $2.95 USD\nEnvío $5.00 USD`)).toBe(
+      "a larger amount that may be charged",
+    );
+    expect(reason("Tipo de cambio de PayPal: 1 COP = 0,00029 USD")).toBe(
+      "no converted total shown",
+    );
+    expect(reason(`${text}\nR$ 17,18 BRL`)).toBe("an amount in a third currency");
   });
 });

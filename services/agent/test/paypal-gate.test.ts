@@ -16,6 +16,7 @@ import {
   ES_CO_CARD_REVIEW,
   fundingConversion,
   fundingOptions,
+  fundingUnitRate,
   money,
   reference,
   reviewPage,
@@ -499,6 +500,56 @@ describe("the pay-click gate on PayPal's review page", () => {
 
     test("is held without PayPal's own conversion", async () => {
       const r = await pay(order(card()));
+      expect(r.clicked).toBe(false);
+      expect(r.gate.paid).toBeUndefined();
+    });
+  });
+  describe("PayPal's rate stated per unit, with the converted total only on the page", () => {
+    /** What a signed-in Colombian buyer's review page answered: 1 COP = 0.000290145 USD. */
+    const unit = (o: { lines?: string[]; rate?: string; currency?: string } = {}): Case => ({
+      lines: () => o.lines ?? [...ES_CO_CARD_REVIEW],
+      lang: "es",
+      details: checkoutDetails({ value: "2.95" }),
+      funding: fundingUnitRate({ currency: o.currency ?? "COP", rate: o.rate ?? "0.000290145" }),
+    });
+
+    test("is paid at the rate the order and the converted total give, within the mandate's spread of PayPal's", async () => {
+      const r = await pay(order(unit()), { clicks: 1 });
+      expect(r.clicked, r.results.join("\n")).toBe(true);
+      expect(r.gate.refused).toBe(0);
+      expect(r.gate.paid?.conversion).toMatchObject({
+        merchant: { currency: "USD", value: "2.95" },
+        buyer: { currency: "COP", value: "10236" },
+        rate: "3469.830508",
+      });
+    });
+
+    test("is held when the converted total is further from PayPal's rate than the mandate's spread", async () => {
+      // 10236 COP for 2.95 USD is 68 basis points over 1 / 0.000290145 COP per USD.
+      const r = await pay(order(unit()), { clicks: 1, maxSpreadBps: 67 });
+      expect(r.clicked).toBe(false);
+      expect(r.results[0]).toMatch(/off PayPal's rate by more than the mandate's spread/);
+      const ok = await pay(order(unit()), { clicks: 1, maxSpreadBps: 750 });
+      expect(ok.clicked).toBe(true);
+    });
+
+    test("is held when the page's rate line is not PayPal's rate rounded", async () => {
+      const lines = ES_CO_CARD_REVIEW.map((l) => l.replace("0,00029", "0,00031"));
+      const r = await pay(order(unit({ lines })), { clicks: 1 });
+      expect(r.clicked).toBe(false);
+      expect(r.results[0]).toMatch(/rate line that is not PayPal's rate/);
+    });
+
+    test("is held when the page shows a larger peso amount", async () => {
+      const r = await pay(order(unit({ lines: [...ES_CO_CARD_REVIEW, "Comisión $ 30.000"] })), {
+        clicks: 1,
+      });
+      expect(r.clicked).toBe(false);
+      expect(r.results[0]).toMatch(/converted totals that disagree/);
+    });
+
+    test("is held when PayPal's rate is to another currency than the page's", async () => {
+      const r = await pay(order(unit({ currency: "BRL", rate: "0.1717" })), { clicks: 1 });
       expect(r.clicked).toBe(false);
       expect(r.gate.paid).toBeUndefined();
     });

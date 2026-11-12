@@ -995,6 +995,155 @@ export function judge(
   return { ok: true, conversion: { currency: code, rate, buyer, locale: page.locale } };
 }
 
+/**
+ * PayPal's rate for a funding option, stated per unit: 1 unit of the order's currency in the
+ * buyer's (`1 USD = 3446.55 COP`), or with `inverse`, 1 unit of the buyer's in the order's
+ * (`1 COP = 0.000290145 USD`).
+ */
+export interface Quote {
+  currency: string;
+  rate: string;
+  inverse: boolean;
+}
+
+/** A positive fraction `n / d`. */
+type Fraction = readonly [n: bigint, d: bigint];
+/** The values from `lo` to `hi`. */
+type Range = readonly [lo: Fraction, hi: Fraction];
+
+const atMost = (a: Fraction, b: Fraction) => a[0] * b[1] <= b[0] * a[1];
+const times = (a: Fraction, b: Fraction): Fraction => [a[0] * b[0], a[1] * b[1]];
+
+/** Every value a decimal shown with its digits rounds from: `0.00029` is 0.000285 to 0.000295. */
+function shown(decimal: string): Range {
+  const { int, scale } = decimalParts(decimal);
+  const d = 2n * 10n ** BigInt(scale);
+  return [
+    [int === 0n ? 0n : 2n * int - 1n, d],
+    [2n * int + 1n, d],
+  ];
+}
+
+/** `1 / x` for every `x` of a range above zero. */
+const invert = ([lo, hi]: Range): Range => [
+  [hi[1], hi[0]],
+  [lo[1], lo[0]],
+];
+
+const overlap = (a: Range, b: Range) => atMost(a[0], b[1]) && atMost(b[0], a[1]);
+
+/** The units of the buyer's currency per unit of the order's that PayPal's quote may stand for. */
+function quoted(q: Quote): Range | undefined {
+  if (decimalParts(q.rate).int === 0n) return undefined;
+  return q.inverse ? invert(shown(q.rate)) : shown(q.rate);
+}
+
+/**
+ * Whether `buyer` for `merchant` is within `capBps` of a rate PayPal's quote may stand for, up to
+ * the digits it shows: `R·(1 − cap) ≤ buyer / merchant ≤ R·(1 + cap)` for some `R` it rounds from.
+ *
+ * @internal
+ */
+export function withinQuote(merchant: string, buyer: string, q: Quote, capBps: number): boolean {
+  const range = quoted(q);
+  const m = decimalParts(merchant);
+  const b = decimalParts(buyer);
+  if (!range || m.int === 0n) return false;
+  const rate: Fraction = [b.int * 10n ** BigInt(m.scale), m.int * 10n ** BigInt(b.scale)];
+  const cap = BigInt(capBps);
+  return (
+    atMost(times(range[0], [10_000n - cap, 10_000n]), rate) &&
+    atMost(rate, times(range[1], [10_000n + cap, 10_000n]))
+  );
+}
+
+/**
+ * `buyer / merchant` with 10 significant digits, rounded half up: the rate two amounts give.
+ */
+export function rateBetween(merchant: string, buyer: string): string {
+  const m = decimalParts(merchant);
+  const b = decimalParts(buyer);
+  if (m.int === 0n) return "0";
+  const den = m.int * 10n ** BigInt(b.scale);
+  const at = (decimals: number) => b.int * 10n ** BigInt(m.scale + decimals);
+  const digits = (at(20) / den).toString().length;
+  const decimals = Math.min(20, Math.max(0, 30 - digits));
+  const q = ((2n * at(decimals) + den) / (2n * den)).toString().padStart(decimals + 1, "0");
+  const text = decimals ? `${q.slice(0, -decimals)}.${q.slice(-decimals)}` : q;
+  return text.includes(".") ? text.replace(/\.?0+$/, "") : text;
+}
+
+/** Whether a rate line the page writes for `currency`, either way, is PayPal's quote rounded. */
+export function showsQuote(page: PageReading, q: Quote): boolean {
+  const range = quoted(q);
+  if (!range) return false;
+  const forward = page.rates[q.currency];
+  const inverse = page.inverse[q.currency];
+  return (
+    (forward === undefined || overlap(shown(forward), range)) &&
+    (inverse === undefined ||
+      (decimalParts(inverse).int > 0n && overlap(invert(shown(inverse)), range)))
+  );
+}
+
+/**
+ * Whether a PayPal page charges the order's `minor` of `currency`, where PayPal states only its
+ * rate per unit (`q`) and the page alone shows the total converted to the buyer's currency. The
+ * page must show no larger amount that may be charged and no other total; its amounts in the
+ * buyer's currency, under its code or a sign both currencies write (`$ 10.236`), are the converted
+ * total, one value; its rate lines are PayPal's quote rounded; and that total for the order is
+ * within the mandate's spread (`capBps`) of PayPal's quote, as {@link withinQuote} bounds it. The
+ * conversion is recorded at the rate the two amounts give.
+ */
+export function judgeQuoted(
+  page: PageReading,
+  minor: number,
+  currency: string,
+  q: Quote,
+  capBps: number,
+): Judgment {
+  const no = (reason: string): Judgment => ({ ok: false, reason });
+  if (page.unsure !== undefined) return no(page.unsure);
+  if (minor < 10 ** minorDigits(currency)) return no("a total under one unit next to a rate");
+  const paid: string[] = [];
+  const theirs: number[] = [];
+  for (const a of page.shared) {
+    if (!a.marks.every((m) => writes(page.locale, q.currency, m))) continue;
+    const value = units(a.number, q.currency, page.locale);
+    if (value === undefined) return no("an amount in another currency not read whole");
+    paid.push(value);
+    theirs.push(a.value);
+  }
+  const payable = without(page.minor, page.offers);
+  if (Math.max(...payable, ...without(page.loose, theirs)) > minor) {
+    return no("a larger amount that may be charged");
+  }
+  if (page.totals.some((t) => t !== minor)) return no("another total");
+  const charged = page.conversions.filter((c) => !c.aside);
+  if (charged.some((c) => c.currency !== q.currency)) return no("an amount in a third currency");
+  if ([...Object.keys(page.rates), ...Object.keys(page.inverse)].some((c) => c !== q.currency)) {
+    return no("rates to more than one currency");
+  }
+  if (!showsQuote(page, q)) return no("a rate line that is not PayPal's rate");
+  paid.push(...charged.map((c) => c.units));
+  const [buyer, ...rest] = paid;
+  if (buyer === undefined) return no("no converted total shown");
+  if (rest.some((v) => Number(v) !== Number(buyer))) return no("converted totals that disagree");
+  const merchant = wholeOf(minor, currency);
+  if (!withinQuote(merchant, buyer, q, capBps)) {
+    return no("a converted total off PayPal's rate by more than the mandate's spread");
+  }
+  return {
+    ok: true,
+    conversion: {
+      currency: q.currency,
+      rate: rateBetween(merchant, buyer),
+      buyer,
+      locale: page.locale,
+    },
+  };
+}
+
 /** Whether `locale` writes `currency` with the sign `mark`. */
 function writes(locale: string, currency: string, mark: string): boolean {
   const s = shape(locale, currency);
