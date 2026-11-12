@@ -74,6 +74,7 @@ import { registerOperators } from "./routes/operators.ts";
 import { registerPasskeys } from "./routes/passkeys.ts";
 import { registerPayPalWallet } from "./routes/paypal-wallet.ts";
 import { registerPayPalWebhook } from "./routes/paypal-webhook.ts";
+import { registerProblems } from "./routes/problems.ts";
 import { registerPurchaseHolds } from "./routes/purchase-holds.ts";
 import { registerPurchaseTracking } from "./routes/purchase-tracking.ts";
 import { registerPurchases } from "./routes/purchases.ts";
@@ -428,6 +429,7 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerRevoke(app, deps);
   registerConnections(app, deps);
   registerMandateRequests(app, deps);
+  registerProblems(app);
   registerEmbed(app, deps);
   registerEmbedSigning(app, deps);
   if (deps.embedPage) registerEmbedPage(app, deps, deps.embedPage);
