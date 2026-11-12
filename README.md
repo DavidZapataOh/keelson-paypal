@@ -144,7 +144,7 @@ is a subjective wish only the user can judge. Keelson is not insurance; the rule
 
 | Package                                                               | What it is                                                                                                                                                                                        |
 | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`@keelson-finance/sdk`](packages/sdk/README.md)                      | TypeScript client: typed errors, one idempotency key per call kept across retries, `npx keelson login`, and adapters for the Vercel AI SDK, OpenAI Agents SDK, LangChain and the Claude Agent SDK |
+| [`@keelson-finance/sdk`](packages/sdk/README.md)                      | TypeScript client: typed errors, one idempotency key per call kept across retries, `npx @keelson-finance/sdk login`, and adapters for the Vercel AI SDK, OpenAI Agents SDK, LangChain and the Claude Agent SDK |
 | [`keelson-finance`](packages/sdk-python/README.md)                    | The same client for Python (`import keelson`), blocking and asyncio                                                                                                                               |
 | [`@keelson-finance/verifier`](packages/verify/README.md)              | Offline Alibi verifier and `keelson-verify` CLI, the code of verify.keelson.finance                                                                                                               |
 | [`@keelson-finance/context`](packages/context/src/index.ts)           | Keelson Context Plugin: the SDK docs, every operation and its schema, over MCP at `https://api.keelson.finance/context/mcp`                                                                       |
@@ -157,7 +157,7 @@ purchase and ticks each step as your code runs.
 
 ```sh
 npm install @keelson-finance/sdk @keelson-finance/verifier   # or: pip install keelson-finance
-npx keelson login
+npx @keelson-finance/sdk login
 ```
 
 From this repository:
