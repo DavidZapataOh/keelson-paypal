@@ -23,5 +23,8 @@
     "TimelockController": "0x23A1C8CF57e1d7c3bbf850922dD9a8D03a9757b9",
     "GuardianSafe": "0x1cd0152d2d954Fc8c9436986C9F4B2C15903eF5C"
   },
-  "deployedAtBlock": 56288199
+  "deployedAtBlock": 56288199,
+  "legA": {
+    "kmsRoot": "0x02a335aea3df11d46ae0a373d3f26fbd1d208572ecc87e630e618dac693b7af721"
+  }
 }
