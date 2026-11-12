@@ -82,6 +82,7 @@ const Withdrawal = z
 const deposit = createRoute({
   method: "post",
   path: "/v1/bonds/{agentId}/deposits",
+  operationId: "depositBond",
   tags: ["bonds"],
   summary: "Deposit PYUSD into an operator's bond, gasless",
   description:
@@ -98,6 +99,7 @@ const deposit = createRoute({
 const withdraw = createRoute({
   method: "post",
   path: "/v1/bonds/{agentId}/withdrawals",
+  operationId: "queueBondWithdrawal",
   tags: ["bonds"],
   summary: "Queue a bond withdrawal, gasless",
   description:
@@ -114,6 +116,7 @@ const withdraw = createRoute({
 const complete = createRoute({
   method: "post",
   path: "/v1/bonds/withdrawals/{chainId}/{withdrawalId}/complete",
+  operationId: "completeBondWithdrawal",
   tags: ["bonds"],
   summary: "Complete a queued withdrawal, gasless",
   description:

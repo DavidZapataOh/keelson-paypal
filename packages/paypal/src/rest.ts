@@ -1,5 +1,5 @@
 import type { PayPalConfig, PayPalEnv } from "./config.ts";
-import { fromResponse } from "./errors.ts";
+import { fromResponse, isTokenRefused } from "./errors.ts";
 import type { TokenCache } from "./token.ts";
 
 export const REQUEST_TIMEOUT_MS = 15_000;
@@ -28,6 +28,7 @@ export function createRestClient(cfg: PayPalConfig, tokens: TokenCache): PayPalF
       query?: Record<string, string>;
       timeoutMs?: number;
     } = {},
+    retried = false,
   ): Promise<T> => {
     if (!path.startsWith("/") || path.startsWith("//") || path.includes("\\")) {
       throw new Error("PayPal path must be a relative path starting with a single '/'");
@@ -35,8 +36,9 @@ export function createRestClient(cfg: PayPalConfig, tokens: TokenCache): PayPalF
     const url = new URL(path, cfg.baseUrl);
     for (const [key, value] of Object.entries(init.query ?? {})) url.searchParams.set(key, value);
 
+    const token = await tokens.get();
     const headers: Record<string, string> = {
-      authorization: `Bearer ${await tokens.get()}`,
+      authorization: `Bearer ${token}`,
       accept: "application/json",
     };
     if (init.requestId) headers["paypal-request-id"] = init.requestId;
@@ -54,7 +56,14 @@ export function createRestClient(cfg: PayPalConfig, tokens: TokenCache): PayPalF
     }
 
     const res = await fetch(url, req);
-    if (!res.ok) throw await fromResponse(res);
+    if (!res.ok) {
+      const err = await fromResponse(res);
+      if (!retried && isTokenRefused(err)) {
+        tokens.invalidate(token);
+        return call<T>(method, path, init, true);
+      }
+      throw err;
+    }
     if (res.status === 204) return undefined as T;
     return (await res.json()) as T;
   };

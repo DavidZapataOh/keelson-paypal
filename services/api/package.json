@@ -8,7 +8,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "start": "node dist/server.js",
-    "openapi": "node scripts/openapi.ts",
+    "openapi": "node scripts/openapi.ts && node scripts/public-openapi.ts",
     "bench": "pnpm run build && node bench/health.bench.ts",
     "budgets": "KEELSON_BUDGETS=1 vitest run test/mandates.test.ts -t \"latency budget\"",
     "test:live": "KEELSON_LIVE=1 vitest run test/compile.test.ts test/dispute-drafter.live.test.ts",
@@ -18,7 +18,8 @@
     "bench:log-append": "node bench/log-append.bench.ts",
     "bench:money-path": "node bench/money-path.bench.ts",
     "workflows": "node dist/workflows.js",
-    "bench:shopping-agent": "node bench/shopping-agent.bench.ts"
+    "bench:shopping-agent": "node bench/shopping-agent.bench.ts",
+    "postman": "node scripts/postman.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "1.5.0",
@@ -36,6 +37,7 @@
     "@keelson/attest": "workspace:*",
     "@keelson/chain": "workspace:*",
     "@keelson/compiler": "workspace:*",
+    "@keelson-finance/context": "workspace:*",
     "@keelson/core": "workspace:*",
     "@keelson/db": "workspace:*",
     "@keelson/erc8004": "workspace:*",
@@ -84,6 +86,7 @@
     "@types/web-push": "3.6.4",
     "autocannon": "8.0.0",
     "esbuild": "0.28.2",
+    "openapi-to-postmanv2": "6.4.2",
     "pg": "8.23.1",
     "pg-connection-string": "2.14.1",
     "typescript": "catalog:",

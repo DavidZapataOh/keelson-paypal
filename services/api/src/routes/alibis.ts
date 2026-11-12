@@ -22,18 +22,19 @@ import { publicCard, publicDenial } from "./purchases.ts";
 const Id = z
   .string()
   .regex(/^[0-7][0-9A-HJKMNP-TV-Z]{25}$/)
-  .openapi({ description: "The alibi id: the purchase's ULID." });
+  .openapi({ description: "The Alibi id: the purchase's ULID." });
 
 const notFound = {
-  description: "No alibi with this id that the caller may read",
+  description: "No Alibi with this id that the caller may read",
   content: { "application/problem+json": { schema: ProblemSchema } },
 };
 
 const bundleRoute = createRoute({
   method: "get",
   path: "/v1/alibis/{id}",
+  operationId: "getAlibi",
   tags: ["alibis"],
-  summary: "An alibi bundle",
+  summary: "An Alibi bundle",
   description:
     "The purchase's Alibi: its RFC 8785 bundle, readable by the mandate's user or, with `alibis:read`, by the client that uploaded the purchase's evidence; the Alibi of a live purchase, once its PayPal transaction is recorded, by anyone. Anyone else gets its public copy, whose mandate withholds the user's login id and risk data: their salted digests stay in the signed payload, so the copy verifies the same. It grows as timestamps, the capture and the on-chain anchor arrive; earlier sections never change.",
   request: { params: z.object({ id: Id }) },
@@ -50,8 +51,9 @@ const bundleRoute = createRoute({
 const pdfRoute = createRoute({
   method: "get",
   path: "/v1/alibis/{id}.pdf",
+  operationId: "getAlibiPdf",
   tags: ["alibis"],
-  summary: "An alibi as a PDF/A-3b",
+  summary: "An Alibi as a PDF/A-3b",
   description:
     "A one-page PDF/A-3b summary of the Alibi with a QR to its verify page and the bundle embedded as `<id>.alibi`. Same readers, and the same public copy, as the bundle.",
   request: { params: z.object({ id: Id }) },
@@ -79,8 +81,9 @@ const ReceiptSchema = z
 const receiptRoute = createRoute({
   method: "get",
   path: "/v1/alibis/{id}/receipt",
+  operationId: "getAlibiReceipt",
   tags: ["alibis"],
-  summary: "The public receipt of an alibi",
+  summary: "The public receipt of an Alibi",
   description:
     "What the public log already publishes about an Alibi: its leaf, inclusion proof, anchor and timestamps. No authentication.",
   request: { params: z.object({ id: Id }) },
@@ -126,8 +129,9 @@ const ReportSchema = z
 const verifyRoute = createRoute({
   method: "post",
   path: "/v1/alibis/verify",
+  operationId: "verifyAlibi",
   tags: ["alibis"],
-  summary: "Verify an alibi",
+  summary: "Verify an Alibi",
   description:
     "Runs the browser verifier's algorithm on an Alibi bundle against the pinned trust roots and a public Arbitrum RPC. No authentication; the bundle is not stored.",
   request: {
@@ -243,7 +247,7 @@ export function registerAlibis(
     return level === "full" ? b : level === "public" ? publicCopy(b as AlibiBundle) : null;
   };
   const missing = (c: Context) =>
-    problem(c, 404, "alibi-not-found", "Not found", "No alibi with this id.");
+    problem(c, 404, "alibi-not-found", "Not found", "No Alibi with this id.");
 
   // Hono cannot route a parameter followed by a suffix, so the PDF path matches the whole segment.
   app.openAPIRegistry.registerPath(pdfRoute);

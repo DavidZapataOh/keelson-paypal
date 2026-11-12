@@ -1,0 +1,226 @@
+---
+title: How it works
+description: The parts of Keelson and how a purchase, a dispute and a card mandate flow through them.
+section: Concepts
+order: 1
+---
+
+Keelson sits between an AI agent and the payment. The user signs a mandate with a passkey. Every cart the agent wants to pay is checked against it by the same engine running in two TEEs from two vendors. Each decision is sealed into an Alibi and appended to a public transparency log. When a purchase is disputed, the engine names the party at fault and the chain moves the money.
+
+## The system {% #system %}
+
+The user signs a mandate in the web app, which hands it to the Keelson API. The agent reaches the API over REST or MCP and checks out at the merchant, whose payment runs on PayPal. The API asks TEE leg A, an Intel TDX VM on Phala Cloud, to register mandates, countersign carts and judge disputes; leg A reads the PayPal hold itself. The API then asks TEE leg B, an AWS Nitro Enclave with no network, to countersign over leg A's observation. The API places, captures and refunds payments on PayPal, and PayPal sends it webhooks. Every decision becomes a leaf of the Alibi log, which witnesses cosign, Sigsum co-logs and a public monitor follows. The log's checkpoints, signed by both TEE legs, are anchored on Arbitrum Sepolia, where the bond vault and the reserve accept only verdicts both legs signed. For card mandates the API also issues single-use cards with a card issuer and approves each authorization.
+
+```mermaid
+flowchart LR
+  accTitle: Keelson's system
+  accDescr: The user and the agent talk to the Keelson API. The API asks TEE leg A, then leg B, to countersign, moves money on PayPal, appends every decision to the Alibi log and settles bonds on Arbitrum. The log's checkpoints, signed by both legs, are anchored on Arbitrum. The agent checks out at the merchant, which is paid through PayPal.
+  user([User with a passkey])
+  agent([AI agent])
+  merchant([Merchant])
+  api[Keelson API and MCP]
+  a[Leg A, Intel TDX]
+  b[Leg B, AWS Nitro]
+  pp[(PayPal)]
+  log[Alibi log, witnesses, Sigsum]
+  chain[Arbitrum contracts]
+
+  user -- signs mandate --> api
+  agent -- REST or MCP --> api
+  api -- register, countersign, verdict --> a
+  api -- countersign over A's observation --> b
+  a -- reads the hold --> pp
+  api -- hold, capture, refund --> pp
+  api -- leaf --> log
+  log -- checkpoint signed by both legs --> chain
+  api -- lock, slash, pay --> chain
+  agent -- checkout --> merchant
+  merchant --- pp
+```
+
+## Components {% #components %}
+
+| Path | What it is |
+| --- | --- |
+| `apps/web` | The product at `app.keelson.finance`: mandates, approvals, agents, disputes, merchant and operator consoles, Judge Mode, status |
+| `apps/verify` | The Alibi verifier at `verify.keelson.finance`. Runs entirely in the browser against pinned trust roots |
+| `apps/store` | RunFast, the demo merchant at `store.keelson.finance` (PayPal sandbox) |
+| `apps/landing` | The marketing site at `keelson.finance` |
+| `services/api` | Hono API: OAuth 2.1, mandates, countersign pipeline, PayPal holds and captures, webhooks, disputes, settlement, alerts |
+| `services/mcp` | MCP server, served by the API at `/mcp` and as a STDIO process for agents that hold their own key |
+| `services/agent` | The shopping agent: Claude driving a Kernel browser, with a gate that holds the pay click until Keelson countersigns |
+| `services/redteam` | Attack campaigns against the agent and the risk model that grades operators |
+| `services/log` | The Alibi log, a Tessera personality |
+| `services/witness` | The log's witnesses (litewitness) |
+| `services/monitor` | A public log monitor that anyone can run |
+| `engine/tee` | The engine both TEE legs run: mandate registration, countersign, verdicts, card authorizations, checkpoint signing, TLSNotary |
+| `engine/policy` | The Cedar policy set, the attribution table and their symcc proofs |
+| `engine/mandate`, `engine/canon`, `engine/core` | Rust ports of the mandate, cart canonicalization and core primitives, pinned to the TypeScript side by shared vectors |
+| `engine/tlsn` | TLSNotary sessions over public product endpoints |
+| `engine/zkvm` | The engine's evaluation run again in the SP1 zkVM, proved for disputes |
+| `circuits/` | Noir circuits C1, C2a, C2b, C3 and C1+C3 |
+| `contracts/` | Bond vault, reserve, signer registry, checkpoint anchor, ZK courts and verifiers, log bond, ERC-8004 integration |
+| `packages/` | Shared TypeScript: `core`, `mandate`, `policy`, `paypal`, `alibi`, `attest`, `chain`, `log`, `evidence`, `relayer`, `timestamp`, `compiler`, `db`, `erc8004`, `ui` |
+| `internal/` | Go packages shared by the log and the monitor |
+
+## A purchase {% #purchase %}
+
+1. The user signs a mandate with a passkey and the API registers it with leg A, which returns the open mandate and a sealed salt.
+2. The API creates a PayPal `AUTHORIZE` order for the mandate's cap, with `custom_id` set to `ks1.sm.<mandate>.<digest>`. The user approves it with the PayPal JavaScript SDK v6 and the API authorizes it.
+3. The agent sends a cart and its evidence for countersignature. Leg A reads the PayPal hold and returns a signed ALLOW or DENY with its observation. Leg B countersigns over that observation.
+4. The API appends the leaf to the Alibi log and, at the same time, locks coverage from the operator's bond on Arbitrum.
+5. The API captures exactly the countersigned total, with `invoice_id` `KS1-…` and the `PayPal-Request-Id` taken from the countersign.
+6. The log's witnessed checkpoint is anchored on Arbitrum, signed by both TEE legs.
+
+```mermaid
+sequenceDiagram
+  accTitle: A purchase
+  accDescr: The user signs a mandate; the API registers it with leg A and holds the mandate's cap on PayPal. The agent sends a cart; leg A reads the hold and signs a decision, leg B countersigns over leg A's observation. The API logs the leaf, locks coverage on Arbitrum and captures exactly the countersigned total. The log's checkpoint is anchored on Arbitrum.
+  autonumber
+  actor U as User
+  participant G as Agent
+  participant API as Keelson API
+  participant A as Leg A (TDX)
+  participant B as Leg B (Nitro)
+  participant PP as PayPal
+  participant L as Alibi log
+  participant C as Arbitrum
+
+  U->>API: mandate, signed with a passkey
+  API->>A: register mandate
+  A-->>API: open mandate, sealed salt
+  API->>PP: create AUTHORIZE order for the mandate's cap
+  U->>PP: approve (JS SDK v6)
+  API->>PP: authorize
+  G->>API: cart + evidence (countersign)
+  API->>A: countersign
+  A->>PP: read the hold
+  A-->>API: ALLOW or DENY, signed + Observation
+  API->>B: countersign over A's Observation
+  B-->>API: ALLOW or DENY, signed
+  par
+    API->>L: append leaf
+  and
+    API->>C: lockCoverage (operator's bond)
+  end
+  API->>PP: capture exactly the countersigned total
+  L->>C: anchor witnessed checkpoint (both legs sign)
+```
+
+A DENY is signed and logged too, and nothing is captured. The purchase moves through `COUNTERSIGNED → LOGGED → COVERED → CAPTURED`; the full state machine is in [the API's purchase pipeline](https://github.com/DavidZapataOh/keelson-paypal/tree/main/services/api#purchase-pipeline).
+
+When leg B is unreachable the API countersigns with leg A alone and says so: `mode: "degraded"` in the body, `Keelson-Countersign-Mode: degraded` in the header and in the log leaf. On chain, a degraded coverage's slash waits a longer veto window.
+
+## A dispute {% #dispute %}
+
+1. PayPal sends `CUSTOMER.DISPUTE.CREATED`. The API verifies and stores the webhook, then reads the dispute from PayPal, which is the source of truth.
+2. The API gets the purchase's inclusion proof from the Alibi log and anchors the checkpoint if it is not anchored yet.
+3. The API judges every mandate field again and reads the shipment's tracking.
+4. Both TEE legs receive the facts and the settlement terms and return a verdict both of them sign, from the Cedar attribution table.
+5. If the operator is at fault, the API slashes the operator's bond in `KeelsonBondVault` and refunds the buyer on PayPal. If Keelson is at fault, `KeelsonReserve` pays the warranty and the API refunds the buyer. If the user or the merchant is at fault, the API sends PayPal the Alibi PDF as evidence.
+
+```mermaid
+sequenceDiagram
+  accTitle: A dispute
+  accDescr: PayPal sends a dispute webhook; the API reads the dispute, gets the inclusion proof from the log and judges the mandate again. Both TEE legs sign a verdict. An operator at fault is slashed, Keelson at fault pays the warranty, and in both cases the buyer is refunded; if the user or the merchant is at fault, the API sends PayPal the Alibi as evidence.
+  autonumber
+  participant PP as PayPal
+  participant API as Keelson API
+  participant L as Alibi log
+  participant AB as Legs A and B
+  participant C as Arbitrum
+
+  PP->>API: CUSTOMER.DISPUTE.CREATED (verified, stored)
+  API->>PP: GET the dispute (the source of truth)
+  API->>L: inclusion proof, anchor if needed
+  API->>API: re-judge every mandate field, read tracking
+  API->>AB: facts + settlement terms
+  AB-->>API: Verdict, signed by both (Cedar attribution table)
+  alt operator at fault
+    API->>C: KeelsonBondVault.slash
+    API->>PP: refund buyer / accept-claim
+  else Keelson at fault
+    API->>C: KeelsonReserve.payWarranty
+    API->>PP: refund buyer / accept-claim
+  else user or merchant at fault
+    API->>PP: provide-evidence with the Alibi PDF
+  end
+```
+
+PayPal adjudicates the dispute. Keelson's verdict decides what evidence is sent, who is slashed and whether the warranty pays; it does not bind PayPal. A disputed purchase can also be proved in the SP1 zkVM: a Groth16 proof, verified on chain by `EngineProofVerifier`, that the engine's evaluation gives the digest both TEE legs signed, independently of the TEEs. Details in [dispute evaluation](https://github.com/DavidZapataOh/keelson-paypal/tree/main/services/api#dispute-evaluation).
+
+Two courts convict on chain:
+
+- **C2a, `MandateViolationCourt`**: anyone holding the mandate's opening proves the countersigned cart broke the mandate. This path does not trust Keelson's TEEs.
+- **C2b, `AmberContradictionCourt`**: the store's own TLS response, notarized with TLSNotary, contradicts what the operator attested about the item. The notary is leg A, so this path trusts Keelson's TDX leg.
+- **`ViolationBondPool`** pays a conviction from either court out of the operator's deposit.
+
+## Card mandates {% #card-mandates %}
+
+A mandate signed for "Any store (PayPal card)" pays merchants that take cards rather than PayPal.
+
+1. The API holds the mandate's budget on PayPal with an `AUTHORIZE` order.
+2. Both TEE legs countersign the cart.
+3. The API has the card issuer create a single-use card, capped at the countersigned total and limited to the mandate's merchant categories and country. The card number goes from the issuer's hosted page to the agent's browser only.
+4. When the merchant asks for an authorization, the issuer calls the API's Auth Stream Access webhook. The API sends the authorization to `POST /v1/card/authorize` on each TEE leg and approves only with two verified approvals.
+5. The API captures the settled charge from the PayPal hold.
+
+```mermaid
+sequenceDiagram
+  accTitle: A card mandate
+  accDescr: The API holds the mandate's budget on PayPal, both TEE legs countersign the cart, and the issuer creates a single-use card capped at the countersigned total. Each merchant authorization goes from the issuer to the API and to both legs; the API approves only with two signed approvals, then captures the settled charge from the PayPal hold.
+  autonumber
+  participant API as Keelson API
+  participant AB as Legs A and B
+  participant PP as PayPal
+  participant I as Card issuer (Lithic, sandbox)
+  participant M as Merchant
+
+  API->>PP: hold the mandate's budget (AUTHORIZE)
+  API->>AB: countersign the cart
+  AB-->>API: ALLOW (2-of-2)
+  API->>I: single-use card, capped at the countersigned total
+  Note over API,I: the card number goes from the issuer's hosted page to the agent's browser only
+  M->>I: authorization
+  I->>API: Auth Stream Access webhook
+  API->>AB: POST /v1/card/authorize on each leg
+  AB-->>API: approve or decline, signed
+  API-->>I: approve only with two verified approvals
+  API->>PP: capture the settled charge from the hold
+```
+
+The Alibi carries the card, every authorization with both TEE legs' signed answers, and the settlement. A chargeback goes through the issuer's disputes API with the Alibi as evidence. In this deployment the issuer is Lithic's sandbox, which also plays the card network.
+
+## Agents and hosts {% #agents-and-hosts %}
+
+- **An operator's own agent** gets a token with the OAuth client credentials grant and closes each mandate for a countersign with its own P-256 key, which Keelson never holds. The STDIO MCP server runs in the agent's process for that reason.
+- **A host acting for a user** (claude.ai, ChatGPT, Cursor, Claude Code) registers itself (RFC 7591), gets a user-bound token with the authorization code grant and PKCE, and buys only under mandates the user approved for that host. Without an operator of its own it acts through Keelson's hosted operator, whose bond covers it, under per-user and total exposure caps. See [apps acting for a user](https://github.com/DavidZapataOh/keelson-paypal/tree/main/services/api#apps-acting-for-a-user).
+- **In-frame signing.** An agent platform can frame Keelson's approval. The passkey assertion then comes from `https://api.keelson.finance` with `crossOrigin: true`, and its `topOrigin` must equal the `embed.top_origin` the signed payload carries, so a mandate signed in one platform's frame cannot be replayed as signed in another. The frame asks for Secure Payment Confirmation and falls back to a plain WebAuthn assertion.
+- **Kill switch.** `POST /v1/agents/stop` refuses every countersign under the user's existing mandates, revokes live mandates and voids their PayPal holds, denies open requests, revokes every agent's OAuth grant and logs the stop as a `keelson.finance/stop/v1` leaf. Purchases already countersigned may still be captured.
+- **Alerts.** Web Push (VAPID, RFC 8292) and email tell the user when an app asks for a mandate or a change, a purchase is captured or blocked, or agents were stopped.
+
+## Trust anchors {% #trust-anchors %}
+
+| What | Anchored in |
+| --- | --- |
+| The engine build | A reproducible image (`ghcr.io/davidzapataoh/keelson-engine`), built twice on separate runners and required to match |
+| Leg A's identity | TDX measurement id: MRTD, RTMR0-2, app id, compose hash, OS image hash |
+| Leg B's identity | Nitro PCR0-2 of the enclave image built from the same digest |
+| A signer | `VerdictVerifier`: registered from a fresh attestation whose `report_data` binds the signer, the chain, the bond vault, the policy set, the build and a recent block; active 72 h |
+| The log | Ed25519 and ML-DSA-44 log keys, a 2-of-3 witness quorum, Sigsum co-logging, on-chain anchors signed by both TEE legs, and a `LogBond` that anyone can slash with two conflicting checkpoints |
+| The policy | The Cedar policy set's hash, bound into every countersign and attestation; symcc proofs attested on `main` |
+
+The current image and measurements are in [`engine/tee/measurements.json`](https://github.com/DavidZapataOh/keelson-paypal/blob/main/engine/tee/measurements.json) and can be rebuilt from source with `make -C engine/tee measure`. See [reproduce the measurements](https://github.com/DavidZapataOh/keelson-paypal/tree/main/engine/tee#reproduce-the-measurements), and [verify every claim](/security/verify/) to check each anchor yourself.
+
+## Hosting {% #hosting %}
+
+| Part | Where |
+| --- | --- |
+| API, workflows, web, verifier, store, landing, log, witness 1, PostgreSQL, Key Value | Render, Oregon |
+| Leg A | Phala Cloud, Intel TDX `tdx.small`, dstack 0.6.1 |
+| Leg B | AWS EC2 `c6a.xlarge` in `us-west-2`, Nitro Enclave with 2 vCPUs and 1 GiB |
+| Witness 2, monitor | Railway |
+| Witness 3 | AWS EC2, `us-west-2` |
+| Contracts | Arbitrum Sepolia |
+
+Which of these run in production and which in a provider's sandbox or testnet is on [real or sandbox](/security/environments/).

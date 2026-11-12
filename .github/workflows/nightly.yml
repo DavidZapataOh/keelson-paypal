@@ -114,7 +114,7 @@ jobs:
         run: |
           set -euo pipefail
           render() { curl -fsS --retry 5 --retry-all-errors -H "Authorization: Bearer $RENDER_API_KEY" "$@"; }
-          cmd='cd services/api && pnpm exec playwright install chromium >/dev/null && PURCHASES=10 CONCURRENCY=2 DEGRADED_EVERY=5 node bench/money-path.bench.ts'
+          cmd='cd services/api && pnpm exec playwright install chromium >/dev/null && PURCHASES=10 CONCURRENCY=2 node bench/money-path.bench.ts'
           job=$(render -X POST -H "content-type: application/json" \
             -d "$(jq -n --arg c "$cmd" '{startCommand: $c}')" \
             "https://api.render.com/v1/services/$SERVICE/jobs" | jq -r .id)
@@ -186,3 +186,37 @@ jobs:
           done
           { echo "### Judge Mode reset ($status)"; echo '```json'; jq '.results // .' <<<"$body"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
           [[ "$status" =~ ^(completed|succeeded)$ ]]
+
+  docs-live:
+    # The documentation's commands against production, every night; a failure opens an issue.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: ./.github/actions/setup-foundry
+        with:
+          version: v1.9.0
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @keelson/docs exec playwright install --with-deps chromium
+      - run: pnpm turbo run build --filter=@keelson/docs...
+      - run: pnpm --filter @keelson/docs test:live
+      - run: pnpm --filter @keelson/docs test:site
+      - if: failure() && github.event_name == 'schedule'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="Documented checks failing on production"
+          open=$(gh issue list --state open --search "$title in:title" --json number --jq 'length')
+          [ "$open" -gt 0 ] || gh issue create --title "$title" \
+            --body "The nightly run of the documentation's commands failed: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

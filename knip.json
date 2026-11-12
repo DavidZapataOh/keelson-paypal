@@ -1,7 +1,13 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "ignore": ["contracts/**"],
+  "ignore": ["contracts/**", "packages/sdk-python/**"],
   "workspaces": {
+    "apps/docs": {
+      "entry": ["scripts/data.mjs!", "astro.config.mjs!", "markdoc.config.mjs!", "test/**/*.ts"],
+      "project": ["src/**/*.{ts,astro}!", "scripts/**/*.mjs!", "test/**/*.ts"],
+      "ignoreUnresolved": ["/pagefind/pagefind.js"],
+      "ignoreDependencies": ["@astrojs/markdoc"]
+    },
     "engine/tee": {
       "entry": ["scripts/*.ts!"],
       "project": ["scripts/**/*.ts!"]
@@ -132,6 +138,18 @@
     },
     "services/witness": {
       "entry": [".railway/railway.ts"]
+    },
+    "packages/sdk": {
+      "entry": ["src/index.ts!", "src/cli.ts!", "src/adapters/*.ts!", "scripts/*.ts", "examples/*"],
+      "project": ["src/**/*.ts!", "scripts/**/*.ts", "test/**/*.ts", "examples/**"]
+    },
+    "packages/verify": {
+      "entry": ["scripts/*.mjs", "src/cli.ts!", "src/index.ts!"],
+      "project": ["src/**/*.ts!", "test/**/*.ts"]
+    },
+    "packages/context": {
+      "entry": ["src/index.ts!", "src/stdio.ts!", "scripts/*.ts"],
+      "project": ["src/**/*.ts!", "scripts/**/*.ts", "test/**/*.ts"]
     }
   }
 }

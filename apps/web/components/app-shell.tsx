@@ -3,6 +3,7 @@
 import {
   Bell,
   Bot,
+  Code,
   History,
   Home,
   KeyRound,
@@ -30,11 +31,12 @@ export interface NavItem {
 }
 
 /** Settings of the account: in the top bar on a phone. */
-const ACCOUNT = new Set(["/alerts/", "/passkeys/"]);
+const ACCOUNT = new Set(["/developers/", "/alerts/", "/passkeys/"]);
 
 const NAV: NavItem[] = [
   { href: "/", label: "Home", icon: Home },
   { href: "/agents/", label: "Agents", icon: Bot },
+  { href: "/developers/", label: "Developers", icon: Code },
   { href: "/activity/", label: "Activity", icon: History },
   { href: "/new/", label: "New mandate", short: "New", icon: Plus },
   { href: "/disputes/", label: "Disputes", icon: Scale },

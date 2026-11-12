@@ -1,0 +1,100 @@
+---
+title: Purchases
+description: Seal what the agent saw, have the two TEEs countersign the cart, and wait for PayPal's capture.
+estimate: 4 min
+section: SDK
+order: 4
+---
+
+A purchase takes three calls: seal the evidence, ask for the countersign, wait for the outcome. Leg A (Intel TDX) and leg B (AWS Nitro) each check the cart against the mandate the user signed. On ALLOW the decision is logged, covered by the operator's bond, and PayPal captures exactly the countersigned total from the hold.
+
+## Price a cart
+
+`quote` prices a cart from the sandbox store's own answers, and returns them as evidence sources too:
+
+{% languages label="Quote a cart" %}
+```ts
+import { quote } from "@keelson-finance/sdk";
+
+const { cart, total, sources } = await quote([
+  { productUrl: "https://store.keelson.finance/products/pace-lite", size: "10", qty: 1 },
+]);
+```
+
+```python
+from keelson import quote
+
+q = quote([{"productUrl": "https://store.keelson.finance/products/pace-lite", "size": "10", "qty": 1}])
+```
+{% /languages %}
+
+It prices carts on `https://store.keelson.finance` only, the sandbox store.
+
+## Seal the evidence
+
+{% languages label="Seal the evidence" %}
+```ts
+const { evidenceRoot } = await keelson.evidence.seal({
+  mandateId: mandate.id,
+  sources: { ...sources, observation: "Pace Lite, size 10, $99.00." },
+});
+```
+
+```python
+sealed = keelson.evidence.seal(mandate_id=mandate.id, sources={**q["sources"], "observation": "Pace Lite, size 10, $99.00."})
+```
+{% /languages %}
+
+The sources are the store's answer for the product and for the cart, and `observation`, what the agent read that led to the cart, verbatim. Each item is sealed with its own salt and only the manifest's root is public. Personal data in the evidence is refused with `evidence-pii`.
+
+## Countersign
+
+{% languages label="Countersign" %}
+```ts
+const result = await keelson.purchases.countersign({ mandate, evidenceRoot, cart });
+if (result.approval) console.log(`Ask the user: ${result.approval.approvalUrl}`);
+```
+
+```python
+signed = keelson.purchases.countersign(mandate=mandate, evidence_root=sealed["evidenceRoot"], cart=q["cart"])
+```
+{% /languages %}
+
+| Field | What it is |
+| --- | --- |
+| `purchaseId` | The purchase's id, which is also its Alibi's |
+| `decision` | `allow` or `deny`; `null` while the cart waits for the user's approval |
+| `approval` | The cart is above the user's ask-me amount: send them to `approvalUrl`, then countersign again |
+| `existing` | This cart was already bought under the mandate; `purchaseId` is that purchase |
+| `countersigned` | Both legs' signed decision |
+
+Calling `countersign` again after an error is safe: the same cart under the same mandate is one purchase. To buy the same cart again on purpose, pass `repeatOf` with the id of the last purchase of it.
+
+## Wait for the outcome
+
+{% languages label="Wait for the purchase" %}
+```ts
+const purchase = await keelson.purchases.waitFor(result.purchaseId);
+```
+
+```python
+purchase = keelson.purchases.wait_for(signed.purchase_id)
+```
+{% /languages %}
+
+`waitFor` returns once the purchase is captured, denied or failed, and gives up after two minutes by default. `purchases.retrieve(purchaseId)` reads it without waiting.
+
+## Errors and retries
+
+Every POST carries an `Idempotency-Key`, the same one on each retry. Connection errors, 408, 429, 5xx and `idempotency-in-progress` are retried twice with backoff, honouring `Retry-After`. Each attempt times out after 60 seconds.
+
+| Error | When | What to do |
+| --- | --- | --- |
+| `AuthenticationError` | No sign-in, or it was revoked | Sign in again |
+| `PermissionDeniedError` | The token lacks the scope | Sign in with the scope the method needs |
+| `UnprocessableEntityError` | `invalid-limits`, `hosted-cap`, `evidence-pii`... | Read `type` and `detail`, fix the input |
+| `RateLimitError`, `InternalServerError` | Retried already | Try later |
+| `OutcomeUnknownError` | A countersign was sent and its answer was lost | Never send it again: wait for `requestId`, which is the purchase's id |
+| `MandateRequestClosedError` | The user declined, or the request expired | Don't ask again unless the user asks you to |
+
+Every API error has `status`, `type`, `detail`, the full `problem` and the `requestId` to quote to support.

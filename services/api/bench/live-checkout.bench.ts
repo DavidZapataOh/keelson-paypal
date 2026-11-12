@@ -22,17 +22,18 @@ import {
 import { decodeAlibi } from "@keelson/alibi";
 import { verifyAlibi } from "@keelson/alibi/verify";
 import type { CheckoutTotal, FxReference } from "@keelson/core";
-import { alibis, eq, purchases } from "@keelson/db";
 import { startRecorder } from "@keelson/evidence/capture";
 import { maxSpreadBps, parseMandate } from "@keelson/mandate";
-import { loadAlibi } from "../src/alibi/issue.ts";
-import { renderHarness } from "../test/render-live.ts";
+import { demoOperator } from "../test/pipeline-live.ts";
+import { SoftwarePasskey, signedMandate } from "../test/tee-live.ts";
+import { type Hold, openHold, signIn } from "./public-client.ts";
 
 // The shopping agent at a real store, with real money, under a fresh mandate for one digital
 // copy of the live item from Alfred Music (at most $5). The buyer's PayPal session is the KERNEL
 // profile PAYPAL_PROFILE, which the buyer signed in to himself. Run as a one-off job of
-// keelson-api, like the money-path bench: the mandate is opened in this process, and the agent
-// calls the deployed API as the operator's OAuth client (KEELSON_CLIENT_ID, KEELSON_CLIENT_SECRET).
+// keelson-api, like the money-path bench, through Keelson's public API only: the bench account
+// signs in with its passkey (BENCH_PASSKEY) and holds the mandate with its saved PayPal, and the
+// agent calls the API as the operator's OAuth client (KEELSON_CLIENT_ID, KEELSON_CLIENT_SECRET).
 //
 //   LIVE_RUN=blocked  a cart that breaks the mandate (two copies, over the budget): Keelson denies
 //                     it, and the agent's checkout is held at its first payment action.
@@ -58,11 +59,18 @@ const CEILING_MINOR = 1_500;
 const SETTLE_MS = 180_000;
 const productUrl = `${ALFRED.origin}${LIVE_ITEM.path}`;
 
-const h = await renderHarness();
-const recipient = h.env.KEELSON_EVIDENCE_AGE_RECIPIENT as string;
+const recipient = process.env.KEELSON_EVIDENCE_AGE_RECIPIENT as string;
 if (!recipient) throw new Error("needs KEELSON_EVIDENCE_AGE_RECIPIENT");
 const client = new Anthropic();
 const API_URL = process.env.KEELSON_API_URL ?? "https://api.keelson.finance";
+const APP_ORIGIN = process.env.APP_ORIGIN ?? "https://app.keelson.finance";
+const stored = JSON.parse(process.env.BENCH_PASSKEY ?? "null") as {
+  credentialId: string;
+  pkcs8: string;
+} | null;
+if (!stored) throw new Error("needs BENCH_PASSKEY");
+const passkey = SoftwarePasskey.fromPkcs8(stored.credentialId, stored.pkcs8);
+const user = await signIn(API_URL, passkey, APP_ORIGIN);
 const agentApi = apiClient({
   apiUrl: API_URL,
   clientId: process.env.KEELSON_CLIENT_ID as string,
@@ -70,30 +78,38 @@ const agentApi = apiClient({
   scopes: ["countersign:write", "evidence:write"],
 });
 
+/** The purchase once it ended: failed, or logged or denied with its Alibi issued. */
 async function settle(id: string) {
   const until = Date.now() + SETTLE_MS;
   for (;;) {
-    const [p] = await h.db.select().from(purchases).where(eq(purchases.id, id));
-    const [a] = await h.db
-      .select({ id: alibis.purchaseId })
-      .from(alibis)
-      .where(eq(alibis.purchaseId, id));
-    const done =
-      p && (p.state === "FAILED" || ((p.state === "LOGGED" || p.state === "DENIED") && a));
-    if (done || Date.now() > until) return p;
-    await new Promise((r) => setTimeout(r, 500));
+    const res = await user.api.request(`/v1/purchases/${id}`);
+    const p = res.ok
+      ? ((await res.json()) as { state: string; logIndex?: string | null })
+      : undefined;
+    const issued =
+      p && (p.state === "LOGGED" || p.state === "DENIED")
+        ? (await user.api.request(`/v1/alibis/${id}`)).ok
+        : false;
+    if ((p && (p.state === "FAILED" || issued)) || Date.now() > until) return p;
+    await new Promise((r) => setTimeout(r, 1_000));
   }
 }
 
 const log = (s: { at: number; kind: string; detail: string }) =>
   console.error(`+${s.at}ms ${s.kind} ${s.detail.slice(0, 160)}`);
 
+let held: Hold | undefined;
 try {
   let mandate: unknown;
-  const hold = await h.openHold(MAX_MINOR, (m) => {
-    liveMandate(m, MAX_MINOR, process.env.ALFRED_PAYPAL_MERCHANT_ID ?? "unknown");
-    mandate = structuredClone(m);
-  });
+  const hold: Hold = await openHold(
+    user,
+    (sub, edit) => signedMandate(passkey, sub, demoOperator, edit),
+    (m) => {
+      liveMandate(m, MAX_MINOR, process.env.ALFRED_PAYPAL_MERCHANT_ID ?? "unknown");
+      mandate = structuredClone(m);
+    },
+  );
+  held = hold;
   const session = await openSession({ hosts: ALFRED.hosts, profile: PROFILE, locale: "en-US" });
   try {
     let proposal: ProposedCart;
@@ -257,11 +273,9 @@ try {
       }
     }
     const alibiRes = await fetch(`${API_URL}/v1/alibis/${paid}`);
-    // The Alibi may not be issued yet when the API is asked: it is then read where Keelson keeps it.
-    const bundle =
-      alibiRes.status === 200
-        ? decodeAlibi(new Uint8Array(await alibiRes.arrayBuffer()))
-        : await loadAlibi(h.db, paid);
+    // A live Alibi is public once its transaction is recorded; its owner reads it before that.
+    const own = alibiRes.status === 200 ? alibiRes : await user.api.request(`/v1/alibis/${paid}`);
+    const bundle = own.ok ? decodeAlibi(new Uint8Array(await own.arrayBuffer())) : undefined;
     const verdict = bundle ? (await verifyAlibi(bundle)).verdict : undefined;
     const listed = (await (await fetch(`${API_URL}/v1/live-purchases`)).json()) as {
       purchases: { id: string }[];
@@ -280,7 +294,7 @@ try {
       purchase: paid,
       requotes,
       state: purchase?.state,
-      logIndex: purchase?.logIndex?.toString(),
+      logIndex: purchase?.logIndex ?? undefined,
       evidence: { root: result.evidenceRoot, skipped, ms: result.timings },
       agent: agent && { outcome: agent.outcome, ms: agent.ms, usd: agent.usage.usd },
       checkout: run && {
@@ -295,6 +309,8 @@ try {
           payee: gate.paid.charge.payee,
         },
         conversion: gate.paid?.conversion,
+        // Where PayPal's charge to the buyer was read, the rate it gives and the rate PayPal shows.
+        funding: gate.paid?.funding,
         // Only the amounts read on each page where a pay action was held.
         heldAmounts: gate.held,
       },
@@ -330,5 +346,9 @@ try {
     await session.close();
   }
 } finally {
-  await h.close();
+  // As every run does: the mandate's sandbox hold is released.
+  if (held) {
+    const revoked = await user.post(`/v1/mandates/${held.mid}/revoke`);
+    if (revoked.status >= 300) console.error(`mandate ${held.mid} not revoked: ${revoked.status}`);
+  }
 }

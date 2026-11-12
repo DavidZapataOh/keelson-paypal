@@ -212,6 +212,7 @@ describe("reading a request without spending the device code", () => {
         approvalUrl: `${appOrigin}/connect?c=${asked.user_code}`,
         matchNumber: asked.match_number,
         interval: 5,
+        operatorAgentId: op.agentId.toString(),
       });
     }
     expect((await read(await newOperator(), asked.request_id)).status).toBe(404);

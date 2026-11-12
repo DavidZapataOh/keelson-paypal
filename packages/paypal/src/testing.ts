@@ -5,8 +5,9 @@ import { chromium, type Page } from "playwright";
 export const RETURN_URL = "https://keelson.finance/return";
 export const CANCEL_URL = "https://keelson.finance/cancel";
 
-/** The consent buttons PayPal shows for `user_action: PAY_NOW`. */
-const CONSENT = /^(Complete Purchase|Pay Now)$/;
+/** The consent buttons PayPal shows for `user_action: PAY_NOW` and for saving PayPal. */
+const CONSENT =
+  /^(Complete Purchase|Pay Now|Agree and Continue|Agree & Continue|Save and Continue)$/;
 const CHALLENGE = /captcha|security check|security challenge|confirm it's you|verify it's you/i;
 
 /** The order's `payer-action` (or `approve`) link. */

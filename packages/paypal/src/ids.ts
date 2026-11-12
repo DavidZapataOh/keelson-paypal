@@ -103,10 +103,10 @@ export function parseCustomId(s: string): CustomId | null {
   return { env: m[1] as Env, kind: m[2] as Kind, id: m[3] as string, digest };
 }
 
-/** Encodes `KS1-<ulid>-<seq>-<base32(digest[0..16])>`, 60 characters. */
+/** Encodes `KS1-<ulid>-<seq>-<base32(digest[0..16])>`, 60 characters; `seq` counts a hold's captures from 1. */
 export function encodeInvoiceId(id: string, seq: number, digest: Uint8Array): string {
   assertUlid(id);
-  if (!Number.isInteger(seq) || seq < 0 || seq > 99) throw new RangeError("seq must be 0..99");
+  if (!Number.isInteger(seq) || seq < 1 || seq > 99) throw new RangeError("seq must be 1..99");
   assertDigest(digest, 16);
   return `KS1-${id}-${String(seq).padStart(2, "0")}-${base32(digest.subarray(0, 16))}`;
 }
@@ -116,9 +116,10 @@ export function parseInvoiceId(
 ): { id: string; seq: number; digest16: Uint8Array } | null {
   const m = INVOICE_ID.exec(s);
   if (!m || !isUlid(m[1] as string)) return null;
+  const seq = Number(m[2]);
   const digest16 = fromBase32(m[3] as string);
-  if (!digest16) return null;
-  return { id: m[1] as string, seq: Number(m[2]), digest16 };
+  if (!digest16 || seq < 1) return null;
+  return { id: m[1] as string, seq, digest16 };
 }
 
 /** Encodes `ksv1.<ulid>.<b64url(digest[0..12])>`, 48 characters. */
@@ -141,7 +142,10 @@ export function requestIdFromDigest(countersignDigest: Uint8Array): string {
 }
 
 /** `PayPal-Request-Id` of an operation on an order or an authorization: `hex(sha256("<op>:<id>"))[:36]`. */
-export function operationRequestId(id: string, op: "authorize" | "void" | "reauthorize"): string {
+export function operationRequestId(
+  id: string,
+  op: "authorize" | "void" | "reauthorize" | "setup-token" | "payment-token",
+): string {
   return toHex(sha256(new TextEncoder().encode(`${op}:${id}`))).slice(2, 38);
 }
 

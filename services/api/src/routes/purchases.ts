@@ -31,6 +31,7 @@ import { Amount, breakdowns, withBreakdown } from "../checkout.ts";
 import { requireClient, requirePrincipal } from "../middleware/auth.ts";
 import { cardViewOf, failedFields, type PurchaseView, purchaseView } from "../pipeline/drive.ts";
 import { ProblemSchema, problem } from "../problem.ts";
+import { purchaseTimings, serverTiming } from "../server-timing.ts";
 
 /** How far the purchase got after its countersign. */
 export const PurchaseProgress = z.object({
@@ -153,6 +154,7 @@ const Purchase = z
 const route = createRoute({
   method: "get",
   path: "/v1/purchases/{id}",
+  operationId: "getPurchase",
   tags: ["purchases"],
   summary: "A purchase",
   description:
@@ -198,6 +200,7 @@ const ConversionSchema = z
 const transactionRoute = createRoute({
   method: "put",
   path: "/v1/purchases/{id}/paypal-transaction",
+  operationId: "recordPayPalTransaction",
   tags: ["purchases"],
   summary: "Record a live purchase's PayPal transaction",
   description:
@@ -332,6 +335,7 @@ function denyReasons(trace: unknown): string[] {
 const liveRoute = createRoute({
   method: "get",
   path: "/v1/live-purchases",
+  operationId: "listLivePurchases",
   tags: ["purchases"],
   summary: "Live purchases",
   description:
@@ -408,7 +412,7 @@ async function conversionInvalid(
 
 export function registerPurchases(
   app: OpenAPIHono,
-  deps: Pick<Deps, "db" | "demoAgentId" | "cards">,
+  deps: Pick<Deps, "db" | "kv" | "demoAgentId" | "cards">,
 ): void {
   app.openapi(liveRoute, async (c) => {
     const rows = await deps.db
@@ -564,6 +568,9 @@ export function registerPurchases(
     const parts = await breakdowns(deps.db, [p.evidenceRoot]);
     const card = p.rail === "card" ? await cardViewOf(deps.db, p.id) : undefined;
     c.header("Cache-Control", "no-store");
+    // Only the purchase's readers see how long each of its steps took.
+    const steps = await purchaseTimings(deps.kv, p.id);
+    if (Object.keys(steps).length > 0) c.header("Server-Timing", serverTiming(steps));
     return c.json(
       withBreakdown({ ...purchaseView(p), ...(card ? { card } : {}) }, p.evidenceRoot, parts),
       200,
@@ -613,6 +620,7 @@ const CARD_EMBED_TTL_SEC = 60;
 const cardRoute = createRoute({
   method: "get",
   path: "/v1/purchases/{id}/card",
+  operationId: "getPurchaseCard",
   tags: ["purchases"],
   summary: "The single-use card of a card purchase",
   description:

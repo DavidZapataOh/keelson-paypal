@@ -1,0 +1,157 @@
+---
+title: Threat model
+description: What an Alibi guarantees, what it does not, who can attack a purchase and what stops them.
+section: Security
+order: 2
+---
+
+This page states what a verified Alibi proves, who takes part in a purchase, which parts of the system can be compromised, and what each compromise allows. Each defense links to a check you can run on [Verify every claim](/security/verify/) or to the code that enforces it. Rule numbers (R00 to R70) refer to the [dispute attribution table](https://github.com/DavidZapataOh/keelson-paypal/blob/main/engine/policy/README.md#dispute-attribution).
+
+## What an Alibi guarantees
+
+A verified Alibi guarantees that the user's passkey, the credential the mandate names, signed that mandate: the assertion is over a challenge that binds the selectively disclosed payload and its commitment `C_m`, so the mandate a cart was judged against is the one the user approved.
+
+It guarantees that TEE signers registered in `VerdictVerifier` from an attestation of an allowed engine build evaluated the cart against that mandate, under the Cedar policy set whose hash it carries, and signed the decision, ALLOW or DENY. Both TEE legs signed it, one Intel TDX and one AWS Nitro, unless the Alibi says `degraded`, in which case only the TDX leg did.
+
+It guarantees that the evidence the Alibi discloses is what was sealed under `evidenceRoot` when the cart was countersigned, and that the countersigned total, currency, merchant and agent are the ones the legs signed.
+
+It guarantees that the decision is a leaf of the public log, included in a checkpoint cosigned by at least two of the log's three witnesses, and covered by a checkpoint anchored in `CheckpointAnchor` on Arbitrum Sepolia. Keelson cannot remove or change that leaf later without signing two views of the log, which the witnesses, Sigsum, the monitor and `LogBond` turn into public proof.
+
+## What it does not guarantee
+
+It does not guarantee that the item was the one the user wanted. Gray fields, the user's subjective wishes and the fields the drafting models disagreed on, are judged by no machine.
+
+It does not guarantee that amber fields (category, variant, return policy) are true. The agent operator attests them and its bond answers for them; only a notarized store response, through `AmberContradictionCourt`, proves one false.
+
+It does not guarantee that the price was fair. A page that pushes the price up within the mandate's cap stays within what the user allowed.
+
+It does not guarantee what PayPal did after the countersign. Keelson captures exactly the countersigned total, but PayPal's `capture_id` is assigned afterwards and no signature or hash covers it; the verifier shows it as unverified metadata. Nor does it guarantee that the merchant shipped, or how PayPal will rule on a dispute.
+
+It does not guarantee that the person holding the passkey was the user, only that the passkey signed.
+
+It does not guarantee that the TEE hardware was unbroken. It guarantees that breaking one leg is not enough, unless the Alibi is `degraded`.
+
+The chain checks are only as honest as the RPC that answers them: signer revocations and anchors are read from it. Everything else in the Alibi verifies offline.
+
+## Actors
+
+- **The user** signs a mandate with a passkey, approves the PayPal hold, and may dispute a purchase.
+- **The agent operator** runs the agent, posts a PYUSD bond keyed by its ERC-8004 `agentId`, signs each coverage and answers for the amber fields its agent attests.
+- **The merchant** sells, ships, and is paid through PayPal or a single-use card.
+- **Keelson** runs the API, the two TEE legs, the log and its three witnesses, the relayer and a public monitor, and holds the warranty reserve.
+- **PayPal** holds, captures and refunds the money and adjudicates disputes.
+- **The hardware vendors**, Intel for TDX and AWS for Nitro, root the attestations of leg A and leg B.
+- **A verifier** is anyone who checks an Alibi: the user, a merchant, PayPal, an arbiter, or the browser verifier at `verify.keelson.finance` running against roots pinned in code.
+- **A monitor** follows the log, checks every checkpoint and leaf, and publishes any split view. Keelson runs one; anyone can run the same binary.
+
+## Trust boundaries
+
+```mermaid
+flowchart LR
+  accTitle: Trust boundaries of a Keelson purchase
+  accDescr: The user signs a mandate with a passkey. The agent sends carts to the Keelson API, which asks leg A on Intel TDX and leg B on AWS Nitro to countersign. PayPal captures the countersigned total. Each decision goes to the Alibi log, cosigned by witnesses, co-logged in Sigsum and anchored on Arbitrum. Verifiers and monitors check the log and the chain. Nodes with a dashed outline are steps an attacker can compromise.
+  user(["User and passkey"]):::compromisable
+  agent["Agent and its operator"]:::compromisable
+  api["Keelson API"]:::compromisable
+  legA["Leg A, Intel TDX"]:::compromisable
+  legB["Leg B, AWS Nitro"]:::compromisable
+  paypal[("PayPal")]:::compromisable
+  log["Alibi log and witnesses"]:::compromisable
+  sigsum["Sigsum"]
+  chain["Arbitrum contracts"]
+  verifier(["Verifier or monitor"])
+  user -- "signs mandate" --> api
+  agent -- "cart and evidence" --> api
+  api -- countersign --> legA
+  legA -- observation --> legB
+  legA -- "read hold" --> paypal
+  api -- "capture countersigned total" --> paypal
+  api -- leaf --> log
+  log -- "co-log" --> sigsum
+  log -- "anchor signed by both TEE legs" --> chain
+  verifier -- checks --> log
+  verifier -- checks --> chain
+  classDef compromisable stroke:#c2410c,stroke-width:2px,stroke-dasharray:5 3
+```
+
+**The user's device and Keelson.** The passkey never leaves the user's authenticator. Keelson receives an assertion over the mandate challenge, and nothing a model drafted is signed without it. The user signs the card rendered from the payload, not a model's summary.
+
+**The agent and Keelson.** The agent and its operator are untrusted. The API accepts their carts and evidence but signs nothing itself; the legs re-verify the mandate, the passkey and the cart on every request.
+
+**The API and the TEE legs.** The API is outside the attested boundary. It holds the legs' bearer token, but no route of a leg takes a key, and a leg signs only what its own checks allow. The legs' signing keys are generated in enclave memory at boot and never leave it.
+
+**Leg A and leg B.** The two legs run the same reproducible image under two vendors' roots of trust. Only leg A reads PayPal and keeps the budget; leg B has no network, verifies every signature and the Cedar evaluation again, and countersigns over leg A's observation. A countersign needs both, unless it is marked `degraded`.
+
+**Keelson and PayPal.** PayPal is trusted to move money as instructed and to report holds, captures and disputes. Webhooks are not trusted: their signature is verified in-house and their body is only a pointer that is re-read with an authenticated `GET`.
+
+**The log and the outside world.** The log's checkpoint key lives in leg A. The three witnesses run by Keelson refuse inconsistent checkpoints but are not independent of Keelson. Sigsum's witnesses, the on-chain anchor and any third-party monitor are.
+
+**Off chain and on chain.** Contracts accept a slash, a warranty or an anchor only with the TEE legs' signatures under registered, unrevoked signers. The relayer pays gas and holds no privilege over funds.
+
+**The verifier and everything else.** The verifier trusts only roots pinned in its code: log and witness keys, Intel's and AWS's attestation roots, allowed engine builds and contract addresses. It trusts the RPC it reads the chain from for that read alone.
+
+## Compromises, by impact
+
+| Compromise | Attacker can | Attacker cannot | Detected by | Impact |
+| --- | --- | --- | --- | --- |
+| Both TEE legs (a broken TDX and a broken Nitro signer) | Countersign carts that break a mandate; sign verdicts that slash bonds or pay warranties; anchor checkpoints | Lock coverage without the user's passkey assertion and the operator's signature; move more than the vault's rate limit at once; skip the veto window for large slashes; anchor a checkpoint inconsistent with the previous anchor | `MandateViolationCourt` convictions, the Guardian's veto, `reportEquivocation`, the monitor and Sigsum | Critical |
+| One TEE leg (leg A, for example through TEE.fail) | Lie in the observation leg B signs over (the PayPal read and the budget left); sign degraded countersigns while leg B is down; sign two views of the log with its checkpoint key | Produce a two-of-two countersign or verdict alone; get a checkpoint anchored without leg B; capture more than the PayPal hold the user approved | The other leg's independent checks, `degraded` marks in the leaf and on chain, the longer veto window, witnesses refusing a second view, `LogBond` | High |
+| The user's passkey | Sign mandates as the user; approve app requests for mandates | Fund a purchase without the PayPal hold the user approved in PayPal; act unseen, since every request triggers an alert | Push and email alerts, the logged mandate, the kill switch | High |
+| PayPal | Capture, refund or report differently from the countersign; rule a dispute against the evidence | Forge a countersign, an Alibi or a log entry; change what the legs signed | Leg A's own PayPal read, the countersigned total in the Alibi, the `invoice_id` and `PayPal-Request-Id` derived from the countersign | High |
+| Log operator (the log service and the legs' bearer token) | Delay or withhold leaves; push a made-up extension to leg A and stall the log until the origin moves | Publish a checkpoint without two witness cosignatures; get leg A to sign two views of one origin; anchor a rewritten history | The witnesses, the monitor's split-view reports, Sigsum, `LogBond.proveEquivocation` | Medium |
+| All Keelson witnesses | Cosign a split view that the log key also signed | Sign a checkpoint without the log key; change the copy in Sigsum or the anchor on chain | Sigsum's independent witnesses, the on-chain anchor, any third-party monitor | Medium |
+| Agent operator | Attest a false amber field; try to capture twice; ask for carts outside the mandate | Get a countersign for a cart that breaks the mandate; charge a retry twice; escape its bond for an amber failure | R61, R31 and R00; `AmberContradictionCourt`; `MandateViolationCourt` | Medium |
+| Merchant | Ship something else; charge a different amount on its side | Change the snapshot the agent saw or the countersigned total | R40 and R50 with the sealed evidence | Medium |
+| The Guardian Safe (2 of 3) | Veto a queued slash; pause new coverage; revoke signers and disallow measurements | Move bonded PYUSD or the reserve's funds; sign a verdict | Public on-chain events | Medium |
+| Paxos (PYUSD issuer) | Freeze the vault, a payee or the reserve | Make a slash or warranty revert or lose the amount owed | Failed transfers recorded as `claimable` | Medium |
+| One witness | Refuse to cosign; cosign anything | Publish a checkpoint alone, since the quorum is two of three | The other witnesses and the monitor | Low |
+| Relayer key | Send permissionless calls and spend its gas; publish a registered-user root | Slash, pay a warranty, lock coverage or move any bonded funds | CloudTrail records every KMS `Sign`; roots are public and the Guardian can revoke one | Low |
+| Arbitrum RPC (the one a verifier reads) | Lie about anchors and signer revocations to that verifier; refuse to answer | Forge witnessed checkpoints, consistency proofs, attestations or countersignatures; make the verifier say verified when it is down | Reading from a second RPC; an unreachable RPC makes the verdict `incomplete`, never `verified` | Low |
+
+## Attacks and defenses
+
+| Adversary | Attack | What stops it | Proof |
+| --- | --- | --- | --- |
+| Malicious page | Prompt injection ("buy the $340 bundle") | The countersign is decided by the deterministic Cedar evaluation in both TEE legs, not by a model. The evidence pipeline's hidden-text detector puts concealed instructions on the record. | `packages/evidence/README.md` |
+| Malicious page | Fake scarcity to push the price up within the mandate's cap | **Not detected deterministically.** It is within what the user allowed. Such fields are amber or gray, never green. | [Field colors](https://docs.keelson.finance/reference/spec/) |
+| Agent operator | Attests a false item, size or price (an amber field) | The operator's bond: R61 slashes it. With a notarized TLS response from the store, `AmberContradictionCourt` (C2b) convicts without trusting the operator; the notarization is signed by leg A, so it trusts Keelson's TDX leg. | [Zero-knowledge verifiers](/security/verify/#zk-verifiers) |
+| Agent operator | Captures twice | `PayPal-Request-Id` is derived from the countersign, so PayPal treats a retry as the same capture. A second capture under one countersign is R31 and slashes the bond. | `services/api/README.md` |
+| Agent operator | Buys outside the mandate | Both TEE legs DENY. If a countersigned cart still broke the mandate, `MandateViolationCourt` (C2a) convicts from the mandate's opening, without trusting Keelson. | `contracts/README.md` |
+| Agent operator or Keelson | Adds a `permit` to widen the mandate | Policy extras compile only to `forbid`. symcc proves the policy set states the mandate rules, and the seeded `extra-permit` bug is caught. | `engine/policy/README.md` |
+| Merchant | Ships something else, or captures another amount | R50 and R40 make the merchant liable. The evidence holds the snapshot the agent saw and the countersigned total. | `engine/policy/README.md` |
+| User | Friendly fraud ("I did not authorize this") | R70: the passkey assertion over the mandate and the Alibi go to PayPal through `provide-evidence`. | [PayPal sandbox](/security/verify/#paypal-sandbox) |
+| Keelson insider | Rewrites the log to blame the user | Witnesses refuse inconsistent checkpoints. `CheckpointAnchor` reverts without a consistency proof from the previous anchor. Sigsum keeps an external copy. The monitor publishes any split view, and `LogBond.proveEquivocation` slashes the log's bond with two conflicting checkpoints. | [On-chain anchor](/security/verify/#anchor) |
+| Keelson insider | Signs a false verdict | Slashes and warranties need both TEE signers, whose keys are generated inside the enclaves and never leave. Large or degraded slashes wait a veto window, and the vault rate-limits them. The ZK courts convict without the TEEs. | [Contracts](/security/verify/#contracts) |
+| Keelson insider or API token holder | Pushes a made-up log extension to leg A | Leg A signs each tree size once, with one successor, and only extensions with a valid consistency proof. A fork then shows as two views of one origin, which the witnesses, the monitor and `LogBond` turn into proof. | [The log's bond](/security/verify/#log-bond) |
+| Keelson insider | Hides a split view behind its own witnesses | Every checkpoint is co-logged in Sigsum, cosigned by witnesses Keelson does not run, and the monitor compares the two. | [Sigsum](/security/verify/#sigsum) |
+| Keelson insider | Runs a different engine in a leg | Each leg's attestation names its measurement, which must match the reproducible image committed in the repository, and `VerdictVerifier` registers only allowed measurements. | [The TEE image](/security/verify/#tee-image) |
+| Hardware vendor or physical attacker | Forges a TDX quote (TEE.fail, 2025) | Every countersign and verdict needs a TDX signer and a Nitro signer, under two vendors' roots of trust. A degraded (TDX-only) result is marked as such and waits a longer veto window on chain. | [Leg B, AWS Nitro](/security/verify/#leg-b-nitro) |
+| Network attacker | Spoofs a PayPal webhook | The signature is verified in-house: a pinned certificate chain, RSA-SHA256, a five-minute window. Its body is only a pointer: state changes come from re-reading the resource with an authenticated `GET`. | `services/api/README.md` |
+| Replay | Reuses a countersign, verdict or claim | Request ids bound to the digest of the whole request, `expiresAt`, nonces, the dispute nullifier `disputeId`, single-use claim ids, and single-use cards. | `contracts/README.md` |
+| Paxos (PYUSD issuer) | Freezes the vault, the payee or the reserve | Failed transfers become `claimable` pull payments. A merchant can settle by PayPal Payout instead. | `contracts/README.md` |
+| Mandate compiler (a model) | Translates the user's words into the wrong mandate | The user signs the card rendered from the payload, not the model's text. Two models draft the mandate independently, the merge is never wider than either draft, fields they disagree on show gray, and a third model checks the card against the request. | `packages/compiler` |
+| An app acting for a user | Asks for a mandate the user did not want | The user approves every request with a passkey. Alerts go out by push and email. The kill switch stops every agent. Apps on the hosted operator are capped per user and in total. | `services/api/README.md` |
+| Anyone | Claims the log is complete when it is not | A public monitor audits every leaf's format and inclusion and publishes what it could not verify; anyone can run the same binary. | [The public monitor](/security/verify/#monitor) |
+
+## Limits
+
+1. **PayPal adjudicates disputes.** Keelson's verdict decides the evidence, the slash and the warranty. It does not bind PayPal.
+2. **Keelson is not insurance.** The warranty covers errors in Keelson's own countersign (green fields). Amber fields are paid by the operator's bond. Gray fields are the user's.
+3. **Everything runs on the PayPal sandbox and on testnets.** No real money moves in the flow with attacks and disputes; see [PayPal sandbox](/security/verify/#paypal-sandbox).
+4. **The witnesses Keelson runs are not independent of Keelson.** Independence comes from Sigsum's witnesses and from anyone running the monitor.
+5. **Price manipulation within the cap is not detected deterministically.** Such a field is never green.
+6. **Cedar's proofs are about its Lean model**, with differential testing against the Rust code, which is not formally verified. Halmos and Forge symbolic runs are bounded proofs.
+7. **Channel3 is a third party's testimony**, not a cryptographic proof. TLSNotary is one, but it is alpha software.
+8. **TEE.fail exists.** That is why there are two vendors and a veto window.
+9. **ERC-8004 and the selective-disclosure specifications are drafts.** Versions are pinned.
+10. **A passkey is consent, not a standard payment signature.** The standard signature is the attested TEE's.
+11. **Secure Payment Confirmation exists only in Chromium browsers.** Elsewhere the approval uses a plain WebAuthn assertion.
+12. **Two flows, kept apart.** The sandbox flow, with Keelson's own demo store as the merchant, has attacks, disputes and slashes. The live flow makes small real purchases at real stores, with no attacks and no disputes. Keelson covers no live purchase.
+13. **The contracts are unaudited.** Their assumptions and accepted findings are listed in `contracts/README.md`.
+14. **Both TEE legs accept the same bearer token.** Its holder cannot make a leg sign anything the leg's own checks refuse, but can push a made-up log extension and stall the log until the origin moves. The host of leg A's confidential VM can wipe or roll back its whole encrypted volume. These and the other accepted risks of the legs are in `engine/tee/README.md`.
+15. **Whoever controls leg A's app on Phala Cloud can start another instance** and have it sign a different extension of the latest anchor, up to an hour of the log. The witnesses then see two views, and the monitor and `LogBond` turn them into proof.
+16. **The monitor does not yet check the TEE signatures of leaves or the on-chain anchors**, and its report says so.
+
+## Reporting a vulnerability
+
+Report vulnerabilities privately as described in [the security policy](https://github.com/DavidZapataOh/keelson-paypal/blob/main/contracts/SECURITY.md). Do not open a public issue.

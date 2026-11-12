@@ -85,6 +85,7 @@ const problemContent = { "application/problem+json": { schema: ProblemSchema } }
 const get = createRoute({
   method: "get",
   path: "/v1/operators/{agentId}/grade",
+  operationId: "getTrustGrade",
   tags: ["operators"],
   summary: "Trust grade, premium and bond of an operator",
   description:
@@ -107,6 +108,7 @@ const get = createRoute({
 const stream = createRoute({
   method: "get",
   path: "/v1/operators/{agentId}/grade/stream",
+  operationId: "streamTrustGrade",
   tags: ["operators"],
   summary: "Follow an operator's trust grade",
   description:

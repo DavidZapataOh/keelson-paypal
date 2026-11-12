@@ -1,0 +1,43 @@
+---
+import { Code } from "astro:components";
+
+interface Props {
+  label: string;
+  items: { name: string; lang: string; code: string }[];
+}
+const { label, items } = Astro.props;
+const id = label.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+---
+<div class="codetabs" data-codetabs>
+  <div class="files-bar">
+    <div class="tabs" role="tablist" aria-label={label}>
+      {items.map((it, i) => (
+        <button type="button" role="tab" id={`${id}-tab-${i}`} aria-controls={`${id}-pane-${i}`} aria-selected={i === 0 ? "true" : "false"}>{it.name}</button>
+      ))}
+    </div>
+    <button type="button" class="copy" data-copy>Copy</button>
+  </div>
+  {items.map((it, i) => (
+    <div class="codetabs-pane" role="tabpanel" id={`${id}-pane-${i}`} aria-labelledby={`${id}-tab-${i}`} hidden={i !== 0}>
+      <Code code={it.code} lang={it.lang as never} theme="css-variables" />
+    </div>
+  ))}
+</div>
+<script>
+  for (const box of document.querySelectorAll<HTMLElement>("[data-codetabs]")) {
+    const tabs = [...box.querySelectorAll<HTMLElement>('[role="tab"]')];
+    const panes = [...box.querySelectorAll<HTMLElement>('[role="tabpanel"]')];
+    tabs.forEach((t, i) =>
+      t.addEventListener("click", () => {
+        tabs.forEach((x, j) => x.setAttribute("aria-selected", String(i === j)));
+        panes.forEach((p, j) => (p.hidden = i !== j));
+      }),
+    );
+    box.querySelector("[data-copy]")?.addEventListener("click", async (e) => {
+      const button = e.currentTarget as HTMLElement;
+      await navigator.clipboard.writeText(panes.find((p) => !p.hidden)?.querySelector("pre")?.textContent ?? "");
+      button.textContent = "Copied";
+      setTimeout(() => (button.textContent = "Copy"), 1200);
+    });
+  }
+</script>

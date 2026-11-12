@@ -121,5 +121,18 @@ export function holdHarness(app: Pick<OpenAPIHono, "request">, paypal: PayPalDep
     });
   };
 
-  return { post, signed, hold, authorize, revoke, approve, activate, release };
+  /** Saves the sandbox buyer's PayPal as `sub`'s, approved once in PayPal like a user would. */
+  const saveBuyer = async (sub: string) => {
+    const setup = await answer(await post("/v1/paypal/wallet/setup-token", sub));
+    expect(setup.status, JSON.stringify(setup.body)).toBe(201);
+    const setupToken = setup.body.setupToken as string;
+    const token = await call(paypal.paypal.vault.getSetupToken(setupToken));
+    const link = token.links?.find((l) => l.rel === "approve")?.href;
+    if (!link) throw new Error("the setup token has no approve link");
+    await approveOrder(link, `${APP_ORIGIN}/passkeys`);
+    const saved = await answer(await post("/v1/paypal/wallet", sub, { setupToken }));
+    expect(saved.status, JSON.stringify(saved.body)).toBe(201);
+  };
+
+  return { post, signed, hold, authorize, revoke, approve, activate, release, saveBuyer };
 }

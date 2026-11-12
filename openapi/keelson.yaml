@@ -2,7 +2,42 @@ openapi: 3.1.0
 info:
   title: Keelson API
   version: 0.0.0
+servers:
+  - url: https://api.keelson.finance
+    description: Keelson's API, on the PayPal sandbox
 components:
+  securitySchemes:
+    oauth2:
+      type: oauth2
+      description: OAuth 2.1. An operator's agent uses client credentials; an app
+        acting for a user uses the authorization code grant with PKCE (S256).
+        Every token is requested for the resource `https://api.keelson.finance`
+        (RFC 8707).
+      flows:
+        clientCredentials:
+          tokenUrl: https://api.keelson.finance/api/auth/oauth2/token
+          scopes: &a1
+            countersign:write: Countersign carts as the operator's own agent
+            evidence:write: Seal and store evidence
+            evidence:disclose: Disclose stored evidence items
+            evidence:decrypt: Decrypt sealed evidence originals
+            alibis:read: Read and verify Alibis
+            disputes:read: Read disputes and their attribution
+            operators:write: Link and manage operators
+            merchants:write: Manage a merchant's settings
+            mandates:request: Ask the user for a mandate or a change of one
+            purchases:write: Check and countersign carts for the user
+            offline_access: Stay connected with a refresh token
+        authorizationCode:
+          authorizationUrl: https://api.keelson.finance/api/auth/oauth2/authorize
+          tokenUrl: https://api.keelson.finance/api/auth/oauth2/token
+          refreshUrl: https://api.keelson.finance/api/auth/oauth2/token
+          scopes: *a1
+    session:
+      type: apiKey
+      in: cookie
+      name: __Secure-better-auth.session_token
+      description: The session of a user signed in to the Keelson app.
   schemas:
     Problem:
       type: object
@@ -639,9 +674,14 @@ components:
           type: string
           enum:
             - HOLD_PENDING
+        approved:
+          type: boolean
+          description: "The user's saved PayPal paid the order, so PayPal shows the buyer
+            nothing: authorize it next."
       required:
         - orderId
         - state
+        - approved
     AuthorizedHold:
       type: object
       properties:
@@ -683,6 +723,31 @@ components:
       required:
         - orderId
       description: The order the buyer approved.
+    PayPalSetupToken:
+      type: object
+      properties:
+        setupToken:
+          type: string
+          minLength: 1
+          maxLength: 64
+          pattern: ^[0-9A-Za-z_-]+$
+      required:
+        - setupToken
+    PayPalWallet:
+      type: object
+      properties:
+        email:
+          type:
+            - string
+            - "null"
+          description: The PayPal account, as PayPal names it.
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - email
+        - createdAt
+      description: The PayPal the user saved for holds under the mandates they sign.
     PurchaseHoldOrder:
       type: object
       properties:
@@ -1194,6 +1259,9 @@ components:
           type: string
         interval:
           type: integer
+        operatorAgentId:
+          type: string
+          description: The ERC-8004 agent id of the operator the mandate names, in decimal.
       required:
         - id
         - kind
@@ -1205,6 +1273,7 @@ components:
         - matchNumber
         - expiresAt
         - interval
+        - operatorAgentId
     ConnectionDraft:
       type: object
       properties:
@@ -6251,7 +6320,7 @@ components:
             - object
             - "null"
           properties:
-            id: &a1
+            id: &a2
               anyOf:
                 - type: object
                   properties:
@@ -6471,17 +6540,17 @@ components:
                   required:
                     - filterType
                     - values
-            createdAt: *a1
-            merchantId: *a1
-            amount: *a1
-            premiumBps: *a1
-            premium: *a1
-            state: *a1
-            disputeState: *a1
-            liable: *a1
-            outcome: *a1
-            paidBy: *a1
-            amber: *a1
+            createdAt: *a2
+            merchantId: *a2
+            amount: *a2
+            premiumBps: *a2
+            premium: *a2
+            state: *a2
+            disputeState: *a2
+            liable: *a2
+            outcome: *a2
+            paidBy: *a2
+            amber: *a2
       required:
         - startRow
         - endRow
@@ -6746,6 +6815,7 @@ components:
 paths:
   /health:
     get:
+      operationId: getHealth
       tags:
         - system
       summary: Liveness probe
@@ -6765,6 +6835,7 @@ paths:
                   - status
   /status:
     get:
+      operationId: getStatus
       tags:
         - system
       summary: Dependency status
@@ -6965,11 +7036,15 @@ paths:
                   - version
   /v1/events:
     get:
+      operationId: streamEvents
       tags:
         - events
       summary: Stream events
       description: Server-sent events for one channel. Send `Last-Event-ID` to replay
         the events after that id before going live.
+      security:
+        - session: []
+        - oauth2: []
       parameters:
         - schema:
             type: string
@@ -7019,6 +7094,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/mandates:
     post:
+      operationId: createMandate
       tags:
         - mandates
       summary: Store a passkey-signed mandate
@@ -7026,6 +7102,8 @@ paths:
         SHA-256("keelson/mandate-challenge/v1" || 0x00 || H_sd || C_m)` and
         stores the mandate as `SIGNED`, or `ACTIVE` when it allows several
         merchants.
+      security:
+        - session: []
       parameters:
         - schema:
             type: string
@@ -7097,10 +7175,13 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
     get:
+      operationId: listMandates
       tags:
         - mandates
       summary: List your mandates
       description: The signed-in user's latest 50 signed mandates, newest first.
+      security:
+        - session: []
       responses:
         "200":
           description: The mandates
@@ -7116,12 +7197,15 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/mandates/{id}:
     get:
+      operationId: getMandate
       tags:
         - mandates
       summary: Get a mandate
       description: Renders the card of the signed mandate. The user answered for every
         field when signing, so fields that were ambiguous at compile time show
         with the colors the engine enforces, not gray.
+      security:
+        - session: []
       parameters:
         - schema:
             type: string
@@ -7149,6 +7233,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/paypal/client:
     get:
+      operationId: getPayPalClient
       tags:
         - paypal
       summary: Get the PayPal client ID
@@ -7169,13 +7254,18 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/mandates/{id}/hold:
     post:
+      operationId: holdMandate
       tags:
         - mandates
       summary: Hold a mandate's budget
       description: Creates the PayPal `AUTHORIZE` order for the budget of a signed
         mandate, bound to the signed mandate hash by its `custom_id`, and moves
-        the mandate to `HOLD_PENDING`. While the mandate waits for approval the
-        same order is returned; an order PayPal no longer offers is replaced.
+        the mandate to `HOLD_PENDING`. With the user's saved PayPal, PayPal
+        authorizes the order as it creates it (`approved`); otherwise the buyer
+        approves it in PayPal. While the mandate waits for approval the same
+        order is returned; an order PayPal no longer offers is replaced.
+      security:
+        - session: []
       parameters:
         - schema:
             type: string
@@ -7230,6 +7320,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/mandates/{id}/hold/authorize:
     post:
+      operationId: authorizeMandateHold
       tags:
         - mandates
       summary: Authorize an approved hold
@@ -7237,6 +7328,8 @@ paths:
         authorization against the signed mandate (amount, currency, `custom_id`,
         payee) and moves the mandate to `ACTIVE`. An authorization that does not
         match is voided.
+      security:
+        - session: []
       parameters:
         - schema:
             type: string
@@ -7300,14 +7393,186 @@ paths:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
+  /v1/paypal/wallet/setup-token:
+    post:
+      operationId: createPayPalSetupToken
+      tags:
+        - paypal
+      summary: Start saving PayPal
+      description: Creates the PayPal Vault setup token the user approves in PayPal,
+        for one merchant-initiated token billed on the terms of the mandates
+        they sign.
+      security:
+        - session: []
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+          required: true
+          name: idempotency-key
+          in: header
+      responses:
+        "201":
+          description: The setup token
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PayPalSetupToken"
+        "401":
+          description: Not signed in
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: PayPal refused
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: PayPal is unavailable
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /v1/paypal/wallet:
+    post:
+      operationId: savePayPalWallet
+      tags:
+        - paypal
+      summary: Save PayPal
+      description: Exchanges the setup token the user approved for a payment token and
+        saves it as the user's PayPal for holds, in place of any saved before.
+      security:
+        - session: []
+      parameters:
+        - schema:
+            type: string
+            minLength: 1
+            maxLength: 255
+          required: true
+          name: idempotency-key
+          in: header
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PayPalSetupToken"
+      responses:
+        "201":
+          description: Saved
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PayPalWallet"
+        "401":
+          description: Not signed in
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: No such setup token of this user
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: PayPal refused
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: PayPal is unavailable
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+    get:
+      operationId: getPayPalWallet
+      tags:
+        - paypal
+      summary: The saved PayPal
+      security:
+        - session: []
+      responses:
+        "200":
+          description: The saved PayPal
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PayPalWallet"
+        "401":
+          description: Not signed in
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: No saved PayPal
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: PayPal is unavailable
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+    delete:
+      operationId: removePayPalWallet
+      tags:
+        - paypal
+      summary: Remove the saved PayPal
+      description: Deletes the payment token at PayPal and forgets it. Holds already
+        authorized stay until they are captured, voided or expire; new holds
+        need PayPal's approval again.
+      security:
+        - session: []
+      responses:
+        "204":
+          description: Removed
+        "401":
+          description: Not signed in
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: No saved PayPal
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "422":
+          description: PayPal refused
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "503":
+          description: PayPal is unavailable
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
   /v1/mandates/{id}/holds:
     post:
+      operationId: holdCart
       tags:
         - mandates
       summary: Hold one cart of a multi-merchant mandate
       description: For a mandate that allows several merchants, creates the PayPal
         `AUTHORIZE` order for exactly one cart, keyed by the request id it will
         be countersigned under. The user approves it like a mandate hold.
+      security:
+        - oauth2:
+            - countersign:write
       parameters:
         - schema:
             type: string
@@ -7376,12 +7641,15 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/mandates/{id}/holds/{requestId}/authorize:
     post:
+      operationId: authorizeCartHold
       tags:
         - mandates
       summary: Authorize an approved cart hold
       description: Authorizes the order stored for the request and checks the
         authorization against it (amount, currency, `custom_id`, payee). An
         authorization that does not match is voided.
+      security:
+        - session: []
       parameters:
         - schema:
             type: string
@@ -7452,6 +7720,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/mandates/{id}/revoke:
     post:
+      operationId: revokeMandate
       tags:
         - mandates
       summary: Revoke a mandate
@@ -7459,6 +7728,8 @@ paths:
         mandate to `REVOKED`. While a countersigned purchase may still be
         captured, the void waits for it and the revocation completes in the
         background.
+      security:
+        - session: []
       parameters:
         - schema:
             type: string
@@ -7517,6 +7788,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/connections:
     post:
+      operationId: requestMandate
       tags:
         - connections
       summary: Ask the user for a mandate
@@ -7538,6 +7810,11 @@ paths:
         URIs are not a known host's may not pass `HOSTED_CAP_PER_USER_MINOR`,
         and with all such apps `HOSTED_CAP_KNOWN_PER_USER_MINOR`; every user's
         funded exposure may not pass `HOSTED_CAP_TOTAL_MINOR`.
+      security:
+        - oauth2:
+            - countersign:write
+        - oauth2:
+            - mandates:request
       parameters:
         - schema:
             type: string
@@ -7586,6 +7863,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/connections/token:
     post:
+      operationId: pollConnection
       tags:
         - connections
       summary: Poll for the user's answer
@@ -7595,6 +7873,9 @@ paths:
         seconds to wait) when polled faster than `interval`. Then
         `access_denied`, `expired_token`, or the approved mandate's id, once:
         the device code is spent by the answer that carries it."
+      security:
+        - oauth2:
+            - countersign:write
       requestBody:
         required: true
         content:
@@ -7631,11 +7912,14 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/connections/{code}:
     get:
+      operationId: getConnectionByCode
       tags:
         - connections
       summary: Read a request by its user code
       description: What the agent asks for, for the approval page. Limited to 20 reads
         a minute per user, so codes cannot be guessed.
+      security:
+        - session: []
       parameters:
         - schema:
             type: string
@@ -7671,9 +7955,12 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/connections/{code}/deny:
     post:
+      operationId: denyConnection
       tags:
         - connections
       summary: Deny a request
+      security:
+        - session: []
       parameters:
         - schema:
             type: string
@@ -7717,12 +8004,15 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/connections/{code}/match:
     post:
+      operationId: matchConnection
       tags:
         - connections
       summary: Pick the agent's number
       description: The user picks the number the agent shows beside its link out of
         the three the request offers. The right one opens the request; a wrong
         one denies it, since the link may not be the user's agent's.
+      security:
+        - session: []
       parameters:
         - schema:
             type: string
@@ -7785,6 +8075,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/connections/requests/{id}:
     get:
+      operationId: getConnectionRequest
       tags:
         - connections
       summary: Read your request's state
@@ -7792,6 +8083,11 @@ paths:
         reading it changes nothing and does not spend the device code. Wait
         `interval` seconds between reads. An app acting for a user
         (`mandates:request`) reads only that user's requests."
+      security:
+        - oauth2:
+            - countersign:write
+        - oauth2:
+            - mandates:request
       parameters:
         - schema:
             type: string
@@ -7820,6 +8116,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/connections/{code}/draft:
     post:
+      operationId: draftConnectionMandate
       tags:
         - connections
       summary: Draft the mandate that approves a request
@@ -7827,6 +8124,8 @@ paths:
         be lower than or equal to what the agent asked. It names the asking
         agent's operator. Sign it and store it with `POST /v1/mandates`, passing
         `connection`, to approve.
+      security:
+        - session: []
       parameters:
         - schema:
             type: string
@@ -7926,6 +8225,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/mandates/{id}/changes:
     post:
+      operationId: requestMandateChange
       tags:
         - mandates
       summary: Ask the user to change a mandate
@@ -7936,6 +8236,11 @@ paths:
         /v1/connections/requests/{id}` for the answer. An app acting for a user
         (`mandates:request`) asks only about a mandate that user approved for
         it.
+      security:
+        - oauth2:
+            - countersign:write
+        - oauth2:
+            - mandates:request
       parameters:
         - schema:
             type: string
@@ -8009,6 +8314,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/mandates/{id}/check:
     post:
+      operationId: checkCart
       tags:
         - mandates
       summary: Check a cart against a mandate
@@ -8017,6 +8323,11 @@ paths:
         reserved or logged. The countersign stays the only decision. An app
         acting for a user (`purchases:write`) checks only under a mandate that
         user approved for it."
+      security:
+        - oauth2:
+            - countersign:write
+        - oauth2:
+            - purchases:write
       parameters:
         - schema:
             type: string
@@ -8056,6 +8367,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/embed/origins:
     put:
+      operationId: setEmbedOrigins
       tags:
         - embed
       summary: Set the origins that may frame approvals
@@ -8063,6 +8375,9 @@ paths:
         Keelson's approval in. Each becomes the page's `frame-ancestors` for
         that client's requests, and the only origin the frame talks to with
         `postMessage`.
+      security:
+        - oauth2:
+            - countersign:write
       requestBody:
         required: true
         content:
@@ -8090,6 +8405,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/connections/embed:
     post:
+      operationId: embedConnection
       tags:
         - embed
       summary: Embed the approval of a request
@@ -8099,6 +8415,9 @@ paths:
         minutes; mint another to frame it again. The user approves in a Keelson
         window the frame opens, with a passkey; poll `POST
         /v1/connections/token` as usual for the answer.
+      security:
+        - oauth2:
+            - countersign:write
       requestBody:
         required: true
         content:
@@ -8142,6 +8461,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/embed/sessions:
     post:
+      operationId: openEmbedSession
       tags:
         - embed
       summary: Open the embedded approval
@@ -8174,6 +8494,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/embed/request:
     get:
+      operationId: getEmbedRequest
       tags:
         - embed
       summary: Read the embedded request
@@ -8199,6 +8520,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/embed/deny:
     post:
+      operationId: denyEmbedRequest
       tags:
         - embed
       summary: Decline the embedded request
@@ -8230,6 +8552,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/embed/sign-in/options:
     post:
+      operationId: getEmbedSignInOptions
       tags:
         - embed
       summary: Start a passkey sign-in in the embedded approval
@@ -8259,6 +8582,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/embed/sign-in:
     post:
+      operationId: signInEmbed
       tags:
         - embed
       summary: Sign in with a passkey in the embedded approval
@@ -8294,6 +8618,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/embed/links:
     post:
+      operationId: createEmbedLink
       tags:
         - embed
       summary: Link the embedded approval to a Keelson window
@@ -8322,12 +8647,15 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/embed/links/inspect:
     post:
+      operationId: inspectEmbedLink
       tags:
         - embed
       summary: Read a link in the Keelson window
       description: The agent platform and the request an unspent link was opened for,
         so the window can show the user which page they are about to link before
         they confirm.
+      security:
+        - session: []
       requestBody:
         required: true
         content:
@@ -8361,6 +8689,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/embed/links/confirm:
     post:
+      operationId: confirmEmbedLink
       tags:
         - embed
       summary: Confirm a link from the Keelson window
@@ -8369,6 +8698,8 @@ paths:
         hands only to that frame, its opener on Keelson's origin; the frame
         claims it with `POST /v1/embed/links/claim`. The frame may create a
         passkey only for a user who has none.
+      security:
+        - session: []
       requestBody:
         required: true
         content:
@@ -8406,6 +8737,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/embed/links/claim:
     post:
+      operationId: claimEmbedLink
       tags:
         - embed
       summary: Claim a link's grant in the embedded approval
@@ -8446,6 +8778,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/embed/passkeys/options:
     post:
+      operationId: getEmbedPasskeyOptions
       tags:
         - embed
       summary: Start creating a passkey in the embedded approval
@@ -8486,6 +8819,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/embed/passkeys:
     post:
+      operationId: createEmbedPasskey
       tags:
         - embed
       summary: Create a passkey in the embedded approval
@@ -8526,6 +8860,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/embed/draft:
     post:
+      operationId: draftEmbedMandate
       tags:
         - embed
       summary: Draft the mandate in the embedded approval
@@ -8622,6 +8957,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/embed/mandates:
     post:
+      operationId: createEmbedMandate
       tags:
         - embed
       summary: Approve the embedded request with a signed mandate
@@ -8723,11 +9059,14 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/agents:
     get:
+      operationId: listAgents
       tags:
         - agents
       summary: List your agents
       description: "Each agent that holds or held a mandate of yours, or that you
         connected: its live mandate with what is left, and when it last acted."
+      security:
+        - session: []
       responses:
         "200":
           description: The agents, most recently active first
@@ -8750,12 +9089,15 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/approvals:
     get:
+      operationId: listApprovals
       tags:
         - agents
       summary: Carts paused for your approval
       description: Carts your agents tried that their mandate does not allow, each
         waiting for you to approve it once or decline it. New ones arrive as
         `approval.requested` events on the `agents` channel.
+      security:
+        - session: []
       responses:
         "200":
           description: The open requests, newest first
@@ -8778,6 +9120,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/agents/stop:
     post:
+      operationId: stopAgents
       tags:
         - agents
       summary: Stop all agents
@@ -8786,6 +9129,8 @@ paths:
         holds, denies every open request, revokes every agent's OAuth grant, and
         logs the stop as a `keelson.finance/stop/v1` leaf in the Alibi log.
         Purchases already countersigned may still be captured.
+      security:
+        - session: []
       parameters:
         - schema:
             type: string
@@ -8809,10 +9154,13 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/agents/stops:
     get:
+      operationId: listAgentStops
       tags:
         - agents
       summary: Your stops
       description: Each time you stopped all agents, newest first, with its log index.
+      security:
+        - session: []
       responses:
         "200":
           description: The stops
@@ -8835,6 +9183,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/agents/{agentId}/disconnect:
     post:
+      operationId: disconnectAgent
       tags:
         - agents
       summary: Disconnect an agent
@@ -8850,6 +9199,8 @@ paths:
         Keelson's hosted operator are disconnected this way; without `client`,
         the hosted operator ends only your mandates of it that no app holds (its
         `Unknown app` row).
+      security:
+        - session: []
       parameters:
         - schema:
             type: string
@@ -8892,12 +9243,15 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/activity:
     get:
+      operationId: listActivity
       tags:
         - agents
       summary: Read your activity
       description: "What your agents and Keelson did, newest first, one plain line
         each: requests, purchases, blocks and stops. Purchases link to their
         Alibi and log entry."
+      security:
+        - session: []
       parameters:
         - schema:
             type: string
@@ -8929,11 +9283,14 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/push/key:
     get:
+      operationId: getPushKey
       tags:
         - alerts
       summary: Read the push key
       description: The VAPID public key (RFC 8292) to pass as `applicationServerKey`
         to `PushManager.subscribe()`.
+      security:
+        - session: []
       responses:
         "200":
           description: The key, base64url
@@ -8960,11 +9317,14 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/push/subscriptions:
     post:
+      operationId: createPushSubscription
       tags:
         - alerts
       summary: Get alerts on this browser
       description: "Stores the browser's push subscription: agent requests, blocked
         carts and stops are pushed to it."
+      security:
+        - session: []
       parameters:
         - schema:
             type: string
@@ -8998,9 +9358,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
     delete:
+      operationId: deletePushSubscription
       tags:
         - alerts
       summary: Stop alerts on this browser
+      security:
+        - session: []
       requestBody:
         required: true
         content:
@@ -9024,9 +9387,12 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/push/test:
     post:
+      operationId: sendTestPush
       tags:
         - alerts
       summary: Send a test notification
+      security:
+        - session: []
       parameters:
         - schema:
             type: string
@@ -9061,9 +9427,12 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/alerts/email:
     get:
+      operationId: getAlertEmail
       tags:
         - alerts
       summary: Read your alert address
+      security:
+        - session: []
       responses:
         "200":
           description: The address
@@ -9078,12 +9447,15 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
     put:
+      operationId: setAlertEmail
       tags:
         - alerts
       summary: Set your alert address
       description: Stores the address unconfirmed and sends it a confirmation link,
         signed, single use and valid for 24 hours. Alerts are emailed only once
         it is confirmed. Never the sign-in address unless entered here.
+      security:
+        - session: []
       requestBody:
         required: true
         content:
@@ -9123,9 +9495,12 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
     delete:
+      operationId: deleteAlertEmail
       tags:
         - alerts
       summary: Stop email alerts
+      security:
+        - session: []
       responses:
         "204":
           description: Removed
@@ -9137,6 +9512,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/alerts/email/confirm:
     post:
+      operationId: confirmAlertEmail
       tags:
         - alerts
       summary: Confirm an alert address
@@ -9187,6 +9563,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/alerts/unsubscribe:
     post:
+      operationId: unsubscribeAlerts
       tags:
         - alerts
       summary: Unsubscribe in one click
@@ -9228,10 +9605,13 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/alerts/emails:
     get:
+      operationId: listAlertEmails
       tags:
         - alerts
       summary: List the emails sent to you
       description: Every alert email composed for you, newest first, with what it reported.
+      security:
+        - session: []
       responses:
         "200":
           description: The emails
@@ -9254,6 +9634,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/mandates/compile:
     post:
+      operationId: compileMandate
       tags:
         - mandates
       summary: Compile a mandate from a shopping request
@@ -9261,6 +9642,8 @@ paths:
         on or the request leaves unstated come back ambiguous, and a third model
         checks the rendered card against the request. Limited to 10 requests a
         minute per user.
+      security:
+        - session: []
       parameters:
         - schema:
             type: string
@@ -9342,6 +9725,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/countersign:
     post:
+      operationId: countersign
       tags:
         - tee
       summary: Countersign a cart
@@ -9357,6 +9741,11 @@ paths:
         request id, evidence or `Idempotency-Key`. Retrying after a lost answer
         is therefore safe; to buy the same cart again on purpose, name that
         purchase in `repeatOf`."
+      security:
+        - oauth2:
+            - countersign:write
+        - oauth2:
+            - purchases:write
       parameters:
         - schema:
             type: string
@@ -9463,6 +9852,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/live-purchases:
     get:
+      operationId: listLivePurchases
       tags:
         - purchases
       summary: Live purchases
@@ -9487,6 +9877,7 @@ paths:
                   - purchases
   /v1/purchases/{id}/paypal-transaction:
     put:
+      operationId: recordPayPalTransaction
       tags:
         - purchases
       summary: Record a live purchase's PayPal transaction
@@ -9495,6 +9886,9 @@ paths:
         as PayPal reported it on its confirmation. Recorded once; the Alibi
         carries it from then on, marked as not signed. Only the client that
         asked for the countersign records it."
+      security:
+        - oauth2:
+            - countersign:write
       parameters:
         - schema:
             type: string
@@ -9539,6 +9933,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/purchases/{id}:
     get:
+      operationId: getPurchase
       tags:
         - purchases
       summary: A purchase
@@ -9546,6 +9941,9 @@ paths:
         once each is recorded. Readable by the mandate's owner and by the client
         that asked for the countersign; an app acting for a user, only for that
         user."
+      security:
+        - session: []
+        - oauth2: []
       parameters:
         - schema:
             type: string
@@ -9568,6 +9966,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/purchases/{id}/card:
     get:
+      operationId: getPurchaseCard
       tags:
         - purchases
       summary: The single-use card of a card purchase
@@ -9576,6 +9975,9 @@ paths:
         browser session that pays; never put its contents in a model's context
         or a log. Only the client that asked for the countersign reads it, and
         only while the card is open."
+      security:
+        - oauth2:
+            - countersign:write
       parameters:
         - schema:
             type: string
@@ -9604,6 +10006,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/evidence:
     post:
+      operationId: storeEvidence
       tags:
         - evidence
       summary: Store sealed evidence
@@ -9614,6 +10017,9 @@ paths:
         hold an email address or phone number, and every `.original` must open
         with the evidence identity. A countersign may only bind a stored root,
         once.
+      security:
+        - oauth2:
+            - evidence:write
       parameters:
         - schema:
             type: string
@@ -9675,6 +10081,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/evidence/{root}:
     get:
+      operationId: getEvidenceManifest
       tags:
         - evidence
       summary: Read an evidence manifest
@@ -9701,6 +10108,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/evidence/{root}/items/{index}:
     get:
+      operationId: discloseEvidenceItem
       tags:
         - evidence
       summary: Disclose one evidence item
@@ -9708,6 +10116,9 @@ paths:
         arbiter. Every disclosure is recorded with its `reason`. An `.original`
         item stays age ciphertext unless `decrypt=1` is sent with the
         `evidence:decrypt` scope.
+      security:
+        - oauth2:
+            - evidence:disclose
       parameters:
         - schema:
             type: string
@@ -9774,6 +10185,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/observations/channel3:
     post:
+      operationId: observeChannel3
       tags:
         - evidence
       summary: Observe a product through Channel3
@@ -9783,6 +10195,9 @@ paths:
         and queues RFC 3161 tokens over its hash. Channel3 is third-party
         testimony: it is shown in the countersigned trace and never changes a
         decision."
+      security:
+        - oauth2:
+            - countersign:write
       parameters:
         - schema:
             type: string
@@ -9836,12 +10251,16 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/observations/channel3/{id}:
     get:
+      operationId: getChannel3Observation
       tags:
         - evidence
       summary: Read a Channel3 observation
       description: The stored observation document and its hash; `GET
         /v1/timestamps/{content_hash}` serves its RFC 3161 tokens. Only the
         client that asked for it may read it.
+      security:
+        - oauth2:
+            - countersign:write
       parameters:
         - schema:
             type: string
@@ -9877,6 +10296,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/fx/reference/{base}:
     get:
+      operationId: getFxReference
       tags:
         - purchases
       summary: Reference exchange rates
@@ -9888,6 +10308,9 @@ paths:
         references the API issued in the last 6 hours. The pay-click gate checks
         the rate PayPal converts the charge at against them, within the
         mandate's `fx.max_spread_bps`.
+      security:
+        - oauth2:
+            - countersign:write
       parameters:
         - schema:
             type: string
@@ -9934,6 +10357,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/observations/web-fact:
     post:
+      operationId: notarizeWebFact
       tags:
         - evidence
       summary: Notarize a product endpoint with TLSNotary
@@ -9942,6 +10366,11 @@ paths:
         or to the object around `anchor`, and returns the EIP-712 `WebFact` leg
         A signed with its attested key. Runs apart from any countersign and
         never delays one. An app acting for a user needs `evidence:write`.
+      security:
+        - oauth2:
+            - countersign:write
+        - oauth2:
+            - evidence:write
       parameters:
         - schema:
             type: string
@@ -9990,6 +10419,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/purchases/{id}/chargeback:
     post:
+      operationId: chargeBackPurchase
       tags:
         - purchases
       summary: Charge back a card purchase
@@ -10001,6 +10431,8 @@ paths:
         subtracted from any bond claim over the purchase, and no bond claim is
         paid while it is open. Only the mandate's owner files it, one at a
         time."
+      security:
+        - session: []
       parameters:
         - schema:
             type: string
@@ -10065,6 +10497,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/tee/attestations:
     get:
+      operationId: listTeeAttestations
       tags:
         - tee
       summary: Attested TEE signers
@@ -10110,6 +10543,7 @@ paths:
                   - measurements
   /v1/timestamps/{hash}:
     get:
+      operationId: getTimestamps
       tags:
         - timestamps
       summary: RFC 3161 timestamps of a hash
@@ -10160,9 +10594,10 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/alibis/{id}.pdf:
     get:
+      operationId: getAlibiPdf
       tags:
         - alibis
-      summary: An alibi as a PDF/A-3b
+      summary: An Alibi as a PDF/A-3b
       description: A one-page PDF/A-3b summary of the Alibi with a QR to its verify
         page and the bundle embedded as `<id>.alibi`. Same readers, and the same
         public copy, as the bundle.
@@ -10170,9 +10605,9 @@ paths:
         - schema:
             type: string
             pattern: ^[0-7][0-9A-HJKMNP-TV-Z]{25}$
-            description: "The alibi id: the purchase's ULID."
+            description: "The Alibi id: the purchase's ULID."
           required: true
-          description: "The alibi id: the purchase's ULID."
+          description: "The Alibi id: the purchase's ULID."
           name: id
           in: path
       responses:
@@ -10186,16 +10621,17 @@ paths:
         "304":
           description: The PDF has not changed
         "404":
-          description: No alibi with this id that the caller may read
+          description: No Alibi with this id that the caller may read
           content:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
   /v1/alibis/{id}:
     get:
+      operationId: getAlibi
       tags:
         - alibis
-      summary: An alibi bundle
+      summary: An Alibi bundle
       description: "The purchase's Alibi: its RFC 8785 bundle, readable by the
         mandate's user or, with `alibis:read`, by the client that uploaded the
         purchase's evidence; the Alibi of a live purchase, once its PayPal
@@ -10208,9 +10644,9 @@ paths:
         - schema:
             type: string
             pattern: ^[0-7][0-9A-HJKMNP-TV-Z]{25}$
-            description: "The alibi id: the purchase's ULID."
+            description: "The Alibi id: the purchase's ULID."
           required: true
-          description: "The alibi id: the purchase's ULID."
+          description: "The Alibi id: the purchase's ULID."
           name: id
           in: path
       responses:
@@ -10224,16 +10660,17 @@ paths:
         "304":
           description: The bundle has not changed
         "404":
-          description: No alibi with this id that the caller may read
+          description: No Alibi with this id that the caller may read
           content:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
   /v1/alibis/verify:
     post:
+      operationId: verifyAlibi
       tags:
         - alibis
-      summary: Verify an alibi
+      summary: Verify an Alibi
       description: Runs the browser verifier's algorithm on an Alibi bundle against
         the pinned trust roots and a public Arbitrum RPC. No authentication; the
         bundle is not stored.
@@ -10271,18 +10708,19 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/alibis/{id}/receipt:
     get:
+      operationId: getAlibiReceipt
       tags:
         - alibis
-      summary: The public receipt of an alibi
+      summary: The public receipt of an Alibi
       description: "What the public log already publishes about an Alibi: its leaf,
         inclusion proof, anchor and timestamps. No authentication."
       parameters:
         - schema:
             type: string
             pattern: ^[0-7][0-9A-HJKMNP-TV-Z]{25}$
-            description: "The alibi id: the purchase's ULID."
+            description: "The Alibi id: the purchase's ULID."
           required: true
-          description: "The alibi id: the purchase's ULID."
+          description: "The Alibi id: the purchase's ULID."
           name: id
           in: path
       responses:
@@ -10293,13 +10731,14 @@ paths:
               schema:
                 $ref: "#/components/schemas/AlibiReceipt"
         "404":
-          description: No alibi with this id that the caller may read
+          description: No Alibi with this id that the caller may read
           content:
             application/problem+json:
               schema:
                 $ref: "#/components/schemas/Problem"
   /v1/anonymous-mandates/{mandateHash}:
     get:
+      operationId: getAnonymousMandate
       tags:
         - mandates
       summary: Proof that a registered user signed a mandate
@@ -10333,6 +10772,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/anonymous-purchases/{id}:
     get:
+      operationId: getAnonymousPurchase
       tags:
         - purchases
       summary: Proof that a purchase was within a mandate a registered user signed
@@ -10364,6 +10804,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/user-set/roots/{root}:
     get:
+      operationId: getUserSetRoot
       tags:
         - mandates
       summary: A root of the registered-user tree
@@ -10396,6 +10837,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/engine-proofs/{id}:
     get:
+      operationId: getEngineProof
       tags:
         - purchases
       summary: SP1 proof of a purchase's engine evaluation
@@ -10427,6 +10869,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/disputes/{id}:
     get:
+      operationId: getDispute
       tags:
         - Disputes
       summary: A dispute's attribution
@@ -10457,10 +10900,13 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/passkeys:
     get:
+      operationId: listPasskeys
       tags:
         - passkeys
       summary: List the signed-in user's passkeys
       description: The credentials a mandate can be signed with, oldest first.
+      security:
+        - session: []
       responses:
         "200":
           description: The passkeys
@@ -10476,6 +10922,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/passkeys/{id}:
     delete:
+      operationId: deletePasskey
       tags:
         - passkeys
       summary: Remove one of the signed-in user's passkeys
@@ -10483,6 +10930,8 @@ paths:
         other sessions end. It takes a sign-in within the last 10 minutes. A
         user keeps at least one passkey, so the last one is not removed, and a
         passkey stays while a mandate it signed is still being proved.
+      security:
+        - session: []
       parameters:
         - schema:
             type: string
@@ -10520,12 +10969,16 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/operators:
     post:
+      operationId: linkOperator
       tags:
         - operators
       summary: Link an ERC-8004 agent as an operator
       description: Binds the agent's `cnf` key to its ERC-8004 identity once its owner
         or `agentWallet` signs `OperatorLink`. The owner of an agent that is
         already linked re-links it, after a transfer for example.
+      security:
+        - oauth2:
+            - operators:write
       parameters:
         - schema:
             type: string
@@ -10585,6 +11038,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/operators/by-address/{address}/registration.json:
     get:
+      operationId: getOwnerRegistration
       tags:
         - operators
       summary: Registration file of an owner's agents
@@ -10623,6 +11077,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/operators/{chainId}/{agentId}/registration.json:
     get:
+      operationId: getAgentRegistration
       tags:
         - operators
       summary: Registration file of an agent
@@ -10674,6 +11129,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/operators/{chainId}/{agentId}/bond:
     get:
+      operationId: getAgentBond
       tags:
         - operators
       summary: Bond, reputation and validations of an agent
@@ -10723,6 +11179,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/operators/{agentId}/mandates:
     get:
+      operationId: listOperatorMandates
       tags:
         - operators
       summary: The active mandates naming the operator
@@ -10732,6 +11189,11 @@ paths:
         /v1/operators`) reads them; any other caller gets 404. An app acting for
         a user (`mandates:request`) reads only the mandates naming `agentId`
         that this user approved for it.
+      security:
+        - oauth2:
+            - countersign:write
+        - oauth2:
+            - mandates:request
       parameters:
         - schema:
             type: string
@@ -10775,6 +11237,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/operators/{agentId}/mandates/{mandateId}/runs:
     post:
+      operationId: announceRun
       tags:
         - operators
       summary: Announce an agent run under a mandate
@@ -10783,6 +11246,9 @@ paths:
         an `agent.run` event on the owner's `mandate:<id>` stream. Only the
         OAuth client that linked the operator announces runs, on its active
         mandates.
+      security:
+        - oauth2:
+            - countersign:write
       parameters:
         - schema:
             type: string
@@ -10841,6 +11307,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/operators/{agentId}/grade:
     get:
+      operationId: getTrustGrade
       tags:
         - operators
       summary: Trust grade, premium and bond of an operator
@@ -10882,6 +11349,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/operators/{agentId}/grade/stream:
     get:
+      operationId: streamTrustGrade
       tags:
         - operators
       summary: Follow an operator's trust grade
@@ -10924,6 +11392,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/feedback/{coverageId}:
     get:
+      operationId: getFeedback
       tags:
         - reputation
       summary: Feedback file of a rated coverage
@@ -10959,6 +11428,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/validations/{requestHash}:
     get:
+      operationId: getValidation
       tags:
         - validations
       summary: Validation request of a countersign
@@ -10994,6 +11464,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/bonds/{agentId}/deposits:
     post:
+      operationId: depositBond
       tags:
         - bonds
       summary: Deposit PYUSD into an operator's bond, gasless
@@ -11077,11 +11548,15 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/bonds/{agentId}/withdrawals:
     post:
+      operationId: queueBondWithdrawal
       tags:
         - bonds
       summary: Queue a bond withdrawal, gasless
       description: Relays `requestWithdrawal`; the funds stay slashable until the
         withdrawal delay ends and it is completed.
+      security:
+        - oauth2:
+            - operators:write
       parameters:
         - schema:
             type: string
@@ -11156,11 +11631,15 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/bonds/withdrawals/{chainId}/{withdrawalId}/complete:
     post:
+      operationId: completeBondWithdrawal
       tags:
         - bonds
       summary: Complete a queued withdrawal, gasless
       description: Relays `completeWithdrawal`, which anyone may call once the delay
         ended; it pays only the signed recipient.
+      security:
+        - session: []
+        - oauth2: []
       parameters:
         - schema:
             type: string
@@ -11235,6 +11714,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/log/bonds:
     get:
+      operationId: listLogBonds
       tags:
         - log
       summary: Log equivocation bonds
@@ -11265,10 +11745,14 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/merchants/payout-address:
     post:
+      operationId: setPayoutAddress
       tags:
         - merchants
       summary: Set a merchant's payout address, gasless
       description: Relays `setPayoutAddress` to the bond vault; Keelson pays the gas.
+      security:
+        - oauth2:
+            - merchants:write
       parameters:
         - schema:
             type: string
@@ -11335,6 +11819,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/merchants/{merchantId}/settlement:
     put:
+      operationId: setSettlement
       tags:
         - merchants
       summary: Choose how a merchant is paid when a dispute goes its way
@@ -11400,6 +11885,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
     get:
+      operationId: getSettlement
       tags:
         - merchants
       summary: How a merchant is paid when a dispute goes its way
@@ -11432,6 +11918,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/merchants/me:
     get:
+      operationId: getMerchant
       tags:
         - merchants
       summary: The merchant signed in
@@ -11456,6 +11943,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/merchants/{merchantId}/disputes:
     get:
+      operationId: listMerchantDisputes
       tags:
         - merchants
       summary: A merchant's disputes and their verdicts
@@ -11497,6 +11985,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/merchants/{merchantId}/orders:
     get:
+      operationId: listMerchantOrders
       tags:
         - merchants
       summary: The agent purchases at a merchant
@@ -11539,6 +12028,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/merchants/{merchantId}/evaluations:
     get:
+      operationId: listMerchantEvaluations
       tags:
         - merchants
       summary: Field-level evaluations of the agents that shopped at a merchant
@@ -11571,6 +12061,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/merchants/{merchantId}/assistant:
     post:
+      operationId: askMerchantAssistant
       tags:
         - merchants
       summary: One streamed model turn for the merchant console's agents
@@ -11639,6 +12130,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/operators/me:
     get:
+      operationId: listOwnedOperators
       tags:
         - operators
       summary: The operators the session's wallet owns
@@ -11667,6 +12159,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/operators/{agentId}/coverages/rows:
     post:
+      operationId: getCoverageRows
       tags:
         - operators
       summary: A block of the operator's coverages, for AG Grid's server-side row model
@@ -11725,6 +12218,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/operators/{agentId}/coverages/daily:
     get:
+      operationId: getDailyCoverages
       tags:
         - operators
       summary: The operator's coverages per day
@@ -11767,6 +12261,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/operators/{agentId}/grid-query:
     post:
+      operationId: queryCoverageGrid
       tags:
         - operators
       summary: Turn a sentence into the coverage grid's state
@@ -11827,12 +12322,16 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/purchases/{id}/tracking:
     post:
+      operationId: recordTracking
       tags:
         - purchases
       summary: Record a purchase's shipment and its delivery
       description: Adds the tracker to the PayPal order (Orders v2) and, once
         delivered, records the delivery with PayPal's Add Tracking API.
         Idempotent per tracking number.
+      security:
+        - oauth2:
+            - merchants:write
       parameters:
         - schema:
             type: string
@@ -11894,6 +12393,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/transactions/{id}:
     get:
+      operationId: getTransaction
       tags:
         - transactions
       summary: A relayed transaction
@@ -11926,6 +12426,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/redteam/campaigns:
     get:
+      operationId: listRedTeamCampaigns
       tags:
         - red team
       summary: Red-team campaigns
@@ -11962,6 +12463,7 @@ paths:
                   - campaigns
   /v1/redteam/campaigns/{id}/ledger:
     get:
+      operationId: getRedTeamLedger
       tags:
         - red team
       summary: A campaign's ledger
@@ -11993,6 +12495,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/redteam/campaigns/{id}/scoreboard:
     get:
+      operationId: getRedTeamScoreboard
       tags:
         - red team
       summary: A campaign's scoreboard
@@ -12027,6 +12530,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/redteam/campaigns/{id}/scoreboard/stream:
     get:
+      operationId: streamRedTeamScoreboard
       tags:
         - red team
       summary: Follow a campaign's scoreboard
@@ -12063,6 +12567,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/judge/sessions:
     post:
+      operationId: openJudgeSession
       tags:
         - judge
       summary: Open a Judge Mode session
@@ -12116,6 +12621,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/judge/tour:
     get:
+      operationId: getJudgeTour
       tags:
         - judge
       summary: What the Judge Mode tour shows

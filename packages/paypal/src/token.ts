@@ -48,6 +48,16 @@ export class TokenCache {
     return this.inflight;
   }
 
+  /**
+   * Drops `token` if it is still the cached one, so the next `get` fetches another. PayPal refuses
+   * a token that was revoked, or that was issued before the app's scopes changed.
+   */
+  invalidate(token: string): void {
+    if (this.token !== token) return;
+    this.token = "";
+    this.expiresAt = 0;
+  }
+
   sdkProvider(): (last?: OAuthToken) => Promise<OAuthToken> {
     return async () => {
       const accessToken = await this.get();

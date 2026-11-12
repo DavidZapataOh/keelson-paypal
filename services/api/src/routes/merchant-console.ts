@@ -200,6 +200,7 @@ const Evaluations = z
 const me = createRoute({
   method: "get",
   path: "/v1/merchants/me",
+  operationId: "getMerchant",
   tags: ["merchants"],
   summary: "The merchant signed in",
   responses: {
@@ -211,6 +212,7 @@ const me = createRoute({
 const settlement = createRoute({
   method: "get",
   path: "/v1/merchants/{merchantId}/settlement",
+  operationId: "getSettlement",
   tags: ["merchants"],
   summary: "How a merchant is paid when a dispute goes its way",
   request: { params: MerchantId },
@@ -226,6 +228,7 @@ const settlement = createRoute({
 const disputeList = createRoute({
   method: "get",
   path: "/v1/merchants/{merchantId}/disputes",
+  operationId: "listMerchantDisputes",
   tags: ["merchants"],
   summary: "A merchant's disputes and their verdicts",
   description:
@@ -243,6 +246,7 @@ const disputeList = createRoute({
 const orderList = createRoute({
   method: "get",
   path: "/v1/merchants/{merchantId}/orders",
+  operationId: "listMerchantOrders",
   tags: ["merchants"],
   summary: "The agent purchases at a merchant",
   description:
@@ -260,6 +264,7 @@ const orderList = createRoute({
 const evaluations = createRoute({
   method: "get",
   path: "/v1/merchants/{merchantId}/evaluations",
+  operationId: "listMerchantEvaluations",
   tags: ["merchants"],
   summary: "Field-level evaluations of the agents that shopped at a merchant",
   request: { params: MerchantId },

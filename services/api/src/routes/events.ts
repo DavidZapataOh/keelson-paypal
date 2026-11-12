@@ -22,6 +22,7 @@ function mayRead(principal: Principal, channel: string): boolean {
 const route = createRoute({
   method: "get",
   path: "/v1/events",
+  operationId: "streamEvents",
   tags: ["events"],
   summary: "Stream events",
   description:

@@ -1,0 +1,22 @@
+[
+  "alibis.pdf",
+  "alibis.receipt",
+  "alibis.retrieve",
+  "alibis.verifyRemote",
+  "events.stream",
+  "evidence.seal",
+  "mandates.check",
+  "mandates.list",
+  "mandates.request",
+  "mandates.requestChange",
+  "mandates.waitForApproval",
+  "operators.announceRun",
+  "operators.grade",
+  "operators.link",
+  "purchases.countersign",
+  "purchases.retrieve",
+  "purchases.waitFor",
+  "request",
+  "requests.retrieve",
+  "status"
+]

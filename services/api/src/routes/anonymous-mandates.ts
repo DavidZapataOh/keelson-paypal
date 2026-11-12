@@ -35,6 +35,7 @@ const AnonymousMandateSchema = z
 const anonymousRoute = createRoute({
   method: "get",
   path: "/v1/anonymous-mandates/{mandateHash}",
+  operationId: "getAnonymousMandate",
   tags: ["mandates"],
   summary: "Proof that a registered user signed a mandate",
   description:
@@ -71,6 +72,7 @@ const AnonymousPurchaseSchema = z
 const purchaseRoute = createRoute({
   method: "get",
   path: "/v1/anonymous-purchases/{id}",
+  operationId: "getAnonymousPurchase",
   tags: ["purchases"],
   summary: "Proof that a purchase was within a mandate a registered user signed",
   description:
@@ -99,6 +101,7 @@ const RootSchema = z
 const rootRoute = createRoute({
   method: "get",
   path: "/v1/user-set/roots/{root}",
+  operationId: "getUserSetRoot",
   tags: ["mandates"],
   summary: "A root of the registered-user tree",
   description:
