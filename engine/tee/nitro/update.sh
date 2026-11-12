@@ -9,7 +9,8 @@
 # environment, and optionally KEELSON_ORIGIN, KEELSON_CANONICALIZER, KEELSON_CHAIN_ID,
 # KEELSON_BOND_VAULT and KEELSON_VERIFYING_CONTRACT, which default to leg A's values (the
 # CREATE3 addresses of KeelsonBondVault and VerdictVerifier), and TEE_A_URL, whose /v1/health gives
-# leg A's log keys and their KMS chains; the enclave checks each chain.
+# leg A's log keys and their KMS chains; the enclave checks each chain. With PAYPAL_LEGB_CLIENT_ID
+# the enclave reads PayPal itself, with the secret sealed in /keelson/leg-b/paypal-secret-ct.
 . "$(dirname "$0")/common.sh"
 
 digest="${1:-}"
@@ -34,8 +35,10 @@ boot="$(jq -n \
   --arg vault "${KEELSON_BOND_VAULT:-0xb39898Ef4333f3CB32d1B420E744f5a1Aa2ae2Bf}" \
   --arg verifying "${KEELSON_VERIFYING_CONTRACT:-0xe16E8767EC1DA59Ef0D9Bc7851637E4D22352d96}" \
   --argjson log_keys "$log_keys" \
+  --arg paypal "${PAYPAL_LEGB_CLIENT_ID:-}" \
   '{token_sha256: $token, config: {chain_id: $chain, bond_vault: $vault, verifying_contract: $verifying,
-    oci_digest: $digest, canonicalizer: $canonicalizer, issuer: $issuer, origin: $origin, log_keys: $log_keys}}')"
+    oci_digest: $digest, canonicalizer: $canonicalizer, issuer: $issuer, origin: $origin, log_keys: $log_keys}}
+    + (if $paypal == "" then {} else {paypal: {env: "sandbox", client_id: $paypal}} end)')"
 
 # The enclave image is the engine image with the enclave's command. nitro-cli runs only the
 # image's Cmd, so the entrypoint is cleared and the binary named in it. Its layers are the engine

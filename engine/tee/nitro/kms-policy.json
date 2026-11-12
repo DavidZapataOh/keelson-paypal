@@ -1,0 +1,24 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "KeyAdministration",
+      "Effect": "Allow",
+      "Principal": { "AWS": "arn:aws:iam::${ACCOUNT_ID}:root" },
+      "Action": "kms:*",
+      "Resource": "*"
+    },
+    {
+      "Sid": "DecryptOnlyForTheMeasuredEnclave",
+      "Effect": "Allow",
+      "Principal": { "AWS": "${PARENT_ROLE_ARN}" },
+      "Action": "kms:Decrypt",
+      "Resource": "*",
+      "Condition": {
+        "StringEqualsIgnoreCase": {
+          "kms:RecipientAttestation:ImageSha384": ["${PCR0_CURRENT}", "${PCR0_NEXT}"]
+        }
+      }
+    }
+  ]
+}

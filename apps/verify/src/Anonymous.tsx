@@ -1,4 +1,4 @@
-import type { AlibiBundle, AlibiReceipt } from "@keelson/alibi";
+import type { AnyAlibi } from "@keelson/alibi";
 import type { AnonymousPurchase, AnonymousPurchaseAnswer } from "@keelson/alibi/verify";
 import { useEffect, useMemo, useState } from "react";
 import { loader, verifier } from "./verifier.ts";
@@ -116,13 +116,7 @@ const ExternalLink = ({ href, children }: { href: string; children: React.ReactN
  * this browser, then by the deployed verifier in one `eth_call`, with its registered-user root read
  * from `RegisteredUserSet`. Renders nothing for a purchase without one.
  */
-export function Anonymous({
-  alibi,
-  rpc,
-}: {
-  alibi: AlibiBundle | AlibiReceipt;
-  rpc: string | undefined;
-}) {
+export function Anonymous({ alibi, rpc }: { alibi: AnyAlibi; rpc: string | undefined }) {
   const id = alibi.alibi_id;
   const [proof, setProof] = useState<AnonymousPurchase | null | { error: string }>();
   const [local, setLocal] = useState<Step<boolean>>({ state: "running" });
@@ -175,7 +169,7 @@ export function Anonymous({
   }, [p, rpc]);
 
   const binding = useMemo(
-    () => (p && lib ? lib.bindAnonymousPurchase(alibi, p.public_inputs) : undefined),
+    () => (p && lib ? lib.bindAnonymousPurchase(lib.v1Shape(alibi), p.public_inputs) : undefined),
     [p, lib, alibi],
   );
 

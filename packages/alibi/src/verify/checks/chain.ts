@@ -1,6 +1,6 @@
 import { deploymentsFor } from "@keelson/chain";
 import { LOG_ORIGINS } from "@keelson/log";
-import { getAddress, type Hex, keccak256, stringToBytes, toHex } from "viem";
+import { type Address, getAddress, type Hex, keccak256, stringToBytes, toHex } from "viem";
 import { fromBase64 } from "../../b64.ts";
 import type { AlibiBundle, AlibiReceipt } from "../../schema.ts";
 import type { ChainAnswer, ChainQuery } from "../chain.ts";
@@ -19,8 +19,15 @@ export function chainIdOf(input: AlibiBundle | AlibiReceipt): number | undefined
   return id === undefined ? undefined : Number(id);
 }
 
-/** The one chain query of a verification, from pinned addresses and what the Alibi states. */
-export function queryOf(input: AlibiBundle | AlibiReceipt, chainId: number): ChainQuery {
+/**
+ * The one chain query of a verification, from pinned addresses and what the Alibi states; a bridge
+ * statement's signer is read after the attested ones.
+ */
+export function queryOf(
+  input: AlibiBundle | AlibiReceipt,
+  chainId: number,
+  bridgeSigner?: Address,
+): ChainQuery {
   const d = deploymentsFor(chainId);
   const anchor = d.CheckpointAnchor;
   const verifier = d.VerdictVerifier;
@@ -30,7 +37,7 @@ export function queryOf(input: AlibiBundle | AlibiReceipt, chainId: number): Cha
   return {
     origin: keccak256(stringToBytes(origin)),
     size: input.anchor ? BigInt(input.anchor.anchored_size) : 0n,
-    signers: atts.map((a) => getAddress(a.signer)),
+    signers: [...atts.map((a) => getAddress(a.signer)), ...(bridgeSigner ? [bridgeSigner] : [])],
     measurements: atts.map((a) => measurementHex(a.measurement)),
     blocks: atts.map((a) =>
       BigInt((a.document as { block: { number: number | string } }).block.number),
@@ -135,6 +142,20 @@ export const registry: CheckDef = {
         [`${at}/document/block`],
       );
       detail[`${att.kind}_allowed_today`] = String(a.allowed[i]);
+    }
+    const p = ctx.view?.parsed;
+    if (p?.kind === "bridge") {
+      // A bridge is signed long after the v1 issuedAt it carries; its receipt dates the signing.
+      const r = a.signers[input.tee.attestations.length];
+      const reads = ["/statement", ...chainReads];
+      expect(r && r.registeredAt > 0, `bridge signer ${p.signer} is not registered`, reads);
+      expect(r.teeKind === TEE_KIND.tdx, `bridge signer ${p.signer} is not a TDX signer`, reads);
+      expect(
+        r.revokedAt === 0,
+        `bridge signer ${p.signer} was revoked at ${iso(r.revokedAt)}`,
+        reads,
+      );
+      detail.bridge_signer = p.signer;
     }
     return pass(detail);
   },

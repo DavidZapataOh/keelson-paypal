@@ -9,6 +9,7 @@ export {
   nitroTimestamp,
   verifyNitro,
 } from "./nitro.ts";
+export { appraiseTd, deviceIdOf, TDX_DEVICES, TDX_POLICY } from "./policy.ts";
 export {
   type AttestedBinding,
   type AttestedBlock,

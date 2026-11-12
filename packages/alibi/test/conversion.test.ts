@@ -57,7 +57,13 @@ const bundle = (
   }) as unknown as AlibiBundle;
 
 const run = (b: AlibiBundle) =>
-  runCheck(conversion, b, { now: new Date(), expect: undefined, chain: null });
+  runCheck(conversion, b, {
+    now: new Date(),
+    expect: undefined,
+    chain: null,
+    view: null,
+    receiptKeys: new Map(),
+  });
 
 describe("the currency conversion of an Alibi", () => {
   test("passes when the arithmetic, the reference and the cap hold", async () => {

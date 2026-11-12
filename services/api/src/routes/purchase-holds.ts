@@ -223,7 +223,11 @@ export function registerPurchaseHolds(
 
     const m =
       mandate.payloadSd && mandate.disclosures
-        ? decodeMandate(mandate.payloadSd as Record<string, unknown>, mandate.disclosures)
+        ? decodeMandate(
+            mandate.payloadSd as Record<string, unknown>,
+            mandate.disclosures,
+            mandate.decoySalts,
+          )
         : undefined;
     const notAgent = () =>
       problem(

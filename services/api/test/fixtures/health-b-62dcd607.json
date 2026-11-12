@@ -1,0 +1,27 @@
+{
+  "tee": 2,
+  "signer": "0x97f189c52006a6adba207d9a29550111f5de02ca",
+  "boot_epoch": 1794402791,
+  "oci_digest": "sha256:62dcd6071507130db485c5fa67bd371fc28188310cf83d82fdb9b7e22341b8cd",
+  "version": "0.0.0",
+  "now_ms": 1794433737885,
+  "issuer": {
+    "kty": "EC",
+    "crv": "P-256",
+    "x": "j6yQ_2J-FMLsIjXazj8Q2MPRIHegKrPSNtMFSpW2SwQ",
+    "y": "ckfVXJJk5ToBRBLYuDkzD-hWn6N5TBKO64d6yfmsTyM"
+  },
+  "rss_kib": 24240,
+  "log_keys": [
+    {
+      "origin": "log.keelson.finance/alibi/2026-1",
+      "vkey": "log.keelson.finance/alibi/2026-1+8553fcbd+ATEHrhTfdzkwLLgf9SZhMsIhsHzRmvpFnaBfgK0D10Id",
+      "public_key": "0x3107ae14df7739302cb81ff5266132c221b07cd19afa459da05f80ad03d7421d"
+    },
+    {
+      "origin": "log.keelson.finance/alibi-live/2026-1",
+      "vkey": "log.keelson.finance/alibi-live/2026-1+39e7ebfa+AUiaY8TAW9gFbueTv6mPbHeZq5ClgTnG9a4kGEnU5uyL",
+      "public_key": "0x489a63c4c05bd8056ee793bfa98f6c7799ab90a58139c6f5ae241849d4e6ec8b"
+    }
+  ]
+}

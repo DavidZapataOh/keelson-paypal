@@ -1,9 +1,9 @@
 import {
-  type AlibiBundle,
   type AlibiReceipt,
-  decodeAlibi,
-  decodeReceipt,
-  encodeAlibi,
+  type AnyAlibi,
+  decodeAny,
+  decodeStatementFile,
+  encodeAny,
   encodeReceipt,
 } from "@keelson/alibi";
 import type { AnonymousPurchase } from "@keelson/alibi/verify";
@@ -19,7 +19,7 @@ export class InputError extends Error {
 }
 
 export interface Loaded {
-  alibi: AlibiBundle | AlibiReceipt;
+  alibi: AnyAlibi;
   /** The exact bytes that were verified, for "Download this Alibi". */
   bytes: Uint8Array;
 }
@@ -63,12 +63,9 @@ export function fromText(text: string): Loaded {
     throw new InputError("The JSON is not an Alibi.");
   }
   try {
-    if ("type" in value) {
-      const bytes = encodeAlibi(value as AlibiBundle);
-      return { alibi: decodeAlibi(bytes), bytes };
-    }
-    const bytes = encodeReceipt(value as AlibiReceipt);
-    return { alibi: decodeReceipt(bytes), bytes };
+    const bytes =
+      "type" in value ? encodeAny(value as AnyAlibi) : encodeReceipt(value as AlibiReceipt);
+    return { alibi: decodeAny(bytes), bytes };
   } catch (err) {
     const pointer = (err as { pointer?: string }).pointer;
     throw new InputError(
@@ -77,7 +74,17 @@ export function fromText(text: string): Loaded {
   }
 }
 
-/** An Alibi from a dropped file: a PDF with an embedded `.alibi`, or the `.alibi` JSON itself. */
+/** A dropped SCITT transparent statement (`.cose`), as a v2 receipt without its log proof. */
+function fromStatement(bytes: Uint8Array): Loaded {
+  const alibi = decodeStatementFile(bytes);
+  if (!alibi) throw new InputError("The COSE file is not an Alibi's SCITT statement.");
+  return { alibi, bytes };
+}
+
+/**
+ * An Alibi from a dropped file: a PDF with an embedded `.alibi`, the `.alibi` JSON itself, or an
+ * Alibi's SCITT transparent statement (`.cose`, a tagged COSE_Sign1).
+ */
 export async function fromFile(file: Blob): Promise<Loaded> {
   if (file.size > MAX_INPUT_BYTES) throw new InputError("The file is larger than 8 MB.");
   const bytes = new Uint8Array(await file.arrayBuffer());
@@ -89,8 +96,10 @@ export async function fromFile(file: Blob): Promise<Loaded> {
     } catch (err) {
       throw new InputError(`The PDF carries no Alibi: ${(err as Error).message}`);
     }
-    return { alibi: decodeAlibi(embedded), bytes: embedded };
+    return { alibi: decodeAny(embedded), bytes: embedded };
   }
+  // CBOR tag 18 (COSE_Sign1) and the four-element array that follows it.
+  if (bytes[0] === 0xd2 && bytes[1] === 0x84) return fromStatement(bytes);
   let text: string;
   try {
     text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
@@ -133,7 +142,7 @@ export async function fromLink(alibiId: string, signal?: AbortSignal): Promise<L
   if (full?.ok) {
     const bytes = new Uint8Array(await full.arrayBuffer());
     if (bytes.length > MAX_INPUT_BYTES) throw new InputError("The Alibi is larger than 8 MB.");
-    return { alibi: decodeAlibi(bytes), bytes };
+    return { alibi: decodeAny(bytes), bytes };
   }
   const res = await fetch(`${API}/v1/alibis/${encodeURIComponent(alibiId)}/receipt`, {
     credentials: "omit",
@@ -143,7 +152,7 @@ export async function fromLink(alibiId: string, signal?: AbortSignal): Promise<L
   if (!res.ok) throw new InputError(`The receipt could not be fetched (HTTP ${res.status}).`);
   const bytes = new Uint8Array(await res.arrayBuffer());
   if (bytes.length > MAX_INPUT_BYTES) throw new InputError("The receipt is larger than 8 MB.");
-  return { alibi: decodeReceipt(bytes), bytes };
+  return { alibi: decodeAny(bytes), bytes };
 }
 
 /** The composed anonymous proof of purchase `alibiId`, or `null` when it has none. */

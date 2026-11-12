@@ -164,6 +164,9 @@ jobs:
 
   measure:
     name: measure-${{ matrix.runner }}
+    # Measures the image the registry serves, so it waits for push wherever push runs.
+    needs: [compare, push]
+    if: ${{ !cancelled() && needs.compare.result == 'success' && needs.push.result != 'failure' }}
     strategy:
       matrix:
         runner: [a, b]

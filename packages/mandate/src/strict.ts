@@ -95,6 +95,36 @@ export function assertStrictJwt(jwt: string): void {
   decodeStrictJson(parts[1] as string);
 }
 
+/** A digest no disclosure resolves: where it stands and how many times. */
+export interface Unresolved {
+  kind: "claims" | "elements";
+  count: number;
+}
+
+/**
+ * How many of the unresolved digests `decoySalts` resolve (RFC 9901 section 4.2.5), by kind. Each
+ * salt must resolve exactly one digest that occurs once and be no disclosure's salt.
+ *
+ * @throws {RangeError} `decoy` otherwise.
+ */
+export function decoysResolved(
+  unresolved: ReadonlyMap<string, Unresolved>,
+  decoySalts: readonly string[],
+  disclosures: readonly string[],
+): { claims: number; elements: number } {
+  const real = new Set(disclosures.map((d) => (decodeStrictJson(d) as unknown[])[0]));
+  const seen = new Set<string>();
+  const out = { claims: 0, elements: 0 };
+  for (const s of decoySalts) {
+    const digest = uint8ArrayToBase64Url(sha256(encoder.encode(s)));
+    const u = unresolved.get(digest);
+    if (real.has(s) || seen.has(digest) || u?.count !== 1) throw new RangeError("decoy");
+    seen.add(digest);
+    out[u.kind]++;
+  }
+  return out;
+}
+
 /**
  * How many digests in `payload` and in the disclosures no disclosure resolves: object claims
  * (`_sd`) and array elements (`...`) apart.
@@ -102,11 +132,16 @@ export function assertStrictJwt(jwt: string): void {
 export function undisclosedDigests(
   payload: unknown,
   disclosures: readonly string[],
-): { claims: number; elements: number } {
+): { claims: number; elements: number; unresolved: Map<string, Unresolved> } {
   const present = new Set(disclosures.map((d) => uint8ArrayToBase64Url(sha256(encoder.encode(d)))));
   const missing = { claims: 0, elements: 0 };
+  const unresolved = new Map<string, Unresolved>();
   const count = (digest: unknown, kind: keyof typeof missing) => {
-    if (typeof digest === "string" && !present.has(digest)) missing[kind]++;
+    if (typeof digest === "string" && !present.has(digest)) {
+      missing[kind]++;
+      const seen = unresolved.get(digest);
+      unresolved.set(digest, { kind, count: (seen?.count ?? 0) + 1 });
+    }
   };
   const walk = (v: unknown): void => {
     if (v === null || typeof v !== "object") return;
@@ -125,15 +160,23 @@ export function undisclosedDigests(
   };
   walk(payload);
   for (const d of disclosures) walk((decodeStrictJson(d) as unknown[]).at(-1));
-  return missing;
+  return { ...missing, unresolved };
 }
 
 /**
  * Requires every `_sd` digest and every array element placeholder in `payload` and in the
- * disclosed values to belong to one of `disclosures`. Keelson issues no decoy digests, so an
- * unresolved digest is a withheld disclosure.
+ * disclosed values to belong to one of `disclosures` or to one of `decoySalts` (RFC 9901 section
+ * 4.2.5). Each decoy salt must resolve exactly one digest and be no disclosure's salt, so a decoy
+ * can never stand in for a withheld disclosure.
  */
-export function assertDigestsResolved(payload: unknown, disclosures: readonly string[]): void {
-  const { claims, elements } = undisclosedDigests(payload, disclosures);
-  if (claims + elements > 0) throw new RangeError("undisclosed digest");
+export function assertDigestsResolved(
+  payload: unknown,
+  disclosures: readonly string[],
+  decoySalts: readonly string[] = [],
+): void {
+  const { claims, elements, unresolved } = undisclosedDigests(payload, disclosures);
+  const decoys = decoysResolved(unresolved, decoySalts, disclosures);
+  if (claims + elements > decoys.claims + decoys.elements) {
+    throw new RangeError("undisclosed digest");
+  }
 }
