@@ -39,7 +39,7 @@ export const STEPS: Step[] = [
     docs: `${DOCS}/sdk/authentication`,
     title: "Sign in from your terminal",
     body: "Your browser opens; you allow it once. No key to paste.",
-    code: { typescript: "npx keelson login", python: "keelson login" },
+    code: { typescript: "npx @keelson-finance/sdk login", python: "keelson login" },
   },
   {
     id: "mandate",
