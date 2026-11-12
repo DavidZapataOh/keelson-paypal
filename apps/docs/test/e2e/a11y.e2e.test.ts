@@ -16,16 +16,20 @@ afterAll(async () => {
 });
 
 describe("accessibility", () => {
-  for (const scheme of ["light", "dark"] as const) {
+  for (const [scheme, width] of [
+    ["light", 1440],
+    ["dark", 1440],
+    ["light", 390],
+  ] as const) {
     for (const path of [
       "/",
       "/quickstart/verify-an-alibi/",
       "/reference/api/",
-      "/reference/api/post-v1-alibis-verify/",
+      "/reference/api/verifyAlibi/",
     ]) {
-      test(`${path} in ${scheme} has no serious or critical violations`, async () => {
+      test(`${path} in ${scheme} at ${width} has no serious or critical violations`, async () => {
         const context = await browser.newContext({
-          viewport: { width: 1440, height: 900 },
+          viewport: { width, height: 900 },
           colorScheme: scheme,
         });
         const page = await context.newPage();

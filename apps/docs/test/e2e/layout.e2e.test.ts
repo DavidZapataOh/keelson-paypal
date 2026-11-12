@@ -2,7 +2,7 @@ import { type Browser, chromium } from "playwright";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { startPreview } from "./serve";
 
-const PAGES = ["/", "/quickstart/verify-an-alibi/", "/reference/api/post-v1-alibis-verify/"];
+const PAGES = ["/", "/quickstart/verify-an-alibi/", "/reference/api/verifyAlibi/"];
 let browser: Browser;
 let preview: Awaited<ReturnType<typeof startPreview>>;
 

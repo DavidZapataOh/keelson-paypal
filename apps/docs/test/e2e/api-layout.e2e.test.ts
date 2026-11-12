@@ -6,7 +6,7 @@ test("an operation keeps its request and response beside the parameters while yo
   const preview = await startPreview();
   const browser = await chromium.launch();
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-  await page.goto(`${preview.url}/reference/api/post-v1-alibis-verify/`);
+  await page.goto(`${preview.url}/reference/api/verifyAlibi/`);
   const box = (sel: string) => page.locator(sel).first().boundingBox();
   const main = await box(".op-main");
   const aside = await box(".op-aside");

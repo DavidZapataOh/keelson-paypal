@@ -8,7 +8,7 @@ const SCREENS = fileURLToPath(new URL("./__screens__/", import.meta.url));
 const PAGES = [
   { name: "home", path: "/", step: undefined },
   { name: "walkthrough", path: "/quickstart/verify-an-alibi/", step: 1 },
-  { name: "api", path: "/reference/api/post-v1-alibis-verify/", step: undefined },
+  { name: "api", path: "/reference/api/verifyAlibi/", step: undefined },
 ] as const;
 let browser: Browser;
 let preview: Awaited<ReturnType<typeof startPreview>>;

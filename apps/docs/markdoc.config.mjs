@@ -6,6 +6,7 @@ export default defineMarkdocConfig({
   nodes: {
     // Pages render inside our own <article>; Markdoc's would nest a second one.
     document: { ...nodes.document, render: null },
+    table: { render: component("./src/components/Table.astro") },
     fence: {
       attributes: {
         ...nodes.fence.attributes,

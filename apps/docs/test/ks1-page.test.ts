@@ -35,6 +35,12 @@ describe("the PayPal Agent Mandate Extension", () => {
     expect(vectors.version).toBe("1.0.0");
   });
 
+  test("each changelog version links its tag", () => {
+    expect(page).toContain(
+      "[1.0.0](https://github.com/DavidZapataOh/keelson-paypal/releases/tag/ks1/v1.0.0)",
+    );
+  });
+
   test("has its grammar in ABNF", () => {
     expect(fences(page).some((f) => f.lang === "abnf")).toBe(true);
   });

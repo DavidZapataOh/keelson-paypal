@@ -15,7 +15,7 @@ const html = rendered.replace(
       .split("\n")
       .slice(a - 1, b)
       .join("\n");
-    return `<div class="inline-code">${(pre[0] ?? "").replace(' tabindex="0"', "")}<code>${kept}</code></pre></div>`;
+    return `<div class="inline-code">${pre[0] ?? ""}<code>${kept}</code></pre></div>`;
   },
 );
 ---
