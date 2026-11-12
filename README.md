@@ -102,7 +102,7 @@ What an Alibi guarantees, and what it does not: [Threat model](https://docs.keel
 
 Keelson also proposes the convention it uses in PayPal's fields as the open
 [PayPal Agent Mandate Extension](https://docs.keelson.finance/reference/ks1/), with real test
-vectors, and upstream in [paypal/agent-toolkit#127](https://github.com/paypal/agent-toolkit/pull/127).
+vectors.
 
 ## Questions judges ask
 

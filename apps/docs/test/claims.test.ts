@@ -248,3 +248,16 @@ describe("the threat model's claims hold in code", () => {
     expect(deploy).toContain("(KeelsonRoles.PUBLISHER_ROLE, relayer(), 0)");
   });
 });
+
+describe("the docs claim nothing upstream that is not there", () => {
+  // Nothing of this extension is open upstream; the pages describe the toolkit gap only.
+  test("no page points at a pull request or an issue thread in PayPal's Agent Toolkit", () => {
+    for (const path of [
+      "README.md",
+      "docs/paypal-agent-mandate-extension.md",
+      "apps/docs/src/content/docs/reference/ks1.mdoc",
+    ]) {
+      expect(read(path), path).not.toMatch(/agent-toolkit\/(pull|issues)\/\d+/);
+    }
+  });
+});
