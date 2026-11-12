@@ -1,0 +1,24 @@
+services:
+  engine:
+    image: ghcr.io/davidzapataoh/keelson-engine@sha256:62dcd6071507130db485c5fa67bd371fc28188310cf83d82fdb9b7e22341b8cd
+    command: ["--platform", "tdx", "--listen", "tcp:0.0.0.0:8080"]
+    ports:
+      - "8080:8080"
+      - "8443:8443"
+    volumes:
+      - /var/run/dstack.sock:/var/run/dstack.sock
+      - data:/data
+    environment:
+      - KEELSON_OCI_DIGEST=sha256:62dcd6071507130db485c5fa67bd371fc28188310cf83d82fdb9b7e22341b8cd
+      - KEELSON_CANONICALIZER=keelson-canon/0.0.0
+      - KEELSON_ORIGIN=https://app.keelson.finance
+      - KEELSON_BOND_VAULT=0xb39898Ef4333f3CB32d1B420E744f5a1Aa2ae2Bf
+      - KEELSON_VERIFYING_CONTRACT=0xe16E8767EC1DA59Ef0D9Bc7851637E4D22352d96
+      - KEELSON_RATLS_LISTEN=0.0.0.0:8443
+      - KEELSON_SECURE_TIME=1
+      - KEELSON_RATLS_HOST=4a3c4db01925b326746d1abd7b8978710f34de4e-8443s.dstack-base-prod5.phala.network
+      - KEELSON_TEE_TOKEN_SHA256=${KEELSON_TEE_TOKEN_SHA256}
+    restart: unless-stopped
+
+volumes:
+  data:
