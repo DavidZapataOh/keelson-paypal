@@ -1,4 +1,4 @@
-import { type CheckoutTotal, checkoutTotal } from "@keelson/core";
+import { type CheckoutTotal, checkoutTotal, decimalParts } from "@keelson/core";
 import type { Page } from "playwright";
 import { minorDigits } from "./amounts.ts";
 
@@ -153,7 +153,7 @@ export async function readCharge(
     ask("GetFundingOptions", FUNDING),
   ]);
   const charge = chargeOf(details);
-  return charge ? { charge, conversions: conversionsOf(funding) } : undefined;
+  return charge ? { charge, conversions: conversionsOf(funding, charge) } : undefined;
 }
 
 /** PayPal's conversion of an order's total to the buyer's funding currency. */
@@ -161,16 +161,55 @@ export interface KnownConversion {
   /** The order total converted, as PayPal states it. */
   from: { currency: string; value: string };
   currency: string;
+  /** 1 unit of the order's currency in the buyer's. */
   rate: string;
   buyer: string;
+  /**
+   * The rate PayPal states when it states the conversion from the buyer's currency to the order's
+   * (`1 COP = 0.0002882 USD`); `rate` is then the one its two amounts give.
+   */
+  inverse?: string;
+}
+
+/**
+ * `buyer / merchant` with 10 significant digits, rounded half up: the rate two amounts give.
+ */
+function rateBetween(merchant: string, buyer: string): string {
+  const m = decimalParts(merchant);
+  const b = decimalParts(buyer);
+  if (m.int === 0n) return "0";
+  const den = m.int * 10n ** BigInt(b.scale);
+  const at = (decimals: number) => b.int * 10n ** BigInt(m.scale + decimals);
+  const digits = (at(20) / den).toString().length;
+  const decimals = Math.min(20, Math.max(0, 30 - digits));
+  const q = ((2n * at(decimals) + den) / (2n * den)).toString().padStart(decimals + 1, "0");
+  const text = decimals ? `${q.slice(0, -decimals)}.${q.slice(-decimals)}` : q;
+  return text.includes(".") ? text.replace(/\.?0+$/, "") : text;
+}
+
+/**
+ * Whether `converted` is `amount` at `rate` up to the last digits PayPal shows of each:
+ * `|converted − amount × rate| ≤ 10^−convertedDecimals + amount × 10^−rateDecimals / 2`.
+ */
+export function agrees(amount: string, rate: string, converted: string): boolean {
+  const a = decimalParts(amount);
+  const r = decimalParts(rate);
+  const c = decimalParts(converted);
+  const diff =
+    2n * c.int * 10n ** BigInt(a.scale + r.scale) - 2n * a.int * r.int * 10n ** BigInt(c.scale);
+  const bound = 2n * 10n ** BigInt(a.scale + r.scale) + a.int * 10n ** BigInt(c.scale);
+  return (diff < 0n ? -diff : diff) <= bound;
 }
 
 /**
  * Every conversion a review page's GraphQL answer states for the buyer's funding options
  * (`checkoutSession.fundingOptions[].currencyConversion { rate from to }`), with plain decimal
- * values and ISO codes only; nothing else of the answer is kept.
+ * values and ISO codes only; nothing else of the answer is kept. PayPal states some from the
+ * buyer's currency to the order's, as its page writes the rate (`1 COP = 0.0002882 USD`): those
+ * are turned to the order's total converted to the buyer's currency, at the rate the two amounts
+ * give, with PayPal's own rate kept as `inverse`.
  */
-function conversionsOf(answer: unknown): KnownConversion[] {
+function conversionsOf(answer: unknown, charge: PayPalCharge): KnownConversion[] {
   const options = (answer as { data?: { checkoutSession?: { fundingOptions?: unknown } } } | null)
     ?.data?.checkoutSession?.fundingOptions;
   if (!Array.isArray(options)) return [];
@@ -199,12 +238,29 @@ function conversionsOf(answer: unknown): KnownConversion[] {
     ) {
       continue;
     }
-    out.push({
-      from: { currency: c.from.currencyCode, value: c.from.currencyValue },
-      currency: c.to.currencyCode,
-      rate,
-      buyer: c.to.currencyValue,
-    });
+    const from = { currency: c.from.currencyCode, value: c.from.currencyValue };
+    const to = { currency: c.to.currencyCode, value: c.to.currencyValue };
+    const minor = minorOf(charge.value, charge.currency);
+    const total = (a: { currency: string; value: string }) =>
+      a.currency === charge.currency &&
+      minor !== undefined &&
+      minorOf(a.value, charge.currency) === minor;
+    if (total(from)) {
+      out.push({
+        from: { currency: charge.currency, value: charge.value },
+        currency: to.currency,
+        rate,
+        buyer: to.value,
+      });
+    } else if (total(to) && from.currency !== charge.currency && Number(from.value) > 0) {
+      out.push({
+        from: { currency: charge.currency, value: charge.value },
+        currency: from.currency,
+        rate: rateBetween(charge.value, from.value),
+        buyer: from.value,
+        inverse: rate,
+      });
+    } else out.push({ from, currency: to.currency, rate, buyer: to.value });
   }
   return out;
 }
