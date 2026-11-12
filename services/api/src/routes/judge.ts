@@ -230,7 +230,7 @@ export function registerJudge(
           created_at: row.createdAt.toISOString(),
           card:
             row.payloadSd && row.disclosures
-              ? renderCard(row.payloadSd as object, row.disclosures, NO_EVIDENCE)
+              ? renderCard(row.payloadSd as object, row.disclosures, NO_EVIDENCE, row.decoySalts)
               : null,
           purchases: bought.map((p) => {
             const v = purchaseView(p);

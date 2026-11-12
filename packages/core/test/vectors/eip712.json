@@ -186,6 +186,25 @@
     "expected": "0xa43d8e82b629593d4a0dfe86182aa9126fde1c525d8c3398d7ee1a5ce7f372e6"
   },
   {
+    "name": "CardSettlement/421614",
+    "input": {
+      "chainId": 421614,
+      "verifyingContract": "0x0000000000000000000000000000000000000001",
+      "primaryType": "CardSettlement",
+      "message": {
+        "requestId": "0x0000000000000000000000000000000000000000000000000101010101010101",
+        "cardRef": "0x0000000000000000000000000000000000000000000000000202020202020202",
+        "transactionHash": "0x0000000000000000000000000000000000000000000000000303030303030303",
+        "settledMinor": "4000000",
+        "currency": "35",
+        "status": "42",
+        "settledAt": "7000000",
+        "observedAt": "8000000"
+      }
+    },
+    "expected": "0x743380ad05975835b47fc684c7a2145ff2a4759420d894fe358cf4645905fc82"
+  },
+  {
     "name": "WebFact/421614",
     "input": {
       "chainId": 421614,
@@ -386,6 +405,25 @@
       }
     },
     "expected": "0xf34c03b6f2203912acfc0eee9ac819b60c99c88c770e5e6b9d079fe0bb287e26"
+  },
+  {
+    "name": "CardSettlement/42161",
+    "input": {
+      "chainId": 42161,
+      "verifyingContract": "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045",
+      "primaryType": "CardSettlement",
+      "message": {
+        "requestId": "0x0000000000000000000000000000000000000000000000000101010101010101",
+        "cardRef": "0x0000000000000000000000000000000000000000000000000202020202020202",
+        "transactionHash": "0x0000000000000000000000000000000000000000000000000303030303030303",
+        "settledMinor": "18446744073709551615",
+        "currency": "65535",
+        "status": "255",
+        "settledAt": "1099511627775",
+        "observedAt": "1099511627775"
+      }
+    },
+    "expected": "0xa177f85f33ac62e0a3a3e93e5ccccd330cbafdde35c33e1dba68e4d89edf47ae"
   },
   {
     "name": "WebFact/42161",

@@ -366,3 +366,66 @@ describe("decodeMandate", () => {
     }
   });
 });
+
+describe("decoy digests", () => {
+  /** How many entries each SD list or array holds, in order. */
+  const shape = (v: unknown): number[] => {
+    if (v === null || typeof v !== "object") return [];
+    if (Array.isArray(v)) {
+      const sd = v.filter((x) => x !== null && typeof x === "object" && "..." in x).length;
+      const own = sd > 0 ? [sd] : [];
+      return [...own, ...v.flatMap(shape)];
+    }
+    const o = v as Record<string, unknown>;
+    return [
+      ...(Array.isArray(o._sd) ? [o._sd.length] : []),
+      ...Object.entries(o).flatMap(([k, x]) => (k === "_sd" ? [] : shape(x))),
+    ];
+  };
+
+  it("a merchant sees the same counts for a one- and a three-merchant mandate", async () => {
+    const three = twoMerchants();
+    for (const c of three.checkout.constraints) {
+      if (c.type === "checkout.allowed_merchants") {
+        c.allowed.push({
+          id: "mrc_third",
+          name: "Third",
+          website: "https://third.example",
+          paypal_merchant_id: "MERCH3",
+        });
+      }
+    }
+    const one = await buildSdPayload(mandate(), randomSalt, { decoys: true });
+    const many = await buildSdPayload(parseMandate(three), randomSalt, { decoys: true });
+    expect(shape(one.payloadSd)).toEqual(shape(many.payloadSd));
+    for (const n of shape(one.payloadSd)) expect([4, 8, 16, 32, 64]).toContain(n);
+    expect(one.decoySalts.length).toBeGreaterThan(0);
+  });
+
+  it("decoys resolve only with their salts, and the mandate decodes the same", async () => {
+    const m = mandate();
+    const { payloadSd, disclosures, decoySalts } = await buildSdPayload(m, randomSalt, {
+      decoys: true,
+    });
+    expect(decodeMandate(payloadSd, disclosures, decoySalts)).toEqual(m);
+    expect(() => decodeMandate(payloadSd, disclosures)).toThrow("undisclosed digest");
+    expect(() =>
+      decodeMandate(payloadSd, disclosures, [...decoySalts, "AAAAAAAAAAAAAAAAAAAAAA"]),
+    ).toThrow("decoy");
+  });
+
+  it("a merchant view never carries a decoy salt", async () => {
+    const { disclosures, decoySalts } = await buildSdPayload(twoMerchants(), randomSalt, {
+      decoys: true,
+    });
+    const shown = merchantDisclosures(disclosures, { merchant: "mrc_runfast" });
+    for (const s of decoySalts) expect(shown.join()).not.toContain(s);
+  });
+
+  it("a mandate without decoys still decodes as before", async () => {
+    const m = mandate();
+    const { payloadSd, disclosures, decoySalts } = await buildSdPayload(m, randomSalt);
+    expect(decoySalts).toEqual([]);
+    expect(decodeMandate(payloadSd, disclosures)).toEqual(m);
+  });
+});

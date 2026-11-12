@@ -540,6 +540,7 @@ describe.each(Object.keys(VIEWPORTS) as Kind[])("agents on %s", (kind) => {
           logIndexes: { "log.keelson.finance/alibi/2026-1": "1207" },
           logged: true,
           createdAt: new Date().toISOString(),
+          statusListed: 1,
         };
       }
       return undefined;
@@ -560,6 +561,10 @@ describe.each(Object.keys(VIEWPORTS) as Kind[])("agents on %s", (kind) => {
       .getByText("All agents stopped. $412.00 of holds released. 2 single-use cards closed.")
       .waitFor();
     expect(await page.getByText("entry #1207", { exact: false }).count()).toBe(1);
+    const listed = page.getByRole("link", { name: "1 approval revoked in the public status list" });
+    expect(await listed.getAttribute("href")).toBe(
+      "https://api.keelson.finance/status/v1/mandates/2026-1",
+    );
     expect(stopped).toBe(1);
     await axe(page);
     await shot(page, kind, "agents-stopped");

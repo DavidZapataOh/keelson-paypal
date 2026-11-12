@@ -5,6 +5,7 @@ import { AttestError } from "./errors.ts";
 import type { DstackEvent } from "./eventlog.ts";
 import { nitroMeasurement, tdxMeasurement } from "./measurement.ts";
 import { verifyNitro } from "./nitro.ts";
+import { appraiseTd } from "./policy.ts";
 import { type Collateral, verifyTdx } from "./tdx.ts";
 import type { Validity } from "./validity.ts";
 
@@ -54,8 +55,10 @@ export interface Expectations {
   now: Date;
   /** When set, the attested block hash is read from the chain and must be less than an hour old. */
   rpc?: PublicClient;
-  /** When set, the issuer key the attestation must commit to. */
-  issuerJwkThumbprint?: Hex;
+  /** When set, the issuer keys the attestation may commit to: two while the issuer key moves. */
+  issuerJwkThumbprints?: readonly Hex[];
+  /** The TDX devices allowed; `TDX_DEVICES` by default. */
+  tdxDevices?: readonly Hex[];
   /** When set, a platform verification of the same evidence and allowlist is reused while valid. */
   cache?: AttestationCache;
 }
@@ -104,6 +107,7 @@ interface Platform {
 async function platform(
   att: SignerAttestation,
   now: Date,
+  tdxDevices?: readonly Hex[],
 ): Promise<Platform & { validity: Validity }> {
   if (att.tee === "tdx") {
     const bytes = hexToBytes(`0x${att.quote}`);
@@ -111,6 +115,7 @@ async function platform(
       { quote: bytes, eventLog: att.eventLog, collateral: att.collateral },
       { now },
     );
+    appraiseTd(tdx, tdxDevices ? { devices: tdxDevices } : {});
     return {
       reportData: tdx.reportData,
       measurement: tdxMeasurement(tdx),
@@ -141,11 +146,11 @@ async function platform(
 /** {@link platform}, through `expect.cache` when set. */
 async function cachedPlatform(att: SignerAttestation, expect: Expectations): Promise<Platform> {
   const { cache, now } = expect;
-  if (!cache) return platform(att, now);
-  const key = AttestationCache.key(att, expect.measurements);
+  if (!cache) return platform(att, now, expect.tdxDevices);
+  const key = AttestationCache.key(att, [...expect.measurements, ...(expect.tdxDevices ?? [])]);
   const hit = cache.get<Platform>(key, now);
   if (hit) return hit;
-  const { validity, ...verified } = await platform(att, now);
+  const { validity, ...verified } = await platform(att, now, expect.tdxDevices);
   if (expect.measurements.includes(verified.measurement)) cache.set(key, verified, validity);
   return verified;
 }
@@ -179,7 +184,8 @@ export async function verifySigner(
     throw mismatch("bondVault differs");
   if (!same(b.policySetHash, expect.policySetHash)) throw mismatch("policySetHash differs");
   if (!same(b.engineBuildId, expect.engineBuildId)) throw mismatch("engineBuildId differs");
-  if (expect.issuerJwkThumbprint && !same(b.issuerJwkThumbprint, expect.issuerJwkThumbprint)) {
+  const issuers = expect.issuerJwkThumbprints;
+  if (issuers && !issuers.some((t) => same(b.issuerJwkThumbprint, t))) {
     throw mismatch("issuerJwkThumbprint differs");
   }
 

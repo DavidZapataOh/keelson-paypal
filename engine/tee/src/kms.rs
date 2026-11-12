@@ -5,19 +5,23 @@
 use alloy_primitives::keccak256;
 use k256::ecdsa::{RecoveryId, Signature, VerifyingKey};
 
-/// Leg A's dstack app id (`phala/app.json`).
+/// Leg A's dstack app on the on-chain KMS (`contracts/deployments/8453.json` `legA.appId`): a
+/// `DstackApp` whose allowed compose hashes and devices its owner, the Base timelock, sets.
 pub const APP_ID: [u8; 20] = [
-    0x58, 0x95, 0x5b, 0xaa, 0xc3, 0x07, 0x2b, 0xac, 0x57, 0x06, 0x40, 0x89, 0x17, 0x6b, 0xed, 0x1c,
-    0x23, 0x79, 0xf8, 0x6d,
+    0x4a, 0x3c, 0x4d, 0xb0, 0x19, 0x25, 0xb3, 0x26, 0x74, 0x6d, 0x1a, 0xbd, 0x7b, 0x89, 0x78, 0x71,
+    0x0f, 0x34, 0xde, 0x4e,
 ];
 
-/// The secp256k1 root key of the KMS leg A's app takes its keys from (`kms_info.k256_pubkey` of
-/// the CVM in Phala Cloud), SEC1 compressed.
+/// The secp256k1 root key of Phala's on-chain KMS on Base (`kmsInfo().k256Pubkey` of its
+/// `DstackKms`, `legA.kmsRoot`), SEC1 compressed.
 pub const KMS_ROOT: [u8; 33] = [
-    0x02, 0x21, 0x79, 0x7a, 0x50, 0x7c, 0x42, 0x40, 0xf3, 0x18, 0xde, 0xde, 0x48, 0x29, 0xd0, 0xa2,
-    0xf8, 0x4d, 0x01, 0x33, 0x1e, 0x82, 0xf3, 0xf4, 0x3c, 0x8f, 0x57, 0x46, 0x45, 0x1c, 0x9d, 0x5e,
-    0x20,
+    0x02, 0xa3, 0x35, 0xae, 0xa3, 0xdf, 0x11, 0xd4, 0x6a, 0xe0, 0xa3, 0x73, 0xd3, 0xf2, 0x6f, 0xbd,
+    0x1d, 0x20, 0x85, 0x72, 0xec, 0xc8, 0x7e, 0x63, 0x0e, 0x61, 0x8d, 0xac, 0x69, 0x3b, 0x7a, 0xf7,
+    0x21,
 ];
+
+/// The chain the KMS's `DstackKms` and leg A's app live on: Base.
+pub const KMS_CHAIN_ID: u64 = 8453;
 
 fn lp(out: &mut Vec<u8>, field: &[u8]) {
     out.extend_from_slice(&u32::try_from(field.len()).unwrap_or(u32::MAX).to_be_bytes());
@@ -94,6 +98,55 @@ mod tests {
         message.extend_from_slice(app_root.verifying_key().to_sec1_point(true).as_bytes());
         let (sig, id) = kms.sign_prehash_recoverable(&keccak256(&message).0);
         [sig.to_bytes().to_vec(), vec![id.to_byte()]].concat()
+    }
+
+    /// The app and KMS leg A took its keys from before the on-chain KMS on Base.
+    const OLD_APP_ID: [u8; 20] = [
+        0x58, 0x95, 0x5b, 0xaa, 0xc3, 0x07, 0x2b, 0xac, 0x57, 0x06, 0x40, 0x89, 0x17, 0x6b, 0xed,
+        0x1c, 0x23, 0x79, 0xf8, 0x6d,
+    ];
+    const OLD_KMS_ROOT: [u8; 33] = [
+        0x02, 0x21, 0x79, 0x7a, 0x50, 0x7c, 0x42, 0x40, 0xf3, 0x18, 0xde, 0xde, 0x48, 0x29, 0xd0,
+        0xa2, 0xf8, 0x4d, 0x01, 0x33, 0x1e, 0x82, 0xf3, 0xf4, 0x3c, 0x8f, 0x57, 0x46, 0x45, 0x1c,
+        0x9d, 0x5e, 0x20,
+    ];
+
+    fn registry() -> serde_json::Value {
+        let path = concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../contracts/deployments/8453.json"
+        );
+        serde_json::from_str(&std::fs::read_to_string(path).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn constants_are_the_new_app() {
+        let registry = registry();
+        let unhex = |v: &serde_json::Value| hex(v.as_str().unwrap().trim_start_matches("0x"));
+        assert_eq!(registry["chainId"], KMS_CHAIN_ID);
+        assert_eq!(unhex(&registry["legA"]["appId"]), APP_ID);
+        assert_eq!(unhex(&registry["legA"]["kmsRoot"]), KMS_ROOT);
+    }
+
+    /// A log key leg A's previous app took from Phala's KMS (its `/v1/health`), refused now.
+    #[test]
+    fn old_root_chain_is_refused() {
+        let captured: serde_json::Value =
+            serde_json::from_str(include_str!("../tests/fixtures/dstack-v1-log-key.json")).unwrap();
+        let chain: Vec<Vec<u8>> = captured["signature_chain"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|l| hex(l.as_str().unwrap()))
+            .collect();
+        let public = hex(captured["public_key"].as_str().unwrap());
+        let domain = crate::logsign::key_domain(captured["origin"].as_str().unwrap());
+        let verify = |app: &[u8], root: &[u8; 33]| {
+            verify_chain("ed25519", &domain, &public, &chain, app, root)
+        };
+        assert!(verify(&OLD_APP_ID, &OLD_KMS_ROOT));
+        assert!(!verify(&APP_ID, &KMS_ROOT));
+        assert!(!verify(&APP_ID, &OLD_KMS_ROOT));
     }
 
     #[test]

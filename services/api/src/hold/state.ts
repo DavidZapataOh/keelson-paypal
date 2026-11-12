@@ -72,13 +72,19 @@ export async function purchaseHoldOf(db: Db, requestId: string): Promise<Purchas
 /** The payee ids the signed mandate allows, as {@link payeesOf} reads them for the pay click too. */
 export function allowedPayees(row: MandateRow): string[] {
   if (!row.payloadSd || !row.disclosures) return [];
-  return payeesOf(decodeMandate(row.payloadSd as Record<string, unknown>, row.disclosures));
+  return payeesOf(
+    decodeMandate(row.payloadSd as Record<string, unknown>, row.disclosures, row.decoySalts),
+  );
 }
 
 /** The website the signed mandate names for the merchant, or `undefined` when it names none. */
 export function merchantWebsite(row: MandateRow, merchantId: string): string | undefined {
   if (!row.payloadSd || !row.disclosures) return undefined;
-  const m = decodeMandate(row.payloadSd as Record<string, unknown>, row.disclosures);
+  const m = decodeMandate(
+    row.payloadSd as Record<string, unknown>,
+    row.disclosures,
+    row.decoySalts,
+  );
   const merchants = m.checkout.constraints.find((c) => c.type === "checkout.allowed_merchants");
   return merchants?.type === "checkout.allowed_merchants"
     ? merchants.allowed.find((x) => x.id === merchantId)?.website

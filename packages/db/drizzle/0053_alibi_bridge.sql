@@ -1,0 +1,1 @@
+ALTER TABLE "alibis" ADD COLUMN "bridge_bundle" jsonb;

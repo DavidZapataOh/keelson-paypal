@@ -36,6 +36,7 @@ import { type Notifier, notify, stopAlert } from "./notify/notifier.ts";
 import type { PayPalDeps } from "./paypal.ts";
 import { principalChannel } from "./principal.ts";
 import { REVOCABLE, revokeMandate } from "./routes/revoke.ts";
+import type { TeeConfig } from "./tee/signers.ts";
 
 export interface StopDeps {
   db: Db;
@@ -45,6 +46,7 @@ export interface StopDeps {
   tlog?: LogConfig;
   notifier?: Notifier;
   cards?: { issuer: CardIssuer } | undefined;
+  tee?: TeeConfig;
 }
 
 type Money = { currency: string; minor: string }[];
@@ -64,6 +66,8 @@ export interface StopRecord {
   logIndexes: Record<string, string>;
   logged: boolean;
   createdAt: string;
+  /** How many of the stopped mandates the public status list now marks revoked; on the stop's own answer. */
+  statusListed?: number;
 }
 
 type Row = typeof agentStops.$inferSelect;
@@ -184,7 +188,7 @@ export async function stopAgents(deps: StopDeps, userId: string): Promise<StopRe
     logIndexes: done.logIndexes,
   });
   notify(deps.notifier, (n) => stopAlert(n, userId, done));
-  return done;
+  return { ...done, statusListed: rows.filter((m) => m.statusIdx !== null).length };
 }
 
 /**

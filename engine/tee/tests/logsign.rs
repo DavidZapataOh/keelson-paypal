@@ -311,3 +311,33 @@ fn the_empty_tree_is_extended_without_a_proof() {
         .sign(&leg.root, FLOOR, &request(&t8, Some(0), vec![]))
         .unwrap();
 }
+
+#[test]
+fn signs_the_receipt_root_with_its_own_key() {
+    let leg = leg();
+    let (t8, root) = tree(8);
+    let signed = leg
+        .signer
+        .sign(&leg.root, FLOOR, &request(&t8, None, vec![]))
+        .unwrap();
+    let receipt = key().receipt_public_key();
+    assert_ne!(
+        receipt,
+        key().public_key(),
+        "the receipt key is not the note key"
+    );
+    assert_eq!(
+        receipt,
+        key().receipt_public_key(),
+        "the same seed gives the same key"
+    );
+    let tbs = keelson_core::statement::to_be_signed(
+        &keelson_core::statement::receipt_protected(&receipt, ORIGIN),
+        &root,
+    );
+    let sig = Signature::from_slice(&STANDARD.decode(&signed.receipt_signature).unwrap()).unwrap();
+    VerifyingKey::from_bytes(&receipt)
+        .unwrap()
+        .verify(&tbs, &sig)
+        .unwrap();
+}

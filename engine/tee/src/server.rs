@@ -43,10 +43,20 @@ pub struct AppState {
     c1_queue: std::sync::OnceLock<std::sync::mpsc::SyncSender<String>>,
     token_hash: [u8; 32],
     clock: fn() -> OffsetDateTime,
+    /// The CVM booted with dstack's `secure_time`: its clock was set from NTS (RFC 8915) before
+    /// any key was released. The compose that sets it is part of the measurement.
+    secure_time: bool,
     #[cfg(feature = "tdx")]
     attestation: Option<std::sync::RwLock<Attested>>,
-    #[cfg(feature = "tdx")]
+    #[cfg(any(feature = "tdx", feature = "nitro"))]
     paypal: Option<crate::paypal::PayPalClient>,
+    /// Leg B's readings made ahead of a countersign, by authorization id, with when each was made.
+    #[cfg(feature = "nitro")]
+    prefetched: std::sync::Mutex<
+        std::collections::HashMap<String, (std::time::Instant, crate::wire::PayPalObservation)>,
+    >,
+    #[cfg(feature = "tdx")]
+    lithic: Option<crate::issuer::LithicClient>,
     #[cfg(feature = "nitro")]
     nitro: Option<crate::nitro::Nitro>,
     #[cfg(feature = "tdx")]
@@ -72,10 +82,15 @@ impl AppState {
             c1_queue: std::sync::OnceLock::new(),
             token_hash,
             clock: OffsetDateTime::now_utc,
+            secure_time: false,
             #[cfg(feature = "tdx")]
             attestation: None,
-            #[cfg(feature = "tdx")]
+            #[cfg(any(feature = "tdx", feature = "nitro"))]
             paypal: None,
+            #[cfg(feature = "nitro")]
+            prefetched: std::sync::Mutex::new(std::collections::HashMap::new()),
+            #[cfg(feature = "tdx")]
+            lithic: None,
             #[cfg(feature = "nitro")]
             nitro: None,
             #[cfg(feature = "tdx")]
@@ -116,9 +131,16 @@ impl AppState {
         self.notary.as_ref().expect("routed only with a notary")
     }
 
-    /// Makes leg A read the request's PayPal authorization through `client` before every
-    /// countersign.
+    /// Leg A reads card settlements from the issuer with this client.
     #[cfg(feature = "tdx")]
+    pub fn with_lithic(mut self, client: crate::issuer::LithicClient) -> Self {
+        self.lithic = Some(client);
+        self
+    }
+
+    /// Makes the leg read the request's PayPal authorization through `client` before every
+    /// countersign: leg A to observe it, leg B to confirm leg A's observation.
+    #[cfg(any(feature = "tdx", feature = "nitro"))]
     pub fn with_paypal(mut self, client: crate::paypal::PayPalClient) -> Self {
         self.paypal = Some(client);
         self
@@ -166,6 +188,12 @@ impl AppState {
         self.clock = clock;
         self
     }
+
+    /// Says the CVM booted with an authenticated clock (dstack `secure_time`).
+    pub fn with_secure_time(mut self, secure_time: bool) -> Self {
+        self.secure_time = secure_time;
+        self
+    }
 }
 
 /// The routes of one leg. `GET /v1/health` and `GET /v1/attestation` are open; every other route
@@ -182,6 +210,17 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/v1/mandates/register", post(register))
         .route("/v1/verdict", post(verdict))
         .route("/v1/card/authorize", post(card_authorize))
+        .route("/v1/card/settlement", post(card_settlement))
+        .route("/v1/statements/bridge", post(bridge_statement))
+        .route("/v1/exports/sign", post(sign_export))
+        .route("/v1/status/sign", post(sign_status));
+    #[cfg(feature = "nitro")]
+    let protected = protected.route("/v1/paypal/prefetch", post(prefetch_paypal));
+    let protected = protected
+        .route(
+            "/v1/statements/card-authorization",
+            post(card_authorization_statement),
+        )
         .layer(DefaultBodyLimit::max(BODY_LIMIT));
     #[cfg(feature = "tdx")]
     let (open, protected) = if state.attestation.is_some() {
@@ -265,6 +304,7 @@ impl From<EngineError> for Problem {
             }
             EngineError::Log(SignError::Records) => StatusCode::INTERNAL_SERVER_ERROR,
             EngineError::Log(SignError::NoFloor) => StatusCode::SERVICE_UNAVAILABLE,
+            EngineError::Status(_) | EngineError::PayPalDisagree => StatusCode::CONFLICT,
         };
         let latest = match &e {
             EngineError::Log(SignError::NotExtending { latest }) => *latest,
@@ -348,6 +388,21 @@ async fn authorized(token_hash: &[u8; 32], request: Request, next: Next) -> Resp
 #[derive(Serialize)]
 struct Health {
     tee: TeeKind,
+    /// 1: countersigns answer with the purchase's SCITT statement when asked.
+    statements: u8,
+    /// `1`: mandates may carry decoy digests, resolved by the salts a request presents.
+    decoys: u8,
+    /// `1`: a mandate with a status list entry is checked against the list on every countersign.
+    status_list: u8,
+    /// `1` on leg B when it reads PayPal itself and confirms leg A's observation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    paypal_reads: Option<u8>,
+    /// On the TDX leg: `verified` when its clock was set from authenticated time at boot.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    clock: Option<&'static str>,
+    /// On the TDX leg: the on-chain KMS its keys come from and its app there.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    kms: Option<KmsInfo>,
     signer: Address,
     boot_epoch: u64,
     oci_digest: String,
@@ -367,20 +422,58 @@ struct Health {
 }
 
 #[derive(Serialize)]
+struct KmsInfo {
+    chain_id: u64,
+    /// Hex, without `0x`.
+    app_id: String,
+    /// The KMS root key, SEC1 compressed hex.
+    root: String,
+}
+
+#[derive(Serialize)]
 pub(crate) struct LogKeyInfo {
     pub origin: &'static str,
     pub vkey: String,
     /// The raw Ed25519 public key, hex.
     pub public_key: String,
+    /// The origin's RFC 9942 receipt key, hex, and its key id (hex SHA-256 of the key).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub receipt_key: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub receipt_kid: Option<String>,
     /// `GetKey`'s signature chain, hex: absent on leg B.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub signature_chain: Vec<String>,
+}
+
+/// `Some(1)` on leg B when it confirms leg A's PayPal observation with its own reading.
+fn paypal_reads(state: &AppState) -> Option<u8> {
+    #[cfg(feature = "nitro")]
+    if state.paypal.is_some() && state.engine.config().tee_kind == TeeKind::Nitro {
+        return Some(1);
+    }
+    let _ = state;
+    None
 }
 
 async fn health(State(state): State<Arc<AppState>>) -> Json<Health> {
     let engine = &state.engine;
     Json(Health {
         tee: engine.config().tee_kind,
+        statements: 1,
+        decoys: 1,
+        status_list: 1,
+        paypal_reads: paypal_reads(&state),
+        clock: (engine.config().tee_kind == TeeKind::Tdx).then_some(if state.secure_time {
+            "verified"
+        } else {
+            "unverified"
+        }),
+        kms: (engine.config().tee_kind == TeeKind::Tdx).then(|| KmsInfo {
+            chain_id: crate::kms::KMS_CHAIN_ID,
+            app_id: alloy_primitives::hex::encode(crate::kms::APP_ID),
+            root: alloy_primitives::hex::encode(crate::kms::KMS_ROOT),
+        }),
         signer: engine.signer(),
         boot_epoch: engine.boot_epoch(),
         oci_digest: engine.config().oci_digest.clone(),
@@ -404,6 +497,10 @@ fn log_keys(engine: &Engine) -> Vec<LogKeyInfo> {
                 origin: k.origin,
                 vkey: k.vkey(),
                 public_key: format!("0x{}", hex(&k.public_key())),
+                receipt_key: Some(hex(&k.receipt_public_key())),
+                receipt_kid: Some(hex(&<[u8; 32]>::from(sha2::Sha256::digest(
+                    k.receipt_public_key(),
+                )))),
                 signature_chain: k.signature_chain.iter().map(|l| hex(l)).collect(),
             })
             .collect();
@@ -415,6 +512,8 @@ fn log_keys(engine: &Engine) -> Vec<LogKeyInfo> {
             origin,
             vkey: crate::logsign::vkey(origin, key),
             public_key: format!("0x{}", hex(key)),
+            receipt_key: None,
+            receipt_kid: None,
             signature_chain: Vec::new(),
         })
         .collect()
@@ -466,6 +565,8 @@ async fn countersign(
     let paypal = read_paypal(&state, &request).await?;
     #[cfg(not(feature = "tdx"))]
     let paypal = None;
+    #[cfg(feature = "nitro")]
+    confirm_paypal(&state, &request).await?;
     let id = request.request_id.to_string();
     let engine = state.clone();
     let out = blocking(move || {
@@ -528,6 +629,79 @@ async fn c1(
             C1Status::Pending => tokio::time::sleep(C1_POLL).await,
         }
     }
+}
+
+/// How old a prefetched reading leg B may use instead of reading again.
+#[cfg(feature = "nitro")]
+const PREFETCH_FRESH: std::time::Duration = std::time::Duration::from_secs(2);
+/// The most readings leg B keeps ahead of their countersign.
+#[cfg(feature = "nitro")]
+const PREFETCH_KEPT: usize = 256;
+
+/// Leg B's own reading of the request's authorization, confirmed against leg A's observation: a
+/// prefetched one at most [`PREFETCH_FRESH`] old, otherwise made now and not retried.
+#[cfg(feature = "nitro")]
+async fn confirm_paypal(state: &AppState, request: &CountersignRequest) -> Result<(), Problem> {
+    let (Some(client), Some(_), Some(id)) = (
+        &state.paypal,
+        &request.observation,
+        request.authorization_id.as_deref(),
+    ) else {
+        return Ok(());
+    };
+    let kept = state
+        .prefetched
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .remove(id)
+        .filter(|(at, _)| at.elapsed() <= PREFETCH_FRESH)
+        .map(|(_, read)| read);
+    let own = match kept {
+        Some(read) => read,
+        None => crate::paypal::observe(client, id).await.map_err(|e| {
+            eprintln!("keelson-engine: {e}");
+            Problem::from(EngineError::PayPal)
+        })?,
+    };
+    state
+        .engine
+        .confirm_paypal(request, &own)
+        .map_err(Problem::from)
+}
+
+/// `POST /v1/paypal/prefetch`: leg B reads the authorization now, in the background, so the
+/// countersign that follows needs no read of its own.
+#[cfg(feature = "nitro")]
+async fn prefetch_paypal(
+    State(state): State<Arc<AppState>>,
+    body: Result<Bytes, BytesRejection>,
+) -> Result<StatusCode, Problem> {
+    #[derive(serde::Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Prefetch {
+        authorization_id: String,
+    }
+    let request: Prefetch = parse(body)?;
+    if state.paypal.is_none() {
+        return Err(EngineError::NoRoot.into());
+    }
+    tokio::spawn(async move {
+        let Some(client) = &state.paypal else { return };
+        match crate::paypal::observe(client, &request.authorization_id).await {
+            Ok(read) => {
+                let mut kept = state
+                    .prefetched
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                kept.retain(|_, (at, _)| at.elapsed() <= PREFETCH_FRESH);
+                if kept.len() < PREFETCH_KEPT {
+                    kept.insert(request.authorization_id, (std::time::Instant::now(), read));
+                }
+            }
+            Err(e) => eprintln!("keelson-engine: prefetch: {e}"),
+        }
+    });
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// Leg A's own reading of the request's authorization, made now and not retried; none when the
@@ -607,6 +781,80 @@ async fn verdict(
 
 /// A card issuer's authorization of a single-use card, checked against the ALLOW it was issued
 /// under. The card issuer waits about two seconds for the answer, so nothing here goes out.
+async fn card_authorization_statement(
+    State(state): State<Arc<AppState>>,
+    body: Result<Bytes, BytesRejection>,
+) -> Result<Json<crate::wire::StatementSigned>, Problem> {
+    let request: crate::wire::CardStatementRequest = parse(body)?;
+    blocking(move || state.engine.card_authorization_statement(&request)).await
+}
+
+async fn sign_export(
+    State(state): State<Arc<AppState>>,
+    body: Result<Bytes, BytesRejection>,
+) -> Result<Json<crate::wire::ExportSigned>, Problem> {
+    let request: crate::wire::ExportRequest = parse(body)?;
+    blocking(move || state.engine.sign_export(&request)).await
+}
+
+async fn sign_status(
+    State(state): State<Arc<AppState>>,
+    body: Result<Bytes, BytesRejection>,
+) -> Result<Json<crate::wire::StatusSigned>, Problem> {
+    let request: crate::wire::StatusSignRequest = parse(body)?;
+    let now = (state.clock)();
+    blocking(move || state.engine.sign_status(&request, now)).await
+}
+
+async fn bridge_statement(
+    State(state): State<Arc<AppState>>,
+    body: Result<Bytes, BytesRejection>,
+) -> Result<Json<crate::wire::StatementSigned>, Problem> {
+    let request: crate::wire::BridgeRequest = parse(body)?;
+    blocking(move || state.engine.bridge(&request)).await
+}
+
+async fn card_settlement(
+    State(state): State<Arc<AppState>>,
+    body: Result<Bytes, BytesRejection>,
+) -> Result<Json<crate::wire::CardSettled>, Problem> {
+    let request: crate::wire::CardSettlementRequest = parse(body)?;
+    let observed = match &request.observation {
+        Some(o) => o.clone(),
+        None => read_settlement(&state, &request).await?,
+    };
+    blocking(move || state.engine.card_settlement(&request, &observed)).await
+}
+
+/// Leg A's own reading of the settlement; refused on a leg that cannot read the issuer.
+#[cfg(feature = "tdx")]
+async fn read_settlement(
+    state: &AppState,
+    r: &crate::wire::CardSettlementRequest,
+) -> Result<crate::wire::SettlementObservation, Problem> {
+    let Some(client) = &state.lithic else {
+        return Err(Problem::new(StatusCode::BAD_REQUEST, "observation"));
+    };
+    let (transaction, card) = client
+        .read(&r.transaction_token, &r.card_token)
+        .await
+        .map_err(|_| Problem::new(StatusCode::SERVICE_UNAVAILABLE, "issuer"))?;
+    let observed_at = u64::try_from((state.clock)().unix_timestamp()).unwrap_or_default();
+    Ok(crate::wire::SettlementObservation {
+        transaction: crate::wire::Base64(transaction),
+        card: crate::wire::Base64(card),
+        observed_at,
+    })
+}
+
+#[cfg(not(feature = "tdx"))]
+async fn read_settlement(
+    _state: &AppState,
+    _r: &crate::wire::CardSettlementRequest,
+) -> Result<crate::wire::SettlementObservation, Problem> {
+    Err(Problem::new(StatusCode::BAD_REQUEST, "observation"))
+}
+
 async fn card_authorize(
     State(state): State<Arc<AppState>>,
     body: Result<Bytes, BytesRejection>,

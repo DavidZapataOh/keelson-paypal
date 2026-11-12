@@ -394,11 +394,16 @@ async function sdVectors() {
   await add("error/payload-not-object", [] as unknown as object, []);
 
   /** Full decoding: every digest must be resolved and the result must parse as a mandate. */
-  const full = async (name: string, payload: object, ds: string[]) => {
+  const full = async (name: string, payload: object, ds: string[], decoySalts?: string[]) => {
     vectors.push({
       name: `decodeMandate/${name}`,
-      input: { op: "decodeMandate", payloadSd: payload, disclosures: ds },
-      expected: await attempt(() => decodeMandate(clone(payload), ds)),
+      input: {
+        op: "decodeMandate",
+        payloadSd: payload,
+        disclosures: ds,
+        ...(decoySalts ? { decoySalts } : {}),
+      },
+      expected: await attempt(() => decodeMandate(clone(payload), ds, decoySalts)),
     });
   };
   await full("demo", payloadSd, disclosures);
@@ -425,6 +430,18 @@ async function sdVectors() {
     { ...payloadSd, _sd: [...(payloadSd as { _sd: string[] })._sd, b64u(seed("decoy"))] },
     disclosures,
   );
+  const padded = await buildSdPayload(mandate(), salts("sd/decoys"), { decoys: true });
+  await full("decoys/resolved-by-salt", padded.payloadSd, padded.disclosures, padded.decoySalts);
+  await full("error/decoys-without-salts", padded.payloadSd, padded.disclosures);
+  await full("error/decoy-salt-unused", padded.payloadSd, padded.disclosures, [
+    ...padded.decoySalts,
+    b64u(seed("decoy/unused").subarray(0, 16)),
+  ]);
+  const realSalt = decodeDisclosure(padded.disclosures[0] as string)[0] as string;
+  await full("error/decoy-collides", padded.payloadSd, padded.disclosures, [
+    ...padded.decoySalts,
+    realSalt,
+  ]);
   return vectors;
 }
 

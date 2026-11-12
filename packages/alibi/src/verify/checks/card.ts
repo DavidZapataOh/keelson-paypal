@@ -16,7 +16,7 @@ export const card: CheckDef = {
   id: "card.authorizations",
   step: 0,
   reads: ["/card"],
-  async run(input) {
+  async run(input, { view }) {
     if (!isBundle(input)) return UNDISCLOSED;
     if (input.card === undefined) return { status: "absent" };
     const k = input.card;
@@ -25,9 +25,12 @@ export const card: CheckDef = {
       "/card",
       "/paypal",
     ]);
+    // In v2 the card statements commit to the card (`card.statements`); the purchase statement
+    // cannot. A bridged v1 card purchase still has its v1 leaf's commitment.
     expect(
-      b64urlOfHex(cardRefCommit(fromHex(k.ref_salt), k.issuer, k.card_token)) ===
-        input.leaf_view.paypal_ref_commit,
+      (view !== null && !view.predecessor) ||
+        b64urlOfHex(cardRefCommit(fromHex(k.ref_salt), k.issuer, k.card_token)) ===
+          input.leaf_view.paypal_ref_commit,
       "the leaf's payment commitment does not open to this card",
       ["/card/ref_salt", "/card/issuer", "/card/card_token", "/leaf_view/paypal_ref_commit"],
     );

@@ -16,9 +16,12 @@ const input = (overrides: Partial<{ quote: Uint8Array; eventLog: DstackEvent[] }
   collateral: tdxEvidence.collateral,
   ...overrides,
 });
-const appJson = JSON.parse(
-  readFileSync(new URL("../../../engine/tee/phala/app.json", import.meta.url), "utf8"),
-) as { compose_hash: string; app_id: string };
+type Tdx = { tdx: { app_id: string; compose_hash: string } };
+const read = <T>(path: string) =>
+  JSON.parse(readFileSync(new URL(`../../../engine/tee/${path}`, import.meta.url), "utf8")) as T;
+// The published build the captured leg runs: the current one, or during a rotation the previous one.
+const published = [read<Tdx>("measurements.json"), ...read<Tdx[]>("measurements-rotation.json")];
+const builds = published.map((m) => m.tdx);
 
 const codeOf = async (p: Promise<unknown>) => {
   const error = await p.then(
@@ -37,14 +40,15 @@ describe("verifyTdx", () => {
     expect(result.reportData).toMatch(/^0x[0-9a-f]{128}$/);
     expect(result.mrtd).toMatch(/^0x[0-9a-f]{96}$/);
     expect(result.rtmr).toHaveLength(4);
-    expect(result.appId).toBe(`0x${appJson.app_id}`);
+    expect(builds.map((m) => `0x${m.app_id}`)).toContain(result.appId);
     expect(result.osImageHash).toMatch(/^0x[0-9a-f]{64}$/);
     expect(result.keyProvider).toContain('"name":"kms"');
   });
 
   test("binds the compose hash recorded for the deployment", async () => {
     const result = await verifyTdx(input(), { now });
-    expect(result.composeHash).toBe(`0x${appJson.compose_hash}`);
+    const build = builds.find((m) => `0x${m.app_id}` === result.appId);
+    expect(result.composeHash).toBe(`0x${build?.compose_hash}`);
   });
 
   test("replays RTMR3 to the value in the quote", async () => {

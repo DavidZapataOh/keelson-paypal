@@ -39,6 +39,7 @@ fn registers_the_demo_mandate() {
         expected_nonce: mid.into(),
         now: NOW,
         max_skew_sec: 60,
+        decoy_salts: vec![],
     };
     let l2 = verify_credential(&out.open_mandate, OPEN_MANDATE_TYP, &issuer, Some(&opts)).unwrap();
     assert_eq!(l2.claims["mid"], json!(mid));
@@ -1274,4 +1275,43 @@ mod holds {
             assert_eq!(hold_order(&records), None);
         }
     }
+}
+
+#[test]
+fn leg_b_refuses_an_observation_its_own_reading_contradicts() {
+    let issued = register();
+    let mut r = countersign_request(&issued, &CartFixture::demo(), request_id(90), None);
+    let mut o = observation(NOW * 1000);
+    o.paypal = keelson_tee::wire::PayPalObservation {
+        order_id: "5O190127TN364715T".into(),
+        authorization_id: "0VF52814937998046".into(),
+        status: "CREATED".into(),
+        authorized_minor: 10_000,
+        currency: "USD".into(),
+        payee_merchant_id: "MERCHANT1".into(),
+        expires_at_ms: (NOW + 86_400) * 1000,
+        read_at_ms: NOW * 1000,
+        ..Default::default()
+    };
+    r.authorization_id = Some(o.paypal.authorization_id.clone());
+    r.observation = Some(o.clone());
+    let b = leg_b();
+    // The same reading, read at another time with other raw bodies, agrees.
+    let mut own = o.paypal.clone();
+    own.read_at_ms += 1_500;
+    own.raw_order = Base64(b"{}".to_vec());
+    b.confirm_paypal(&r, &own).unwrap();
+    // A capture between the two reads does not.
+    own.captured_minor += 100;
+    assert_eq!(
+        b.confirm_paypal(&r, &own).unwrap_err(),
+        EngineError::PayPalDisagree
+    );
+    // Nor does a reading of another authorization.
+    let mut other = o.paypal.clone();
+    other.authorization_id = "OTHER".into();
+    assert_eq!(
+        b.confirm_paypal(&r, &other).unwrap_err(),
+        EngineError::PayPalDisagree
+    );
 }

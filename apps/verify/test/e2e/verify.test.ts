@@ -5,9 +5,10 @@ import { fileURLToPath } from "node:url";
 import { type Browser, chromium, type Page } from "playwright";
 import { type PreviewServer, preview } from "vite";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
-import { encodeAlibi } from "../../../../packages/alibi/src/codec.ts";
+import { encodeAlibi, encodeAny, statementOf } from "../../../../packages/alibi/src/codec.ts";
 import { fixtures } from "../../../../packages/alibi/test/fixtures.ts";
 import { receipts } from "../../../../packages/alibi/test/log-receipts.ts";
+import { v2Bundle } from "../../../../packages/alibi/test/v2.ts";
 
 const VERIFY_ORIGIN = "https://verify.keelson.finance";
 const root = fileURLToPath(new URL("../..", import.meta.url));
@@ -295,5 +296,65 @@ describe("the verifier in Chromium", () => {
       expect(await page.getByRole("alert").textContent()).toContain("https");
       await page.close();
     }
+  });
+});
+
+describe("a v2 Alibi in Chromium", () => {
+  // The golden statement's receipt is signed with a test key no verifier pins, and its legs are
+  // test keys: those rows fail by design; the rest hold offline.
+  const b = v2Bundle();
+  const tone = (page: Page, key: string) =>
+    page.locator(`[data-standard="${key}"]`).getAttribute("data-tone");
+
+  test("the standards panel shows each artifact, offline, and its files download", async () => {
+    const { page } = await open();
+    await page.route("**", (route) =>
+      new URL(route.request().url()).origin === new URL(base).origin
+        ? route.continue()
+        : route.abort(),
+    );
+    await drop(page, `${b.alibi_id}.alibi`, "application/json", Buffer.from(encodeAny(b)));
+    await verdict(page);
+    await page.locator("[data-standard]").first().waitFor();
+    expect(await page.locator("[data-standard]").count()).toBe(6);
+    expect(await tone(page, "statement")).toBe("pass");
+    expect(await tone(page, "evidence")).toBe("pass");
+    expect(await tone(page, "receipt")).toBe("fail");
+
+    const [statement] = await Promise.all([
+      page.waitForEvent("download"),
+      page.getByRole("button", { name: "Download statement" }).click(),
+    ]);
+    expect(statement.suggestedFilename()).toBe(`${b.alibi_id}.cose`);
+    expect(new Uint8Array(readFileSync((await statement.path()) as string))).toEqual(
+      statementOf(b),
+    );
+
+    const [ear] = await Promise.all([
+      page.waitForEvent("download"),
+      page.getByRole("button", { name: "Download results" }).click(),
+    ]);
+    const claims = JSON.parse(readFileSync((await ear.path()) as string, "utf8"));
+    expect(claims.eat_profile).toBe("tag:ietf.org,2026:rats/ear#05");
+    await page.close();
+  });
+
+  test("a tampered .cose fails the signed statement", async () => {
+    const { page } = await open();
+    const cose = Buffer.from(statementOf(b));
+    cose.writeUInt8((cose.at(-1) as number) ^ 1, cose.length - 1);
+    await drop(page, `${b.alibi_id}.cose`, "application/scitt-statement+cose", cose);
+    await verdict(page);
+    expect(await tone(page, "statement")).toBe("fail");
+    await page.close();
+  });
+
+  test("a v1 Alibi shows no standards panel", async () => {
+    const { page } = await open();
+    const f = fixtures.find((x) => x.mode === "2of2");
+    await drop(page, `${f?.id}.alibi`, "application/json", Buffer.from(f?.bytes ?? []));
+    await verdict(page);
+    expect(await page.locator("[data-standard]").count()).toBe(0);
+    await page.close();
   });
 });

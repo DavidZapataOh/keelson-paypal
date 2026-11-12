@@ -8,7 +8,11 @@ export type AttestCode =
   | "rtmr3_mismatch"
   | "binding_mismatch"
   | "measurement_not_allowed"
-  | "stale_block";
+  | "stale_block"
+  | "td_attributes"
+  | "xfam"
+  | "owner_fields"
+  | "device";
 
 /** Why an attestation was rejected. */
 export class AttestError extends Error {

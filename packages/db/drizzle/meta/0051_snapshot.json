@@ -1,5 +1,5 @@
 {
-  "id": "593aa73e-ac8f-4887-86d4-c387d40a7076",
+  "id": "b5d7e5e6-cefd-402c-aeca-458c55609fe5",
   "prevId": "0e0611be-275a-4e19-b8ac-20be2502cee0",
   "version": "7",
   "dialect": "postgresql",
@@ -4400,12 +4400,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "paypal_vault_id": {
-          "name": "paypal_vault_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
         "authorized_at": {
           "name": "authorized_at",
           "type": "timestamp with time zone",
@@ -4449,6 +4443,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "paypal_vault_id": {
+          "name": "paypal_vault_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -5207,66 +5207,6 @@
       },
       "isRLSEnabled": false
     },
-    "public.paypal_wallets": {
-      "name": "paypal_wallets",
-      "schema": "",
-      "columns": {
-        "user_id": {
-          "name": "user_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "vault_id": {
-          "name": "vault_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "customer_id": {
-          "name": "customer_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "email": {
-          "name": "email",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "paypal_wallets_user_id_user_id_fk": {
-          "name": "paypal_wallets_user_id_user_id_fk",
-          "tableFrom": "paypal_wallets",
-          "tableTo": "user",
-          "columnsFrom": ["user_id"],
-          "columnsTo": ["id"],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {
-        "paypal_wallets_vault_id_unique": {
-          "name": "paypal_wallets_vault_id_unique",
-          "nullsNotDistinct": false,
-          "columns": ["vault_id"]
-        }
-      },
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.purchases": {
       "name": "purchases",
       "schema": "",
@@ -5456,6 +5396,12 @@
         },
         "paypal_ref_salt": {
           "name": "paypal_ref_salt",
+          "type": "bytea",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "statement": {
+          "name": "statement",
           "type": "bytea",
           "primaryKey": false,
           "notNull": false
@@ -5812,13 +5758,6 @@
         },
         "revoked": {
           "name": "revoked",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "cards_closed": {
-          "name": "cards_closed",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
@@ -6501,6 +6440,66 @@
           "value": "\"verdicts\".\"paid_by\" in ('chain', 'treasury', 'violation-pool')"
         }
       },
+      "isRLSEnabled": false
+    },
+    "public.paypal_wallets": {
+      "name": "paypal_wallets",
+      "schema": "",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "vault_id": {
+          "name": "vault_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "customer_id": {
+          "name": "customer_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "paypal_wallets_user_id_user_id_fk": {
+          "name": "paypal_wallets_user_id_user_id_fk",
+          "tableFrom": "paypal_wallets",
+          "tableTo": "user",
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "paypal_wallets_vault_id_unique": {
+          "name": "paypal_wallets_vault_id_unique",
+          "nullsNotDistinct": false,
+          "columns": ["vault_id"]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     }
   },
