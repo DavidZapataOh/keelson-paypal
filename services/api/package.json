@@ -49,6 +49,7 @@
     "@keelson/policy": "workspace:*",
     "@keelson/redteam": "workspace:*",
     "@keelson/relayer": "workspace:*",
+    "@keelson/scitt": "workspace:*",
     "@keelson/timestamp": "workspace:*",
     "@modelcontextprotocol/server": "2.4.0",
     "@noir-lang/noir_js": "1.0.0",

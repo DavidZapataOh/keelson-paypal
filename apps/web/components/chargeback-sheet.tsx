@@ -31,11 +31,14 @@ export function ChargebackSheet({
   open,
   onOpenChange,
   purchaseId,
+  statement = false,
   onFiled,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   purchaseId: string;
+  /** The Alibi is an IETF SCITT statement, which its PDF embeds. */
+  statement?: boolean;
   onFiled: (c: Chargeback) => void;
 }) {
   const [reason, setReason] = useState<Reason>("not_as_described");
@@ -86,6 +89,13 @@ export function ChargebackSheet({
               </label>
             ))}
           </fieldset>
+          <div className="grid gap-1">
+            <p className="font-medium">Evidence attached</p>
+            <ul className="font-mono text-muted-foreground text-xs">
+              <li>alibi-{purchaseId}.pdf</li>
+              {statement ? <li>{purchaseId}.cose, inside the PDF</li> : null}
+            </ul>
+          </div>
           <p className="text-muted-foreground">
             The card network decides. Whatever it returns to you is subtracted from any claim on the
             agent's bond, and the bond pays nothing while the chargeback is open.

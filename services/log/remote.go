@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"filippo.io/torchwood"
 	"fmt"
 	"io"
 	"net/http"
@@ -50,6 +51,8 @@ type remoteSigner struct {
 	pinned   atomic.Pointer[[32]byte]
 	http     *http.Client
 	bindOnce sync.Mutex
+	// receipts keeps leg A's receipt root signatures; nil when no receipt key is pinned.
+	receipts *remoteReceipts
 }
 
 func newRemoteSigner(vkey, url, token string, registry signerRegistry) (*remoteSigner, error) {
@@ -169,6 +172,8 @@ func (s *remoteSigner) sign(ctx context.Context, msg []byte, size uint64, from *
 	var signed struct {
 		Signature string `json:"signature"`
 		Vkey      string `json:"vkey"`
+		// ReceiptSignature is leg A's RFC 9942 signature over the same tree's root.
+		ReceiptSignature string `json:"receipt_signature"`
 	}
 	if err := json.Unmarshal(out, &signed); err != nil {
 		return nil, nil, err
@@ -176,6 +181,13 @@ func (s *remoteSigner) sign(ctx context.Context, msg []byte, size uint64, from *
 	sig, err := base64.StdEncoding.DecodeString(signed.Signature)
 	if err != nil || !ed25519.Verify(s.public, msg, sig) {
 		return nil, nil, errors.New("leg A's signature does not verify under the pinned log key")
+	}
+	if s.receipts != nil && signed.ReceiptSignature != "" {
+		rs, err := base64.StdEncoding.DecodeString(signed.ReceiptSignature)
+		c, cerr := torchwood.ParseCheckpoint(string(msg))
+		if err == nil && cerr == nil && !s.receipts.accept(s.name, size, [32]byte(c.Hash), rs) {
+			return nil, nil, errors.New("leg A's receipt signature does not verify under the pinned receipt key")
+		}
 	}
 	return sig, nil, nil
 }

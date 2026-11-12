@@ -113,6 +113,8 @@ export const purchases = pgTable(
     amountConfirm: jsonb().$type<StoredAmountConfirm>(),
     /** The salt of the leaf's `paypal_ref_commit`. */
     paypalRefSalt: bytea(),
+    /** The purchase's SCITT signed statement, as the legs answered the countersign: its v2 leaf. */
+    statement: bytea(),
     /** The capture's sequence number among the mandate's captures, as its `invoice_id` states it. */
     captureSeq: smallint(),
     /** PayPal's status of the capture. */

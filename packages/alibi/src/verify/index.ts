@@ -1,12 +1,15 @@
-import { LEAF_PREFIX } from "@keelson/log";
+import { LEAF_PREFIX, receiptKeyMap } from "@keelson/log";
+import { type EarStatus, earClaims } from "@keelson/scitt";
 import { fromBase64 } from "../b64.ts";
-import type { AlibiBundle, AlibiReceipt } from "../schema.ts";
+import type { AlibiBundle, AlibiBundleV2, AlibiReceipt, AnyAlibi } from "../schema.ts";
 import { type Context, runCheck } from "./check.ts";
 import { anchor } from "./checks/anchor.ts";
 import { nitro, tdx } from "./checks/attestation.ts";
 import { card } from "./checks/card.ts";
+import { cardStatements } from "./checks/card-statements.ts";
 import { anchorRoot, anchorTx, chainIdOf, queryOf, registry } from "./checks/chain.ts";
 import { checkout } from "./checks/checkout.ts";
+import { cmw } from "./checks/cmw.ts";
 import { conversion } from "./checks/conversion.ts";
 import { countersign } from "./checks/countersign.ts";
 import { evidence } from "./checks/evidence.ts";
@@ -17,12 +20,15 @@ import { challenge, credentials, passkey } from "./checks/mandate.ts";
 import { paypal } from "./checks/paypal.ts";
 import { replay } from "./checks/policy.ts";
 import { qr } from "./checks/qr.ts";
+import { receipt } from "./checks/receipt.ts";
+import { statement } from "./checks/statement.ts";
 import { timestamps, zk, zkC3 } from "./checks/timestamps.ts";
 import { isBundle } from "./checks/util.ts";
 import { webFact } from "./checks/web-fact.ts";
 import { diffPointers, expand, reads, UNBOUND, valueAt } from "./expand.ts";
 import { fieldsOf } from "./fields.ts";
-import { type Report, type VerifyOptions, verdictOf } from "./report.ts";
+import { type Check, type Report, type VerifyOptions, verdictOf } from "./report.ts";
+import { legacyOf, type StatementView, statementView, v2Pointer } from "./view.ts";
 
 export { CATEGORY_LABELS } from "@keelson/mandate";
 export { type AmberReading, readAmber } from "./amber.ts";
@@ -65,6 +71,8 @@ export {
 const CHECKS = [
   format,
   leaf,
+  statement,
+  cmw,
   qr,
   challenge,
   passkey,
@@ -76,6 +84,7 @@ const CHECKS = [
   replay,
   policy,
   inclusion,
+  receipt,
   witnesses,
   anchor,
   anchorRoot,
@@ -89,22 +98,31 @@ const CHECKS = [
   conversion,
   paypal,
   card,
+  cardStatements,
 ];
 
 /** The one chain read of a verification, started before any offline check runs. */
-function chainRead(input: AlibiBundle | AlibiReceipt, opts: VerifyOptions) {
+function chainRead(
+  input: AlibiBundle | AlibiReceipt,
+  opts: VerifyOptions,
+  view: StatementView | null,
+) {
   if (!opts.chain) return null;
   const { chain } = opts;
+  const bridgeSigner = view?.parsed?.kind === "bridge" ? view.parsed.signer : undefined;
   const read = (async () => {
     const chainId = chainIdOf(input);
     if (chainId === undefined) throw new Error("the Alibi names no chain");
-    return chain.read(chainId, queryOf(input, chainId));
+    return chain.read(chainId, queryOf(input, chainId, bridgeSigner));
   })();
   read.catch(() => {});
   return read;
 }
 
-function modeOf(input: AlibiBundle | AlibiReceipt): Report["mode"] {
+function modeOf(input: AlibiBundle | AlibiReceipt, view: StatementView | null): Report["mode"] {
+  if (view?.parsed?.kind === "purchase" || view?.parsed?.kind === "bridge") {
+    return view.parsed.claims.mode;
+  }
   if (isBundle(input)) return input.tee.mode;
   try {
     const text = new TextDecoder().decode(fromBase64(input.leaf));
@@ -115,25 +133,59 @@ function modeOf(input: AlibiBundle | AlibiReceipt): Report["mode"] {
   }
 }
 
+/** The v1-shaped input the checks read, and the statement view of a v2 Alibi. */
+function prepare(input: AnyAlibi): {
+  legacy: AlibiBundle | AlibiReceipt;
+  view: StatementView | null;
+} {
+  let view: StatementView | null = null;
+  try {
+    view = statementView(input);
+  } catch {
+    return { legacy: input as AlibiBundle, view: null };
+  }
+  try {
+    return { legacy: legacyOf(input, view), view };
+  } catch {
+    // Claims that cannot be read leave only what the log holds; `scitt.statement` says why.
+    return {
+      legacy: legacyOf({ ...(input as object), attestation: undefined } as never, view),
+      view,
+    };
+  }
+}
+
 /**
- * Verifies an Alibi bundle, or the public receipt of one, against the pinned trust roots and, when
- * `opts.chain` is given, one read of the chain. Each check reports on its own; for a receipt the
- * checks that need a section it does not carry are `undisclosed`.
+ * An Alibi in the v1 shape: a v2 bundle's countersign, legs and attestations read from its
+ * statement and evidence collection, its leaf the registered statement. For reading its facts;
+ * never encoded or verified as a v1 Alibi.
  */
-export async function verifyAlibi(
-  input: AlibiBundle | AlibiReceipt,
-  opts: VerifyOptions = {},
-): Promise<Report> {
+export function v1Shape(input: AlibiBundle | AlibiBundleV2): AlibiBundle;
+export function v1Shape(input: AnyAlibi): AlibiBundle | AlibiReceipt;
+export function v1Shape(input: AnyAlibi): AlibiBundle | AlibiReceipt {
+  return prepare(input).legacy;
+}
+
+/**
+ * Verifies an Alibi bundle, or the public receipt of one, of either version, against the pinned
+ * trust roots and, when `opts.chain` is given, one read of the chain. Each check reports on its
+ * own; for a receipt the checks that need a section it does not carry are `undisclosed`.
+ */
+export async function verifyAlibi(input: AnyAlibi, opts: VerifyOptions = {}): Promise<Report> {
   const started = performance.now();
+  const { legacy, view } = prepare(input);
   const ctx: Context = {
     now: opts.now ?? new Date(),
     expect: opts.expect,
-    chain: chainRead(input, opts),
+    chain: chainRead(legacy, opts, view),
+    view,
+    receiptKeys: opts.receiptKeys ?? receiptKeyMap(),
   };
   const changed = opts.original ? diffPointers(expand(opts.original), expand(input)) : [];
   const checks = await Promise.all(
     CHECKS.map(async (c) => {
-      const check = await runCheck(c, input, ctx);
+      const check = await runCheck(c, legacy, ctx);
+      if (view) check.reads = [...new Set(check.reads.map(v2Pointer))];
       opts.onCheck?.(check);
       return check;
     }),
@@ -147,8 +199,8 @@ export async function verifyAlibi(
   return {
     verdict: verdictOf(checks),
     checks,
-    mode: modeOf(input),
-    fields: fieldsOf(input),
+    mode: modeOf(legacy, view),
+    fields: fieldsOf(legacy),
     unbound: UNBOUND.flatMap((p) => {
       const value = valueAt(input, p);
       return value === undefined ? [] : [{ pointer: p, value }];
@@ -157,4 +209,31 @@ export async function verifyAlibi(
     ...(answer ? { rpc: { url: answer.rpc, custom: answer.custom } } : {}),
     ms: performance.now() - started,
   };
+}
+
+const AR4SI = { affirming: 2, warning: 32, contraindicated: 96 } as const;
+
+/**
+ * The report's attestation results as an EAR claims set (draft-ietf-rats-ear-05), one appraisal per
+ * leg: affirming when its attestation verified, contraindicated when it failed, none otherwise.
+ */
+export function earOf(report: Report, now: Date): Record<string, unknown> {
+  const legs = report.mode === "2of2" ? (["tdx", "nitro"] as const) : (["tdx"] as const);
+  const appraisal = (c: Check | undefined) => {
+    const status: EarStatus =
+      c?.status === "pass" ? "affirming" : c?.status === "fail" ? "contraindicated" : "none";
+    const v = status === "none" ? undefined : AR4SI[status];
+    return {
+      status,
+      ...(c?.status === "fail" && c.reason ? { details: [c.reason] } : {}),
+      ...(v === undefined ? {} : { instanceIdentity: v, executables: v, hardware: v }),
+    };
+  };
+  return earClaims({
+    iat: Math.floor(now.getTime() / 1000),
+    verifier: { developer: "https://keelson.finance", build: "@keelson/alibi" },
+    submods: Object.fromEntries(
+      legs.map((l) => [l, appraisal(report.checks.find((c) => c.id === `tee.attestation.${l}`))]),
+    ),
+  });
 }

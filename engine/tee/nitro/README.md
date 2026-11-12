@@ -45,6 +45,14 @@ Leg B refuses an observation from leg A that is more than 2 s ahead of its clock
 
 In the document, `user_data` is `report_data(binding, block.hash)`, `public_key` is the signer's uncompressed SEC1 key and `nonce` is the block hash. The enclave cannot read the chain, so the parent supplies the block; a verifier checks that `block.hash` is the hash of block `block.number` and that it is recent. `POST /v1/attestation/refresh` (bearer) with `{ "block": { "number", "hash" } }` attests the same signer over a newer block. A served document older than an hour is replaced by `503 attestation_stale` until it is refreshed.
 
+## PayPal, read by the enclave itself
+
+Leg B reads the PayPal authorization of every countersign with its own REST credential and refuses (`409 paypal_disagree`) unless its reading equals leg A's observation, field for field except the raw bodies and read times. The API asks it to read ahead (`POST /v1/paypal/prefetch`) while leg A countersigns; a reading up to 2 s old is used. `/v1/health` then reports `paypal_reads: 1`.
+
+- **Network.** The enclave has none. `keelson-vsock-proxy.service` runs `vsock-proxy` on the parent (CID 3) for port 8101 → `api-m.sandbox.paypal.com:443`, 8102 → `api-m.paypal.com:443` and 8103 → `kms.us-west-2.amazonaws.com:443`, allowed in `vsock-proxy.yaml`. The enclave terminates TLS itself and trusts one root per host (DigiCert Global Root G2 for PayPal, Amazon Root CA 1 for KMS), so the parent relays bytes it cannot read.
+- **The secret.** The client secret is encrypted once with `aws kms encrypt --key-id alias/keelson-leg-b` and kept in the SSM parameter `/keelson/leg-b/paypal-secret-ct`. `boot.ts` sends that ciphertext and the instance role's session in the boot message. The enclave makes an RSA-2048 key, has the NSM attest its public key, calls KMS `Decrypt` with that `Recipient`, and opens the CMS envelope KMS returns. The key policy (`kms-policy.json`) allows `kms:Decrypt` only when `kms:RecipientAttestation:ImageSha384` is the current or next image's PCR0, so the parent's own credentials cannot decrypt it.
+- **Without it.** A boot message with no `paypal` boots a leg B that confirms nothing itself, as before.
+
 ## Scripts
 
 They read `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and `AWS_REGION` from the environment, and `launch.sh` also `CLOUDFLARE_API_TOKEN`.

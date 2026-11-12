@@ -17,6 +17,7 @@ import {
 import type { Logger } from "pino";
 import type { RedisClientType } from "redis";
 import { type HoldDeps, voidHold } from "./hold/maintenance.ts";
+import { currentIssuer } from "./issuer.ts";
 
 /**
  * Judges older than this are closed by the nightly reset.
@@ -91,6 +92,8 @@ export async function admitJudgeCompile(kv: RedisClientType, userId: string): Pr
  * red-team campaign.
  */
 export async function tourSeed(db: Db, agentId: bigint | undefined) {
+  // After the issuer key moved, a mandate issued with the current key: one that needs no renewal.
+  const issuer = await currentIssuer(db);
   const [bought] = await db
     .execute<{ mandate_id: string }>(sql`
     select p.mandate_id from purchases p
@@ -99,7 +102,8 @@ export async function tourSeed(db: Db, agentId: bigint | undefined) {
     join "user" u on u.id = m.user_id
     where p.state = 'CAPTURED' and not u.is_anonymous and u.email like '%@example.test' ${agentId === undefined ? sql`` : sql`and m.operator_agent_id = ${agentId.toString()}`}
     -- An agent run's mandate, where Keelson also blocked an attacked cart, comes first.
-    order by exists (select 1 from purchases d where d.mandate_id = p.mandate_id and d.state = 'DENIED') desc,
+    order by (m.issuer_thumbprint is not distinct from ${issuer} or ${issuer}::text is null) desc,
+      exists (select 1 from purchases d where d.mandate_id = p.mandate_id and d.state = 'DENIED') desc,
       p.created_at desc limit 1`)
     .then((r) => r.rows);
   // The newest test buyer's purchase whose C1 and C3 proofs were composed into one.

@@ -560,6 +560,7 @@ fn a_signed_open_mandate_allows_its_cart() {
         expected_nonce: o["expectedNonce"].as_str().unwrap().into(),
         now: o["now"].as_i64().unwrap(),
         max_skew_sec: o["maxSkewSec"].as_i64().unwrap(),
+        decoy_salts: vec![],
     };
     let jwk = Jwk::from_value(&valid["jwk"]).unwrap();
     let verify =

@@ -97,3 +97,23 @@ description = "A public SP1 Groth16 proof of the committed countersign vector: p
 paths = [
   '''contracts/test/vectors/engine-proof\.json''',
 ]
+
+[[allowlists]]
+description = "Throwaway keys of the SCITT statement and receipt golden vectors (0x01..01, 0x02..02, 0x03..03 and a hashed test seed), never deployed"
+paths = [
+  '''internal/scitt/testdata/.*\.json''',
+  '''internal/alibilog/testdata/statement-v2/.*\.json''',
+]
+
+[[allowlists]]
+description = "Lithic's published OpenAPI examples of a card and a settled transaction: example tokens, no credential"
+paths = [
+  '''engine/tee/tests/vectors/lithic/.*\.json''',
+]
+
+[[allowlists]]
+description = "A throwaway RSA key and certificate made with OpenSSL for the CMS envelope test, and an AWS SigV4 vector with AWS's documented example credentials"
+paths = [
+  '''engine/tee/tests/fixtures/cms/.*''',
+  '''engine/tee/tests/vectors/sigv4/.*\.json''',
+]

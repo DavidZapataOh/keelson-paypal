@@ -53,6 +53,23 @@ checkpoint, _, err := torchwood.VerifyCheckpoint(signedCheckpoint, policy)
 its key can rebuild the tree at any size and check that every witness refuses forks and rollbacks.
 Its key is [`keys/conformance-2026-1.vkey`](keys/conformance-2026-1.vkey); it holds no Alibis.
 
+## Receipts
+
+Each `add` answer also carries an [RFC 9942](https://www.rfc-editor.org/rfc/rfc9942) receipt of the
+leaf (`receipt`, base64) in the same checkpoint: a `COSE_Sign1` with an Ed25519 (`-19`) signature over
+the detached tree root, `vds` `RFC9162_SHA256` (`1`) and the leaf's inclusion path. The proof is the
+one the `tlog-proof` carries, so both prove the same inclusion; the witnesses' cosignatures stay in the
+checkpoint. A one-leaf tree gets no receipt (RFC 9942 needs a non-empty path).
+
+The receipt key is not the checkpoint key. Leg A holds it for the origins it signs and returns its
+root signature with each checkpoint signature; the log checks it against `LOG_RECEIPT_KEY_<env>` (hex)
+before using it. The keys are served as a COSE_KeySet at `/.well-known/scitt-keys`
+([SCRAPI](https://datatracker.ietf.org/doc/draft-ietf-scitt-scrapi/)). Its protected header is
+`{1: -19, 4: SHA-256(key), 15: {1: "https://log.keelson.finance", 2: <origin>}, 395: 1}`.
+
+Leaves are either the JCS leaves (`keelson.finance/alibi/v1`) or SCITT signed statements
+([RFC 9943](https://www.rfc-editor.org/rfc/rfc9943)): admission checks both the same way.
+
 ## Sigsum
 
 Checkpoints are co-logged in the [Sigsum](https://www.sigsum.org) log

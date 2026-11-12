@@ -1,6 +1,7 @@
 import type { AlibiBundle, AlibiReceipt } from "../schema.ts";
 import type { ChainAnswer } from "./chain.ts";
 import type { Check, CheckId, CheckStatus, VerifyOptions } from "./report.ts";
+import type { StatementView } from "./view.ts";
 
 /** A check's failure: why, and the pointers of the values that do not hold. */
 class CheckFailure extends Error {
@@ -30,6 +31,10 @@ export interface Context {
   expect: VerifyOptions["expect"];
   /** The one chain read of this verification; `null` offline. */
   chain: Promise<ChainAnswer> | null;
+  /** The v2 statement, `null` for a v1 Alibi; checks then read the v1-shaped projection. */
+  view: StatementView | null;
+  /** The pinned RFC 9942 receipt keys, by hex key id. */
+  receiptKeys: ReadonlyMap<string, Uint8Array>;
 }
 
 export interface CheckDef {
