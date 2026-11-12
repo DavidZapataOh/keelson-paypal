@@ -3,7 +3,7 @@ import "../tee/attest.ts";
 import { toBase64 } from "@keelson/alibi";
 import { c3Statement, verifyC3 } from "@keelson/alibi/verify";
 import { toHex } from "@keelson/core";
-import { asc, type Db, mandates, passkey, sql, userSetRoots } from "@keelson/db";
+import { and, asc, chainTxs, type Db, eq, mandates, passkey, sql, userSetRoots } from "@keelson/db";
 import {
   type C3Assertion,
   c3Inputs,
@@ -17,6 +17,7 @@ import type { Render } from "@renderinc/sdk";
 import type { Logger } from "pino";
 import type { RedisClientType } from "redis";
 import { passkeyJwk, SignatureError } from "../mandate-signature.ts";
+import { resumeAwaitingC3 } from "../pipeline/drive.ts";
 import { prove } from "./bb.ts";
 import { awaitingC3, proveAnonymousPurchase } from "./c1c3.ts";
 
@@ -71,6 +72,26 @@ const ROOTS_CHAIN_ID = 421614;
 
 /** The relayer key a registered-user root is published under (`0x` + 64 hex). */
 export const rootKey = (root: string): string => `RegisteredUserSet.publish:${root}`;
+
+/**
+ * Whether a mandate's C3 proof is published: stored, and the user-set root it proves membership
+ * in confirmed on chain. Its purchases' Alibis carry it from then on.
+ */
+export async function c3Published(db: Db, proof: C3Proof | null): Promise<boolean> {
+  const root = proof?.public_inputs[2];
+  if (!root) return false;
+  const [tx] = await db
+    .select({ id: chainTxs.id })
+    .from(chainTxs)
+    .where(
+      and(
+        eq(chainTxs.chainId, ROOTS_CHAIN_ID),
+        eq(chainTxs.key, rootKey(root)),
+        eq(chainTxs.status, "confirmed"),
+      ),
+    );
+  return tx !== undefined;
+}
 
 /** How long a publish waits for its pending transaction before the caller tries again. */
 const PUBLISH_WAIT_MS = 15_000;
@@ -138,6 +159,7 @@ export async function proveAnonymousMandate(
     columns: {
       payloadSd: true,
       disclosures: true,
+      decoySalts: true,
       userAuth: true,
       commitment: true,
       mandateHash: true,
@@ -152,7 +174,7 @@ export async function proveAnonymousMandate(
   const started = performance.now();
   const users = await currentUserSet(db);
   const { inputs } = await c3Inputs({
-    mandate: decodeMandate(row.payloadSd, row.disclosures),
+    mandate: decodeMandate(row.payloadSd, row.disclosures, row.decoySalts),
     salt: Uint8Array.from(Buffer.from(salt.replace(/^0x/, ""), "hex")),
     payloadSd: row.payloadSd,
     assertion: row.userAuth as C3Assertion,
@@ -199,6 +221,7 @@ export function c3Prover(
     return async (mandateId, salt) => {
       await proveAnonymousMandate({ db, log }, mandateId, salt);
       if (relayer) await publishUserSetRoots({ db, relayer, log });
+      await resumeAwaitingC3(db, mandateId);
       for (const purchaseId of await awaitingC3(db, mandateId)) {
         await proveAnonymousPurchase({ db, log }, purchaseId);
       }

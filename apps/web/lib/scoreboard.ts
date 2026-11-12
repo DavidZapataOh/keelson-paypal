@@ -44,6 +44,20 @@ export interface CampaignItem {
   attacks: number;
 }
 
+/**
+ * The campaign the scoreboard opens on, of a newest-first list: one still running, live;
+ * otherwise the finished one with the most attacks, whose bounds are the tightest.
+ */
+export function featuredCampaign(list: readonly CampaignItem[]): string | undefined {
+  const attacked = list.filter((c) => c.attacks > 0);
+  const running = attacked.find((c) => c.finishedAt === null);
+  if (running) return running.id;
+  return attacked.reduce<CampaignItem | undefined>(
+    (best, c) => (best === undefined || c.attacks > best.attacks ? c : best),
+    undefined,
+  )?.id;
+}
+
 export const campaignUrl = (id: string, path: "ledger" | "scoreboard" | "scoreboard/stream") =>
   `${API}/v1/redteam/campaigns/${id}/${path}`;
 

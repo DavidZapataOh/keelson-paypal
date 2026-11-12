@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
+import { ACCEPTED_ADVISORIES } from "../src/advisories.ts";
 import { AttestError } from "../src/errors.ts";
 import { type DstackEvent, replayRtmr3 } from "../src/eventlog.ts";
 import { getCollateral } from "../src/server/collateral.ts";
@@ -16,9 +17,12 @@ const input = (overrides: Partial<{ quote: Uint8Array; eventLog: DstackEvent[] }
   collateral: tdxEvidence.collateral,
   ...overrides,
 });
-const appJson = JSON.parse(
-  readFileSync(new URL("../../../engine/tee/phala/app.json", import.meta.url), "utf8"),
-) as { compose_hash: string; app_id: string };
+type Tdx = { tdx: { app_id: string; compose_hash: string } };
+const read = <T>(path: string) =>
+  JSON.parse(readFileSync(new URL(`../../../engine/tee/${path}`, import.meta.url), "utf8")) as T;
+// The published build the captured leg runs: the current one, or during a rotation the previous one.
+const published = [read<Tdx>("measurements.json"), ...read<Tdx[]>("measurements-rotation.json")];
+const builds = published.map((m) => m.tdx);
 
 const codeOf = async (p: Promise<unknown>) => {
   const error = await p.then(
@@ -37,14 +41,15 @@ describe("verifyTdx", () => {
     expect(result.reportData).toMatch(/^0x[0-9a-f]{128}$/);
     expect(result.mrtd).toMatch(/^0x[0-9a-f]{96}$/);
     expect(result.rtmr).toHaveLength(4);
-    expect(result.appId).toBe(`0x${appJson.app_id}`);
+    expect(builds.map((m) => `0x${m.app_id}`)).toContain(result.appId);
     expect(result.osImageHash).toMatch(/^0x[0-9a-f]{64}$/);
     expect(result.keyProvider).toContain('"name":"kms"');
   });
 
   test("binds the compose hash recorded for the deployment", async () => {
     const result = await verifyTdx(input(), { now });
-    expect(result.composeHash).toBe(`0x${appJson.compose_hash}`);
+    const build = builds.find((m) => `0x${m.app_id}` === result.appId);
+    expect(result.composeHash).toBe(`0x${build?.compose_hash}`);
   });
 
   test("replays RTMR3 to the value in the quote", async () => {
@@ -94,11 +99,26 @@ describe("verifyTdx", () => {
 });
 
 describe("acceptTcbStatus", () => {
-  test("accepts UpToDate, and SWHardeningNeeded only with advisory ids", () => {
+  test("accepts UpToDate and rejects every other status without advisories", () => {
     expect(() => acceptTcbStatus("UpToDate", [])).not.toThrow();
-    expect(() => acceptTcbStatus("SWHardeningNeeded", ["INTEL-SA-00837"])).not.toThrow();
     for (const status of ["SWHardeningNeeded", "OutOfDate", "ConfigurationNeeded", "Revoked"]) {
       expect(() => acceptTcbStatus(status, [])).toThrow(AttestError);
+    }
+  });
+
+  test("accepts SWHardeningNeeded only when every advisory was reviewed", () => {
+    const code = (ids: string[]) => {
+      try {
+        acceptTcbStatus("SWHardeningNeeded", ids);
+        return "ok";
+      } catch (error) {
+        return (error as AttestError).code;
+      }
+    };
+    expect(code(["INTEL-SA-99999"])).toBe("advisory_not_allowed");
+    for (const id of Object.keys(ACCEPTED_ADVISORIES)) {
+      expect(code([id])).toBe("ok");
+      expect(code([id, "INTEL-SA-99999"])).toBe("advisory_not_allowed");
     }
   });
 });

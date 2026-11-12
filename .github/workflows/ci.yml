@@ -57,8 +57,10 @@ jobs:
             ts:
               - *shared
               - packages/**
+              - internal/scitt/**
               - services/api/**
               - services/agent/**
+              - services/redteam/**
               - services/mcp/**
               - services/monitor/**
               - apps/**
@@ -202,7 +204,15 @@ jobs:
           grep -rEn "paypalMockResponse|PayPal-Mock-Response" packages services apps --exclude-dir=node_modules --exclude-dir=dist || status=$?
           test "$status" -eq 1
       - run: pnpm --filter @keelson/timestamp exec playwright install chromium
-      - run: pnpm turbo run typecheck test build --filter='!./packages/db' --filter='!./packages/attest' --filter='!./packages/evidence' --filter='!./services/api' --filter='!./apps/store' --filter='!./services/monitor' --filter='!./packages/relayer' --filter='!./apps/landing' --concurrency=100% --cache-dir=.turbo
+      # The RFC 8610 reference tool validates the SCITT, RATS and CMW encodings against their CDDL.
+      - uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f # v1.335.0
+        with:
+          ruby-version: "3.4"
+      - name: Install the cddl tool
+        run: gem install cddl -v 0.12.14 --no-document
+      - env:
+          KEELSON_REQUIRE_CDDL: "1"
+        run: pnpm turbo run typecheck test build --filter='!./packages/db' --filter='!./packages/attest' --filter='!./packages/evidence' --filter='!./services/api' --filter='!./apps/store' --filter='!./services/monitor' --filter='!./packages/relayer' --filter='!./apps/landing' --concurrency=100% --cache-dir=.turbo
       # On its own, after the fan-out: its e2e times a visitor's tamper flow against a 10 s budget.
       - name: Landing
         run: pnpm turbo run typecheck test build --filter=@keelson/landing --cache-dir=.turbo
@@ -218,6 +228,38 @@ jobs:
           pnpm --filter @keelson/policy vectors
           pnpm --filter @keelson/log vectors
           test -z "$(git status --porcelain)"
+
+  # Every checkout attack in the corpus against the real pay-click gate in Chromium; any attack the
+  # gate lets through fails the job, and the published scoreboard must match what this run measured.
+  red-team:
+    needs: changes
+    if: needs.changes.outputs.ts == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @keelson/agent exec playwright install --with-deps chromium
+      - run: pnpm turbo run build --filter=@keelson/agent^... --filter=@keelson/redteam^...
+      - name: Checkout-attack corpus
+        env:
+          ATTACK_RESULTS: ${{ runner.temp }}/attacks.jsonl
+        run: pnpm --filter @keelson/agent exec vitest run test/attacks.test.ts
+      - name: The published scoreboard is this run's
+        if: always()
+        run: |
+          node services/redteam/scripts/checkout-scoreboard.ts "$RUNNER_TEMP/attacks.jsonl" > "$RUNNER_TEMP/checkout-attacks.json"
+          { echo "### Checkout attacks"; echo '```json'; jq '{attacks, asr, through, controls, false_blocks, blocked_controls, classes: [.classes[] | {class, attacks, through}]}' "$RUNNER_TEMP/checkout-attacks.json"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          cmp "$RUNNER_TEMP/checkout-attacks.json" apps/web/public/redteam/checkout-attacks.json || {
+            echo "apps/web/public/redteam/checkout-attacks.json is not this run's scoreboard, which is:"
+            cat "$RUNNER_TEMP/checkout-attacks.json"
+            exit 1
+          }
 
   alibi-pdf:
     needs: changes
@@ -587,6 +629,10 @@ jobs:
           echo "$HOME/.local/tinygo/tinygo/bin" >> "$GITHUB_PATH"
           echo "$HOME/.local/tinygo/binaryen-version_133/bin" >> "$GITHUB_PATH"
       - run: tinygo version && wasm-opt --version
+      - uses: ./.github/actions/select-rpc
+        with:
+          alchemy-api-key: ${{ secrets.ALCHEMY_API_KEY }}
+          drpc-arbitrum-sepolia-url: ${{ secrets.DRPC_ARBITRUM_SEPOLIA_URL }}
       - run: pnpm install --frozen-lockfile --filter @keelson/monitor
       - run: pnpm --filter @keelson/monitor exec playwright install chromium
       - run: pnpm --filter @keelson/monitor test
@@ -600,6 +646,29 @@ jobs:
             echo "| gzip -9 | $(gzip -9 -c verifier.wasm | wc -c) |"
           } >> "$GITHUB_STEP_SUMMARY"
           test "$(gzip -9 -c verifier.wasm | wc -c)" -lt 1000000
+
+  monitor-fork:
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: ./.github/actions/select-rpc
+        with:
+          alchemy-api-key: ${{ secrets.ALCHEMY_API_KEY }}
+          drpc-arbitrum-sepolia-url: ${{ secrets.DRPC_ARBITRUM_SEPOLIA_URL }}
+      - uses: ./.github/actions/setup-foundry
+        with:
+          version: v1.9.0
+      - name: Monitor against an Arbitrum Sepolia fork
+        run: set -o pipefail; go test -race -tags fork -run 'TestAnchor|TestLiveOriginNotDeployed|TestPinnedAddresses|TestRealLeaves|TestSigner|TestUnknownSigner|TestMeasurementMismatch|TestEquivocated|TestIndexResumes' -v ./services/monitor/ 2>&1 | tee fork.log
+      - name: Chain check timings
+        if: always()
+        run: grep -E 'anchor check|signers:' fork.log >> "$GITHUB_STEP_SUMMARY" || true
 
   monitor-selfhost:
     needs: changes
@@ -615,7 +684,9 @@ jobs:
           docker run -d --name monitor -p 8080:8080 -v keelson-monitor:/data keelson-monitor
           for _ in $(seq 60); do
             if curl -fsS http://localhost:8080/report |
-              jq -e '[.origins[] | select((.cosigners | length) >= 2 and .error == null and .leavesAudited == .size)] | length == 2'; then
+              jq -e '[.origins[] | select((.cosigners | length) >= 2 and .error == null and .leavesAudited == .size
+                and (.anchor.status == "consistent" or .anchor.status == "not-deployed")
+                and (.signers.status == "checked" or .signers.status == "not-deployed"))] | length == 2'; then
               echo "Both origins verified $(( $(date +%s) - start )) s after docker run" | tee -a "$GITHUB_STEP_SUMMARY"
               exit 0
             fi
@@ -950,7 +1021,11 @@ jobs:
       - name: bb proves and verifies the demo mandate
         run: |
           circuits/c1/prove.sh "$RUNNER_TEMP/c1-proof.json"
-          bb gates -b circuits/c1/target/mandate_predicate.json | tee -a "$GITHUB_STEP_SUMMARY"
+          circuits/tamper.sh c1 circuits/c1/target engine/tee/zk/mandate_predicate.vk
+          if TAMPER_SELFTEST=1 circuits/tamper.sh c1 circuits/c1/target engine/tee/zk/mandate_predicate.vk; then
+            echo "tamper.sh passed a proof whose public inputs were left as they are" >&2
+            exit 1
+          fi
       - run: nargo test
         working-directory: circuits/c2a
       - name: The C2a key and Solidity verifiers are what the circuit compiles to
@@ -961,8 +1036,8 @@ jobs:
         run: |
           for class in amount currency category expiry merchant; do
             circuits/c2a/prove.sh "$class" "$RUNNER_TEMP/c2a-$class.json"
+            circuits/tamper.sh "c2a/$class" "circuits/c2a/target/$class" circuits/c2a/mandate_violation.vk
           done
-          bb gates -b circuits/c2a/target/mandate_violation.json | tee -a "$GITHUB_STEP_SUMMARY"
       - run: nargo test
         working-directory: circuits/c3
       - name: The C3 program, key and Solidity verifiers are what the circuit compiles to
@@ -973,8 +1048,8 @@ jobs:
         run: |
           for type in payment webauthn; do
             circuits/c3/prove.sh "$type" "$RUNNER_TEMP/c3-$type.json"
+            circuits/tamper.sh "c3/$type" "circuits/c3/target/$type" circuits/c3/anonymous_mandate.vk
           done
-          bb gates -b circuits/c3/target/anonymous_mandate.json | tee -a "$GITHUB_STEP_SUMMARY"
       - name: The composed program, key and Solidity verifiers are what the circuit compiles to
         run: |
           circuits/c1c3/build.sh
@@ -982,8 +1057,8 @@ jobs:
       - name: bb composes C1 and C3 of the anonymous demo purchase by recursion
         run: |
           circuits/c1c3/prove.sh "$RUNNER_TEMP/c1c3.json"
+          circuits/tamper.sh c1c3 circuits/c1c3/target circuits/c1c3/anonymous_purchase.vk
           circuits/c1c3/refuses.sh
-          bb gates -b circuits/c1c3/target/anonymous_purchase.json | tee -a "$GITHUB_STEP_SUMMARY"
       - run: nargo test
         working-directory: circuits/c2b
       - name: The C2b key and Solidity verifiers are what the circuit compiles to
@@ -994,5 +1069,11 @@ jobs:
         run: |
           for field in size color unitPrice returnsFree; do
             circuits/c2b/prove.sh "$field" "$RUNNER_TEMP/c2b-$field.json"
+            circuits/tamper.sh "c2b/$field" "circuits/c2b/target/$field" circuits/c2b/amber_contradiction.vk
           done
-          bb gates -b circuits/c2b/target/amber_contradiction.json | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Each circuit proves within its time budget
+        shell: bash
+        run: circuits/bench.sh | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: No circuit grows past its gate budget
+        if: ${{ !cancelled() }}
+        run: circuits/gates.sh

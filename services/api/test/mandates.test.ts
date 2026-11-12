@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { serve } from "@hono/node-server";
 import type { OpenAPIHono } from "@hono/zod-openapi";
-import { agentConnections, eq, operators } from "@keelson/db";
+import { agentConnections, eq, mandates, operators } from "@keelson/db";
 import { type Mandate, parseMandate } from "@keelson/mandate";
 import { POLICY_SET_HASH } from "@keelson/policy/hashes";
 import { cose, decodeCredentialPublicKey, isoBase64URL } from "@simplewebauthn/server/helpers";
@@ -424,6 +424,28 @@ test("a plain WebAuthn signature is accepted too", { timeout: 60_000 }, async ()
   const signed = await sign(s.page, mandateFor(s), { spc: false });
   expect(signed.type).toBe("webauthn.get");
   expect((await post(s.page, signed.body)).status).toBe(201);
+});
+
+test("a renewal revokes the mandate it renews, and only the user's own", {
+  timeout: 60_000,
+}, async () => {
+  const s = await signer();
+  const other = await signer();
+  const first = mandateFor(s);
+  expect((await post(s.page, (await sign(s.page, first)).body)).status).toBe(201);
+  const theirs = mandateFor(other);
+  expect((await post(other.page, (await sign(other.page, theirs)).body)).status).toBe(201);
+
+  const renewal = await sign(s.page, mandateFor(s));
+  expect((await post(s.page, { ...renewal.body, renews: first.mid })).status).toBe(201);
+  const [old] = await testDb.select().from(mandates).where(eq(mandates.id, first.mid));
+  expect(old?.state).toBe("REVOKED");
+
+  const stray = await sign(s.page, mandateFor(s));
+  expect((await post(s.page, { ...stray.body, renews: theirs.mid })).status).toBe(201);
+  const [kept] = await testDb.select().from(mandates).where(eq(mandates.id, theirs.mid));
+  expect(kept?.state).toBe("SIGNED");
+  expect(kept?.revokeRequestedAt).toBeNull();
 });
 
 test("an assertion over a different challenge is rejected", { timeout: 60_000 }, async () => {

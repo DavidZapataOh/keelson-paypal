@@ -1,3 +1,4 @@
+export { ACCEPTED_ADVISORIES, unreviewedAdvisories } from "./advisories.ts";
 export { AttestationCache } from "./cache.ts";
 export { type AttestCode, AttestError } from "./errors.ts";
 export { type DstackEvent, replayRtmr3 } from "./eventlog.ts";
@@ -9,6 +10,7 @@ export {
   nitroTimestamp,
   verifyNitro,
 } from "./nitro.ts";
+export { appraiseTd, deviceIdOf, TDX_DEVICES, TDX_POLICY } from "./policy.ts";
 export {
   type AttestedBinding,
   type AttestedBlock,

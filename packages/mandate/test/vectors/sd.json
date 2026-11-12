@@ -24167,5 +24167,1081 @@
       ]
     },
     "expected": "error"
+  },
+  {
+    "name": "decodeMandate/decoys/resolved-by-salt",
+    "input": {
+      "op": "decodeMandate",
+      "payloadSd": {
+        "v": "keelson.mandate.1",
+        "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "_sd": [
+            "KTx_D2rdzZVjiFWdB-nZMu1sbnVBrBBOrcOf-k-K734",
+            "RdkyYnS-ku_PBS-HDlbjct7LE8XMbJDNKd5MDJ5GWIo",
+            "UEUY6pLG7ZO5whIMwHvnvUFEGC3_E5bdxgpE5R0GPKc",
+            "kxlHmMqph26xX3tvrVZdOB3wMz8brSywiy_6wJ5dw3w"
+          ]
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+              "kid": "agt-01"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "...": "-W2Ivv7CAszyCH8MBlbJXYZRU-kJ200up0vzXjFi3lQ"
+            },
+            {
+              "type": "payment.budget",
+              "currency": "USD",
+              "_sd": [
+                "8917sowIYVp5FlpcVABC8-iy68cGodOTdL7tAv-t-1A",
+                "X0seR3_ArUXPSbMiP6vhhWZAxeiqrM5FM3VloTBUD18",
+                "gy5FyIaOWbit9HPdwOudZ8N_YDTFT1s-X2spATuIf74",
+                "nHQeD8CI_Y5e4a_tJLdbzrBSVPvtE_j5HL5qxvoJ9nc"
+              ]
+            },
+            {
+              "...": "cKq_-BijUs0f9pDPHJ5d4DWjBciNt6DP30OD8wGaEN4"
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "...": "H2bTZqcHjXNIHFhpKAN8n5Rx3zTxHfslJi9iajsU4Wo"
+                },
+                {
+                  "...": "1FI6uvX0DEqciagwz0jBthZ6ddHfTE0TtPkMbYE3ff8"
+                },
+                {
+                  "...": "9ryZq9H592FIaBOyMBswMb4GZ9tBljqFLnt9UoR3lEk"
+                },
+                {
+                  "...": "1Wmz2Cwt7saqVlKz7okW_k77OVw5a50gd2ljK433Ems"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            },
+            {
+              "...": "8ugoluKSE1a9nMqDysnTISoVGojnZfBAktzOqzQNlhk"
+            },
+            {
+              "...": "GPXo_ioE7guhvNkf4HG_RjzNtJlZOR4p00efRV2Z9KE"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "...": "djDq6e-oLvD0ZmP1fNREBQr5MBZt057exfvEzYVS0ZA"
+                },
+                {
+                  "...": "rV5i_JYq9sG-dD7F1gw8XE1sqtKti1clXFbvNaV00CA"
+                },
+                {
+                  "...": "qusaYb6UUXtcpT5UKnv4fFd7rhTNKWLx3EKHNX6aH2A"
+                },
+                {
+                  "...": "XBHez0gyMyDUd4PhDGIeU6UN60L7YiICD_kVX_ugyjk"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "...": "u2YooAReezqgWfAvNZhw1feOXKqeFyeTYqzN4B0TJ3M"
+                    },
+                    {
+                      "...": "mmR8ag-uosJ99iZEfxGxsoiNk1ovF9N-ccjmjAccLH4"
+                    },
+                    {
+                      "...": "NyZJjYsUn4L93lbK4XbW_QyJfk-lHoXWLX_ZOPqwDSM"
+                    },
+                    {
+                      "...": "p3YWn7yKhNQJ-kBpI98XaETGjBXpb2y_tB90DIu9iMI"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "subjective": [
+            "look good"
+          ],
+          "_sd": [
+            "P6dkpm94lVdXrqPlVNoeNywW5qMlw996mx7br9RsnNA",
+            "mmFuVmL1RbcO93QVLGjsFkWS9a-q7YfqgpIN0BBy2xE",
+            "qVItR2DHYakEQvOzxrnA7e1xHrchNRxDjsivdGMzsi0",
+            "uqw_GlnTlRsUZ86nK_Pkt4ms4VlnO_HehNHT2qV7-5Y"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "cnf": {
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+            "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+            "kid": "agt-01"
+          }
+        },
+        "_sd": [
+          "Dn1I-W730okNRjkhNLpb8QANPsjeH3T_qZUKuU7u_2M",
+          "VesqTtOB-nYlPwNoaO-gNOpER6lU4y1UOpP225mvcx0",
+          "twP70pxpVkV7JM-_wARJkyvK8Jp9IZ300rxBaRnwf-M",
+          "zgJjd4QCMMMlSERG7xd4TnYCqnFTYRG6wCg9UE7t73Q"
+        ]
+      },
+      "disclosures": [
+        "WyJSMGxKSXZKbkhKRWFFNFhBdWdoaEt3Iiwic3ViIiwia2xzX3Vzcl83ZjNhOWMyMSJd",
+        "WyJUSzN0TkhIbkFKYkRDUVZrd0dpM19BIiwiY3JlZCIseyJpZCI6IlprM3AweFFtSDh2TjFzTHdUNXVZZEEiLCJycF9pZCI6ImtlZWxzb24uZmluYW5jZSIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6ImY4M09KM0QyeEYxQmc4dm5Ld3hvMUFvOGp6VjVUblExck03YlkwcWsyY0EiLCJ5IjoieF9GRXpSdTltMzZITE5fdHVlNjU5TE5wWFc2cEN5U3Rpa1lqS0lXSTVhMCJ9fV0",
+        "WyJDVzF3WXFYVHJ6eFlLVVlKY0U4R2hRIiwiYXBwX2xvZ2luX2lkIiwiYW5kcmVzQGV4YW1wbGUuY29tIl0",
+        "WyJuLVpaazZxVk9DN0d2dmlLeWhfZlFBIiwicHJvbXB0X3N1bW1hcnkiLCJSdW5uaW5nIHNob2VzLCBzaXplIDEwLCB1bmRlciAkMTAwLCBmcmVlIHJldHVybnMsIGJ5IEZyaWRheSJd",
+        "WyJlSUN4UEJiazluRHJjVV84ZFhmREtBIiwicHJvbXB0X2hhc2giLCJzaGEyNTY6OWY4NmQwODE4ODRjN2Q2NTlhMmZlYWEwYzU1YWQwMTVhM2JmNGYxYjJiMGI4MjJjZDE1ZDZjMTViMGYwMGEwOCJd",
+        "WyJGamRQLV9peUhvNEhJbGh4MHF0VkNnIiwibWF4IiwxMDAwMF0",
+        "WyJad2cteGRibHBpazRYWExmRldBVHBBIix7InBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJ3NGVjRXFKTlhqM1A3cnNlTkNhcW93Iix7InR5cGUiOiJwYXltZW50LmFtb3VudF9yYW5nZSIsIm1heCI6MTAwMDAsImN1cnJlbmN5IjoiVVNEIn1d",
+        "WyJuQUY2Uzg4RkhoVzBZSDZMOEdTV2pnIix7ImlkIjoibXJjX3J1bmZhc3QiLCJuYW1lIjoiUnVuRmFzdCIsIndlYnNpdGUiOiJodHRwczovL3J1bmZhc3QuZXhhbXBsZSIsInBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJwUUZJVHhfLXRVVVl5VS1OWkxNaVV3Iix7ImlkIjoic2t1LXRyYWlsLTEwIiwidGl0bGUiOiJUcmFpbCBydW5uaW5nIHNob2UifV0",
+        "WyI1OXZ2eUlTUmEtUUp2bG92aVVtam5BIiwicmlza19kYXRhIix7ImRldmljZV9mcCI6ImZwXzNjOWE3MSIsImlwIjoiMjAzLjAuMTEzLjcifV0"
+      ],
+      "decoySalts": [
+        "dHtOCofVYeCleu7ZuVyY7w",
+        "lLrbFLbnFYKH0ybhrUtbcg",
+        "CWY8t0RC-Oj6AOUqmmfgSw",
+        "e8DdrlPuuOuK0FwY4sLZsg",
+        "YAZqgHqT1dtEaQ2eOiR5AQ",
+        "ODxo19l8uPs9ta5601tAmg",
+        "1Iw3rVRTHfV6rEQskU06sw",
+        "KyGy84loRzaNjybVsaTQrw",
+        "IHXMjb9Ugl6bM9ZZSNYOAw",
+        "tEwoHAQTpYVVyjDyXJI4ew",
+        "JsLvfQnrDXtcaBkZlM4skA",
+        "IX6jo5YDoXfTnIKxxSUb2w",
+        "OXJ-9jps_Q_eM7u1P2Y3ew",
+        "GuADqzk-uGQU9eqWDwIGUQ",
+        "h_AWaNN1QdWSQQNBQrq72g",
+        "-4cZpIyMB5rgd5MLY_ZYiw",
+        "V1bytfdH2oyG4xMow-ygIw",
+        "mVh6Y9Eydlb48J9Bhk1VwA",
+        "VrccAEa_GzkW4cPExywKLw",
+        "Edumvg_3uxPdT1FF_tWKMw",
+        "adQYCGp0rxGLzaJr74fnww"
+      ]
+    },
+    "expected": {
+      "v": "keelson.mandate.1",
+      "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+      "iat": 1793750400,
+      "nbf": 1793750400,
+      "exp": 1794355200,
+      "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+      "mode": "autonomous",
+      "user": {
+        "sub": "kls_usr_7f3a9c21",
+        "cred": {
+          "id": "Zk3p0xQmH8vN1sLwT5uYdA",
+          "rp_id": "keelson.finance",
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "f83OJ3D2xF1Bg8vnKwxo1Ao8jzV5TnQ1rM7bY0qk2cA",
+            "y": "x_FEzRu9m36HLN_tue659LNpXW6pCyStikYjKIWI5a0"
+          }
+        },
+        "app_login_id": "andres@example.com"
+      },
+      "agent": {
+        "operator": {
+          "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+          "agent_id": "42"
+        },
+        "cnf": {
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+            "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+            "kid": "agt-01"
+          }
+        },
+        "bond": {
+          "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+          "asset": "PYUSD",
+          "min": 5000
+        }
+      },
+      "payment": {
+        "rail": "paypal",
+        "currency": "USD",
+        "constraints": [
+          {
+            "type": "payment.amount_range",
+            "max": 10000,
+            "currency": "USD"
+          },
+          {
+            "type": "payment.budget",
+            "max": 10000,
+            "currency": "USD"
+          },
+          {
+            "type": "payment.allowed_payees",
+            "allowed": [
+              {
+                "paypal_merchant_id": "MERCH7XK2Q9LD"
+              }
+            ]
+          },
+          {
+            "type": "payment.execution_date",
+            "not_after": "2026-11-13T23:59:59Z"
+          }
+        ]
+      },
+      "checkout": {
+        "constraints": [
+          {
+            "type": "checkout.allowed_merchants",
+            "allowed": [
+              {
+                "id": "mrc_runfast",
+                "name": "RunFast",
+                "website": "https://runfast.example",
+                "paypal_merchant_id": "MERCH7XK2Q9LD"
+              }
+            ]
+          },
+          {
+            "type": "checkout.line_items",
+            "items": [
+              {
+                "id": "l1",
+                "acceptable_items": [
+                  {
+                    "id": "sku-trail-10",
+                    "title": "Trail running shoe"
+                  }
+                ],
+                "quantity": 1
+              }
+            ]
+          },
+          {
+            "type": "keelson.category",
+            "allow": [
+              "gpt:187"
+            ],
+            "deny": []
+          },
+          {
+            "type": "keelson.attributes",
+            "must": {
+              "size_us": "10",
+              "color": "any"
+            }
+          },
+          {
+            "type": "keelson.returns",
+            "min_days": 30,
+            "free": true
+          }
+        ]
+      },
+      "intent": {
+        "prompt_summary": "Running shoes, size 10, under $100, free returns, by Friday",
+        "prompt_hash": "sha256:9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08",
+        "subjective": [
+          "look good"
+        ]
+      },
+      "policy": {
+        "engine": "keelson-engine",
+        "version": "1.0.0",
+        "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+        "measurements": [
+          "tdx:0a1b2c",
+          "nitro:3d4e5f"
+        ]
+      },
+      "consent": {
+        "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+        "instruction_use": true,
+        "responsibility_ack": true,
+        "merchant_policy_ack": "at_capture",
+        "recurrence_ack": false
+      },
+      "zk": {
+        "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+      },
+      "risk_data": {
+        "device_fp": "fp_3c9a71",
+        "ip": "203.0.113.7"
+      }
+    }
+  },
+  {
+    "name": "decodeMandate/error/decoys-without-salts",
+    "input": {
+      "op": "decodeMandate",
+      "payloadSd": {
+        "v": "keelson.mandate.1",
+        "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "_sd": [
+            "KTx_D2rdzZVjiFWdB-nZMu1sbnVBrBBOrcOf-k-K734",
+            "RdkyYnS-ku_PBS-HDlbjct7LE8XMbJDNKd5MDJ5GWIo",
+            "UEUY6pLG7ZO5whIMwHvnvUFEGC3_E5bdxgpE5R0GPKc",
+            "kxlHmMqph26xX3tvrVZdOB3wMz8brSywiy_6wJ5dw3w"
+          ]
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+              "kid": "agt-01"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "...": "-W2Ivv7CAszyCH8MBlbJXYZRU-kJ200up0vzXjFi3lQ"
+            },
+            {
+              "type": "payment.budget",
+              "currency": "USD",
+              "_sd": [
+                "8917sowIYVp5FlpcVABC8-iy68cGodOTdL7tAv-t-1A",
+                "X0seR3_ArUXPSbMiP6vhhWZAxeiqrM5FM3VloTBUD18",
+                "gy5FyIaOWbit9HPdwOudZ8N_YDTFT1s-X2spATuIf74",
+                "nHQeD8CI_Y5e4a_tJLdbzrBSVPvtE_j5HL5qxvoJ9nc"
+              ]
+            },
+            {
+              "...": "cKq_-BijUs0f9pDPHJ5d4DWjBciNt6DP30OD8wGaEN4"
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "...": "H2bTZqcHjXNIHFhpKAN8n5Rx3zTxHfslJi9iajsU4Wo"
+                },
+                {
+                  "...": "1FI6uvX0DEqciagwz0jBthZ6ddHfTE0TtPkMbYE3ff8"
+                },
+                {
+                  "...": "9ryZq9H592FIaBOyMBswMb4GZ9tBljqFLnt9UoR3lEk"
+                },
+                {
+                  "...": "1Wmz2Cwt7saqVlKz7okW_k77OVw5a50gd2ljK433Ems"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            },
+            {
+              "...": "8ugoluKSE1a9nMqDysnTISoVGojnZfBAktzOqzQNlhk"
+            },
+            {
+              "...": "GPXo_ioE7guhvNkf4HG_RjzNtJlZOR4p00efRV2Z9KE"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "...": "djDq6e-oLvD0ZmP1fNREBQr5MBZt057exfvEzYVS0ZA"
+                },
+                {
+                  "...": "rV5i_JYq9sG-dD7F1gw8XE1sqtKti1clXFbvNaV00CA"
+                },
+                {
+                  "...": "qusaYb6UUXtcpT5UKnv4fFd7rhTNKWLx3EKHNX6aH2A"
+                },
+                {
+                  "...": "XBHez0gyMyDUd4PhDGIeU6UN60L7YiICD_kVX_ugyjk"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "...": "u2YooAReezqgWfAvNZhw1feOXKqeFyeTYqzN4B0TJ3M"
+                    },
+                    {
+                      "...": "mmR8ag-uosJ99iZEfxGxsoiNk1ovF9N-ccjmjAccLH4"
+                    },
+                    {
+                      "...": "NyZJjYsUn4L93lbK4XbW_QyJfk-lHoXWLX_ZOPqwDSM"
+                    },
+                    {
+                      "...": "p3YWn7yKhNQJ-kBpI98XaETGjBXpb2y_tB90DIu9iMI"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "subjective": [
+            "look good"
+          ],
+          "_sd": [
+            "P6dkpm94lVdXrqPlVNoeNywW5qMlw996mx7br9RsnNA",
+            "mmFuVmL1RbcO93QVLGjsFkWS9a-q7YfqgpIN0BBy2xE",
+            "qVItR2DHYakEQvOzxrnA7e1xHrchNRxDjsivdGMzsi0",
+            "uqw_GlnTlRsUZ86nK_Pkt4ms4VlnO_HehNHT2qV7-5Y"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "cnf": {
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+            "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+            "kid": "agt-01"
+          }
+        },
+        "_sd": [
+          "Dn1I-W730okNRjkhNLpb8QANPsjeH3T_qZUKuU7u_2M",
+          "VesqTtOB-nYlPwNoaO-gNOpER6lU4y1UOpP225mvcx0",
+          "twP70pxpVkV7JM-_wARJkyvK8Jp9IZ300rxBaRnwf-M",
+          "zgJjd4QCMMMlSERG7xd4TnYCqnFTYRG6wCg9UE7t73Q"
+        ]
+      },
+      "disclosures": [
+        "WyJSMGxKSXZKbkhKRWFFNFhBdWdoaEt3Iiwic3ViIiwia2xzX3Vzcl83ZjNhOWMyMSJd",
+        "WyJUSzN0TkhIbkFKYkRDUVZrd0dpM19BIiwiY3JlZCIseyJpZCI6IlprM3AweFFtSDh2TjFzTHdUNXVZZEEiLCJycF9pZCI6ImtlZWxzb24uZmluYW5jZSIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6ImY4M09KM0QyeEYxQmc4dm5Ld3hvMUFvOGp6VjVUblExck03YlkwcWsyY0EiLCJ5IjoieF9GRXpSdTltMzZITE5fdHVlNjU5TE5wWFc2cEN5U3Rpa1lqS0lXSTVhMCJ9fV0",
+        "WyJDVzF3WXFYVHJ6eFlLVVlKY0U4R2hRIiwiYXBwX2xvZ2luX2lkIiwiYW5kcmVzQGV4YW1wbGUuY29tIl0",
+        "WyJuLVpaazZxVk9DN0d2dmlLeWhfZlFBIiwicHJvbXB0X3N1bW1hcnkiLCJSdW5uaW5nIHNob2VzLCBzaXplIDEwLCB1bmRlciAkMTAwLCBmcmVlIHJldHVybnMsIGJ5IEZyaWRheSJd",
+        "WyJlSUN4UEJiazluRHJjVV84ZFhmREtBIiwicHJvbXB0X2hhc2giLCJzaGEyNTY6OWY4NmQwODE4ODRjN2Q2NTlhMmZlYWEwYzU1YWQwMTVhM2JmNGYxYjJiMGI4MjJjZDE1ZDZjMTViMGYwMGEwOCJd",
+        "WyJGamRQLV9peUhvNEhJbGh4MHF0VkNnIiwibWF4IiwxMDAwMF0",
+        "WyJad2cteGRibHBpazRYWExmRldBVHBBIix7InBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJ3NGVjRXFKTlhqM1A3cnNlTkNhcW93Iix7InR5cGUiOiJwYXltZW50LmFtb3VudF9yYW5nZSIsIm1heCI6MTAwMDAsImN1cnJlbmN5IjoiVVNEIn1d",
+        "WyJuQUY2Uzg4RkhoVzBZSDZMOEdTV2pnIix7ImlkIjoibXJjX3J1bmZhc3QiLCJuYW1lIjoiUnVuRmFzdCIsIndlYnNpdGUiOiJodHRwczovL3J1bmZhc3QuZXhhbXBsZSIsInBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJwUUZJVHhfLXRVVVl5VS1OWkxNaVV3Iix7ImlkIjoic2t1LXRyYWlsLTEwIiwidGl0bGUiOiJUcmFpbCBydW5uaW5nIHNob2UifV0",
+        "WyI1OXZ2eUlTUmEtUUp2bG92aVVtam5BIiwicmlza19kYXRhIix7ImRldmljZV9mcCI6ImZwXzNjOWE3MSIsImlwIjoiMjAzLjAuMTEzLjcifV0"
+      ]
+    },
+    "expected": "error"
+  },
+  {
+    "name": "decodeMandate/error/decoy-salt-unused",
+    "input": {
+      "op": "decodeMandate",
+      "payloadSd": {
+        "v": "keelson.mandate.1",
+        "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "_sd": [
+            "KTx_D2rdzZVjiFWdB-nZMu1sbnVBrBBOrcOf-k-K734",
+            "RdkyYnS-ku_PBS-HDlbjct7LE8XMbJDNKd5MDJ5GWIo",
+            "UEUY6pLG7ZO5whIMwHvnvUFEGC3_E5bdxgpE5R0GPKc",
+            "kxlHmMqph26xX3tvrVZdOB3wMz8brSywiy_6wJ5dw3w"
+          ]
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+              "kid": "agt-01"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "...": "-W2Ivv7CAszyCH8MBlbJXYZRU-kJ200up0vzXjFi3lQ"
+            },
+            {
+              "type": "payment.budget",
+              "currency": "USD",
+              "_sd": [
+                "8917sowIYVp5FlpcVABC8-iy68cGodOTdL7tAv-t-1A",
+                "X0seR3_ArUXPSbMiP6vhhWZAxeiqrM5FM3VloTBUD18",
+                "gy5FyIaOWbit9HPdwOudZ8N_YDTFT1s-X2spATuIf74",
+                "nHQeD8CI_Y5e4a_tJLdbzrBSVPvtE_j5HL5qxvoJ9nc"
+              ]
+            },
+            {
+              "...": "cKq_-BijUs0f9pDPHJ5d4DWjBciNt6DP30OD8wGaEN4"
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "...": "H2bTZqcHjXNIHFhpKAN8n5Rx3zTxHfslJi9iajsU4Wo"
+                },
+                {
+                  "...": "1FI6uvX0DEqciagwz0jBthZ6ddHfTE0TtPkMbYE3ff8"
+                },
+                {
+                  "...": "9ryZq9H592FIaBOyMBswMb4GZ9tBljqFLnt9UoR3lEk"
+                },
+                {
+                  "...": "1Wmz2Cwt7saqVlKz7okW_k77OVw5a50gd2ljK433Ems"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            },
+            {
+              "...": "8ugoluKSE1a9nMqDysnTISoVGojnZfBAktzOqzQNlhk"
+            },
+            {
+              "...": "GPXo_ioE7guhvNkf4HG_RjzNtJlZOR4p00efRV2Z9KE"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "...": "djDq6e-oLvD0ZmP1fNREBQr5MBZt057exfvEzYVS0ZA"
+                },
+                {
+                  "...": "rV5i_JYq9sG-dD7F1gw8XE1sqtKti1clXFbvNaV00CA"
+                },
+                {
+                  "...": "qusaYb6UUXtcpT5UKnv4fFd7rhTNKWLx3EKHNX6aH2A"
+                },
+                {
+                  "...": "XBHez0gyMyDUd4PhDGIeU6UN60L7YiICD_kVX_ugyjk"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "...": "u2YooAReezqgWfAvNZhw1feOXKqeFyeTYqzN4B0TJ3M"
+                    },
+                    {
+                      "...": "mmR8ag-uosJ99iZEfxGxsoiNk1ovF9N-ccjmjAccLH4"
+                    },
+                    {
+                      "...": "NyZJjYsUn4L93lbK4XbW_QyJfk-lHoXWLX_ZOPqwDSM"
+                    },
+                    {
+                      "...": "p3YWn7yKhNQJ-kBpI98XaETGjBXpb2y_tB90DIu9iMI"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "subjective": [
+            "look good"
+          ],
+          "_sd": [
+            "P6dkpm94lVdXrqPlVNoeNywW5qMlw996mx7br9RsnNA",
+            "mmFuVmL1RbcO93QVLGjsFkWS9a-q7YfqgpIN0BBy2xE",
+            "qVItR2DHYakEQvOzxrnA7e1xHrchNRxDjsivdGMzsi0",
+            "uqw_GlnTlRsUZ86nK_Pkt4ms4VlnO_HehNHT2qV7-5Y"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "cnf": {
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+            "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+            "kid": "agt-01"
+          }
+        },
+        "_sd": [
+          "Dn1I-W730okNRjkhNLpb8QANPsjeH3T_qZUKuU7u_2M",
+          "VesqTtOB-nYlPwNoaO-gNOpER6lU4y1UOpP225mvcx0",
+          "twP70pxpVkV7JM-_wARJkyvK8Jp9IZ300rxBaRnwf-M",
+          "zgJjd4QCMMMlSERG7xd4TnYCqnFTYRG6wCg9UE7t73Q"
+        ]
+      },
+      "disclosures": [
+        "WyJSMGxKSXZKbkhKRWFFNFhBdWdoaEt3Iiwic3ViIiwia2xzX3Vzcl83ZjNhOWMyMSJd",
+        "WyJUSzN0TkhIbkFKYkRDUVZrd0dpM19BIiwiY3JlZCIseyJpZCI6IlprM3AweFFtSDh2TjFzTHdUNXVZZEEiLCJycF9pZCI6ImtlZWxzb24uZmluYW5jZSIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6ImY4M09KM0QyeEYxQmc4dm5Ld3hvMUFvOGp6VjVUblExck03YlkwcWsyY0EiLCJ5IjoieF9GRXpSdTltMzZITE5fdHVlNjU5TE5wWFc2cEN5U3Rpa1lqS0lXSTVhMCJ9fV0",
+        "WyJDVzF3WXFYVHJ6eFlLVVlKY0U4R2hRIiwiYXBwX2xvZ2luX2lkIiwiYW5kcmVzQGV4YW1wbGUuY29tIl0",
+        "WyJuLVpaazZxVk9DN0d2dmlLeWhfZlFBIiwicHJvbXB0X3N1bW1hcnkiLCJSdW5uaW5nIHNob2VzLCBzaXplIDEwLCB1bmRlciAkMTAwLCBmcmVlIHJldHVybnMsIGJ5IEZyaWRheSJd",
+        "WyJlSUN4UEJiazluRHJjVV84ZFhmREtBIiwicHJvbXB0X2hhc2giLCJzaGEyNTY6OWY4NmQwODE4ODRjN2Q2NTlhMmZlYWEwYzU1YWQwMTVhM2JmNGYxYjJiMGI4MjJjZDE1ZDZjMTViMGYwMGEwOCJd",
+        "WyJGamRQLV9peUhvNEhJbGh4MHF0VkNnIiwibWF4IiwxMDAwMF0",
+        "WyJad2cteGRibHBpazRYWExmRldBVHBBIix7InBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJ3NGVjRXFKTlhqM1A3cnNlTkNhcW93Iix7InR5cGUiOiJwYXltZW50LmFtb3VudF9yYW5nZSIsIm1heCI6MTAwMDAsImN1cnJlbmN5IjoiVVNEIn1d",
+        "WyJuQUY2Uzg4RkhoVzBZSDZMOEdTV2pnIix7ImlkIjoibXJjX3J1bmZhc3QiLCJuYW1lIjoiUnVuRmFzdCIsIndlYnNpdGUiOiJodHRwczovL3J1bmZhc3QuZXhhbXBsZSIsInBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJwUUZJVHhfLXRVVVl5VS1OWkxNaVV3Iix7ImlkIjoic2t1LXRyYWlsLTEwIiwidGl0bGUiOiJUcmFpbCBydW5uaW5nIHNob2UifV0",
+        "WyI1OXZ2eUlTUmEtUUp2bG92aVVtam5BIiwicmlza19kYXRhIix7ImRldmljZV9mcCI6ImZwXzNjOWE3MSIsImlwIjoiMjAzLjAuMTEzLjcifV0"
+      ],
+      "decoySalts": [
+        "dHtOCofVYeCleu7ZuVyY7w",
+        "lLrbFLbnFYKH0ybhrUtbcg",
+        "CWY8t0RC-Oj6AOUqmmfgSw",
+        "e8DdrlPuuOuK0FwY4sLZsg",
+        "YAZqgHqT1dtEaQ2eOiR5AQ",
+        "ODxo19l8uPs9ta5601tAmg",
+        "1Iw3rVRTHfV6rEQskU06sw",
+        "KyGy84loRzaNjybVsaTQrw",
+        "IHXMjb9Ugl6bM9ZZSNYOAw",
+        "tEwoHAQTpYVVyjDyXJI4ew",
+        "JsLvfQnrDXtcaBkZlM4skA",
+        "IX6jo5YDoXfTnIKxxSUb2w",
+        "OXJ-9jps_Q_eM7u1P2Y3ew",
+        "GuADqzk-uGQU9eqWDwIGUQ",
+        "h_AWaNN1QdWSQQNBQrq72g",
+        "-4cZpIyMB5rgd5MLY_ZYiw",
+        "V1bytfdH2oyG4xMow-ygIw",
+        "mVh6Y9Eydlb48J9Bhk1VwA",
+        "VrccAEa_GzkW4cPExywKLw",
+        "Edumvg_3uxPdT1FF_tWKMw",
+        "adQYCGp0rxGLzaJr74fnww",
+        "NOZutieDjOktAs21cl61UA"
+      ]
+    },
+    "expected": "error"
+  },
+  {
+    "name": "decodeMandate/error/decoy-collides",
+    "input": {
+      "op": "decodeMandate",
+      "payloadSd": {
+        "v": "keelson.mandate.1",
+        "mid": "01JBXG3K5N7Q9R2T4V6W8Y0Z1A",
+        "iat": 1793750400,
+        "nbf": 1793750400,
+        "exp": 1794355200,
+        "nonce": "q83vE1n2k0Zr7yT4aB9cDg",
+        "mode": "autonomous",
+        "user": {
+          "_sd": [
+            "KTx_D2rdzZVjiFWdB-nZMu1sbnVBrBBOrcOf-k-K734",
+            "RdkyYnS-ku_PBS-HDlbjct7LE8XMbJDNKd5MDJ5GWIo",
+            "UEUY6pLG7ZO5whIMwHvnvUFEGC3_E5bdxgpE5R0GPKc",
+            "kxlHmMqph26xX3tvrVZdOB3wMz8brSywiy_6wJ5dw3w"
+          ]
+        },
+        "agent": {
+          "operator": {
+            "agent_registry": "eip155:421614:0x8004A818BFB912233c491871b3d84c89A494BD9e",
+            "agent_id": "42"
+          },
+          "cnf": {
+            "jwk": {
+              "kty": "EC",
+              "crv": "P-256",
+              "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+              "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+              "kid": "agt-01"
+            }
+          },
+          "bond": {
+            "vault": "eip155:421614:0x1111111111111111111111111111111111111111",
+            "asset": "PYUSD",
+            "min": 5000
+          }
+        },
+        "payment": {
+          "rail": "paypal",
+          "currency": "USD",
+          "constraints": [
+            {
+              "...": "-W2Ivv7CAszyCH8MBlbJXYZRU-kJ200up0vzXjFi3lQ"
+            },
+            {
+              "type": "payment.budget",
+              "currency": "USD",
+              "_sd": [
+                "8917sowIYVp5FlpcVABC8-iy68cGodOTdL7tAv-t-1A",
+                "X0seR3_ArUXPSbMiP6vhhWZAxeiqrM5FM3VloTBUD18",
+                "gy5FyIaOWbit9HPdwOudZ8N_YDTFT1s-X2spATuIf74",
+                "nHQeD8CI_Y5e4a_tJLdbzrBSVPvtE_j5HL5qxvoJ9nc"
+              ]
+            },
+            {
+              "...": "cKq_-BijUs0f9pDPHJ5d4DWjBciNt6DP30OD8wGaEN4"
+            },
+            {
+              "type": "payment.allowed_payees",
+              "allowed": [
+                {
+                  "...": "H2bTZqcHjXNIHFhpKAN8n5Rx3zTxHfslJi9iajsU4Wo"
+                },
+                {
+                  "...": "1FI6uvX0DEqciagwz0jBthZ6ddHfTE0TtPkMbYE3ff8"
+                },
+                {
+                  "...": "9ryZq9H592FIaBOyMBswMb4GZ9tBljqFLnt9UoR3lEk"
+                },
+                {
+                  "...": "1Wmz2Cwt7saqVlKz7okW_k77OVw5a50gd2ljK433Ems"
+                }
+              ]
+            },
+            {
+              "type": "payment.execution_date",
+              "not_after": "2026-11-13T23:59:59Z"
+            },
+            {
+              "...": "8ugoluKSE1a9nMqDysnTISoVGojnZfBAktzOqzQNlhk"
+            },
+            {
+              "...": "GPXo_ioE7guhvNkf4HG_RjzNtJlZOR4p00efRV2Z9KE"
+            }
+          ]
+        },
+        "checkout": {
+          "constraints": [
+            {
+              "type": "checkout.allowed_merchants",
+              "allowed": [
+                {
+                  "...": "djDq6e-oLvD0ZmP1fNREBQr5MBZt057exfvEzYVS0ZA"
+                },
+                {
+                  "...": "rV5i_JYq9sG-dD7F1gw8XE1sqtKti1clXFbvNaV00CA"
+                },
+                {
+                  "...": "qusaYb6UUXtcpT5UKnv4fFd7rhTNKWLx3EKHNX6aH2A"
+                },
+                {
+                  "...": "XBHez0gyMyDUd4PhDGIeU6UN60L7YiICD_kVX_ugyjk"
+                }
+              ]
+            },
+            {
+              "type": "checkout.line_items",
+              "items": [
+                {
+                  "id": "l1",
+                  "acceptable_items": [
+                    {
+                      "...": "u2YooAReezqgWfAvNZhw1feOXKqeFyeTYqzN4B0TJ3M"
+                    },
+                    {
+                      "...": "mmR8ag-uosJ99iZEfxGxsoiNk1ovF9N-ccjmjAccLH4"
+                    },
+                    {
+                      "...": "NyZJjYsUn4L93lbK4XbW_QyJfk-lHoXWLX_ZOPqwDSM"
+                    },
+                    {
+                      "...": "p3YWn7yKhNQJ-kBpI98XaETGjBXpb2y_tB90DIu9iMI"
+                    }
+                  ],
+                  "quantity": 1
+                }
+              ]
+            },
+            {
+              "type": "keelson.category",
+              "allow": [
+                "gpt:187"
+              ],
+              "deny": []
+            },
+            {
+              "type": "keelson.attributes",
+              "must": {
+                "size_us": "10",
+                "color": "any"
+              }
+            },
+            {
+              "type": "keelson.returns",
+              "min_days": 30,
+              "free": true
+            }
+          ]
+        },
+        "intent": {
+          "subjective": [
+            "look good"
+          ],
+          "_sd": [
+            "P6dkpm94lVdXrqPlVNoeNywW5qMlw996mx7br9RsnNA",
+            "mmFuVmL1RbcO93QVLGjsFkWS9a-q7YfqgpIN0BBy2xE",
+            "qVItR2DHYakEQvOzxrnA7e1xHrchNRxDjsivdGMzsi0",
+            "uqw_GlnTlRsUZ86nK_Pkt4ms4VlnO_HehNHT2qV7-5Y"
+          ]
+        },
+        "policy": {
+          "engine": "keelson-engine",
+          "version": "1.0.0",
+          "policy_set_hash": "sha256:2c26b46b68ffc68ff99b453c1d30413413422d706483bfa0f98a5e886266e7ae",
+          "measurements": [
+            "tdx:0a1b2c",
+            "nitro:3d4e5f"
+          ]
+        },
+        "consent": {
+          "terms_hash": "sha256:fcde2b2edba56bf408601fb721fe9b5c338d10ee429ea04fae5511b68fbf8fb9",
+          "instruction_use": true,
+          "responsibility_ack": true,
+          "merchant_policy_ack": "at_capture",
+          "recurrence_ack": false
+        },
+        "zk": {
+          "commitment": "0x1d2f8c9a0b3e4d5c6f7a8b9c0d1e2f30415263748596a7b8c9d0e1f203142536"
+        },
+        "cnf": {
+          "jwk": {
+            "kty": "EC",
+            "crv": "P-256",
+            "x": "MKBCTNIcKUSDii11ySs3526iDZ8AiTo7Tu6KPAqv7D4",
+            "y": "4Etl6SRW2YiLUrN5vfvVHuhp7x8PxltmWWlbbM4IFyM",
+            "kid": "agt-01"
+          }
+        },
+        "_sd": [
+          "Dn1I-W730okNRjkhNLpb8QANPsjeH3T_qZUKuU7u_2M",
+          "VesqTtOB-nYlPwNoaO-gNOpER6lU4y1UOpP225mvcx0",
+          "twP70pxpVkV7JM-_wARJkyvK8Jp9IZ300rxBaRnwf-M",
+          "zgJjd4QCMMMlSERG7xd4TnYCqnFTYRG6wCg9UE7t73Q"
+        ]
+      },
+      "disclosures": [
+        "WyJSMGxKSXZKbkhKRWFFNFhBdWdoaEt3Iiwic3ViIiwia2xzX3Vzcl83ZjNhOWMyMSJd",
+        "WyJUSzN0TkhIbkFKYkRDUVZrd0dpM19BIiwiY3JlZCIseyJpZCI6IlprM3AweFFtSDh2TjFzTHdUNXVZZEEiLCJycF9pZCI6ImtlZWxzb24uZmluYW5jZSIsImp3ayI6eyJrdHkiOiJFQyIsImNydiI6IlAtMjU2IiwieCI6ImY4M09KM0QyeEYxQmc4dm5Ld3hvMUFvOGp6VjVUblExck03YlkwcWsyY0EiLCJ5IjoieF9GRXpSdTltMzZITE5fdHVlNjU5TE5wWFc2cEN5U3Rpa1lqS0lXSTVhMCJ9fV0",
+        "WyJDVzF3WXFYVHJ6eFlLVVlKY0U4R2hRIiwiYXBwX2xvZ2luX2lkIiwiYW5kcmVzQGV4YW1wbGUuY29tIl0",
+        "WyJuLVpaazZxVk9DN0d2dmlLeWhfZlFBIiwicHJvbXB0X3N1bW1hcnkiLCJSdW5uaW5nIHNob2VzLCBzaXplIDEwLCB1bmRlciAkMTAwLCBmcmVlIHJldHVybnMsIGJ5IEZyaWRheSJd",
+        "WyJlSUN4UEJiazluRHJjVV84ZFhmREtBIiwicHJvbXB0X2hhc2giLCJzaGEyNTY6OWY4NmQwODE4ODRjN2Q2NTlhMmZlYWEwYzU1YWQwMTVhM2JmNGYxYjJiMGI4MjJjZDE1ZDZjMTViMGYwMGEwOCJd",
+        "WyJGamRQLV9peUhvNEhJbGh4MHF0VkNnIiwibWF4IiwxMDAwMF0",
+        "WyJad2cteGRibHBpazRYWExmRldBVHBBIix7InBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJ3NGVjRXFKTlhqM1A3cnNlTkNhcW93Iix7InR5cGUiOiJwYXltZW50LmFtb3VudF9yYW5nZSIsIm1heCI6MTAwMDAsImN1cnJlbmN5IjoiVVNEIn1d",
+        "WyJuQUY2Uzg4RkhoVzBZSDZMOEdTV2pnIix7ImlkIjoibXJjX3J1bmZhc3QiLCJuYW1lIjoiUnVuRmFzdCIsIndlYnNpdGUiOiJodHRwczovL3J1bmZhc3QuZXhhbXBsZSIsInBheXBhbF9tZXJjaGFudF9pZCI6Ik1FUkNIN1hLMlE5TEQifV0",
+        "WyJwUUZJVHhfLXRVVVl5VS1OWkxNaVV3Iix7ImlkIjoic2t1LXRyYWlsLTEwIiwidGl0bGUiOiJUcmFpbCBydW5uaW5nIHNob2UifV0",
+        "WyI1OXZ2eUlTUmEtUUp2bG92aVVtam5BIiwicmlza19kYXRhIix7ImRldmljZV9mcCI6ImZwXzNjOWE3MSIsImlwIjoiMjAzLjAuMTEzLjcifV0"
+      ],
+      "decoySalts": [
+        "dHtOCofVYeCleu7ZuVyY7w",
+        "lLrbFLbnFYKH0ybhrUtbcg",
+        "CWY8t0RC-Oj6AOUqmmfgSw",
+        "e8DdrlPuuOuK0FwY4sLZsg",
+        "YAZqgHqT1dtEaQ2eOiR5AQ",
+        "ODxo19l8uPs9ta5601tAmg",
+        "1Iw3rVRTHfV6rEQskU06sw",
+        "KyGy84loRzaNjybVsaTQrw",
+        "IHXMjb9Ugl6bM9ZZSNYOAw",
+        "tEwoHAQTpYVVyjDyXJI4ew",
+        "JsLvfQnrDXtcaBkZlM4skA",
+        "IX6jo5YDoXfTnIKxxSUb2w",
+        "OXJ-9jps_Q_eM7u1P2Y3ew",
+        "GuADqzk-uGQU9eqWDwIGUQ",
+        "h_AWaNN1QdWSQQNBQrq72g",
+        "-4cZpIyMB5rgd5MLY_ZYiw",
+        "V1bytfdH2oyG4xMow-ygIw",
+        "mVh6Y9Eydlb48J9Bhk1VwA",
+        "VrccAEa_GzkW4cPExywKLw",
+        "Edumvg_3uxPdT1FF_tWKMw",
+        "adQYCGp0rxGLzaJr74fnww",
+        "R0lJIvJnHJEaE4XAughhKw"
+      ]
+    },
+    "expected": "error"
   }
 ]

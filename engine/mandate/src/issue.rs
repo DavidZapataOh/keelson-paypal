@@ -48,6 +48,8 @@ pub struct OpenMandateParams {
     pub user_auth: UserAuth,
     pub aud: String,
     pub nonce: String,
+    /// The mandate's entry in the status list, when it has one.
+    pub status: Option<crate::StatusRef>,
 }
 
 fn invalid(reason: &str) -> Error {
@@ -173,7 +175,7 @@ pub fn issue_open_mandate(
         seen: HashSet::new(),
     };
     let delegate = encode_json(&json!([salts.draw()?, p.payload_sd]));
-    let payload = json!({
+    let mut payload = json!({
         "delegate_payload": [{ "...": digest(&delegate) }],
         "_sd_alg": "sha-256",
         "iat": iat,
@@ -182,6 +184,9 @@ pub fn issue_open_mandate(
         "sd_hash": digest(user_credential),
         "user_auth": user_auth,
     });
+    if let Some(status) = &p.status {
+        payload["status"] = status.claim();
+    }
     let kb_jwt = sign_jwt(
         &json!({ "typ": OPEN_MANDATE_TYP, "alg": "ES256" }),
         &payload,

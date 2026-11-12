@@ -220,6 +220,37 @@ function finish(started, failed) {
 
 // The monitor's report ----------------------------------------------------------
 
+function anchorText(a, checks) {
+  if (!a) return checks.anchors === "enabled" ? "not checked against a chain" : "not yet enabled";
+  const on = a.chain ?? `chain ${a.chainId}`;
+  switch (a.status) {
+    case "consistent":
+      return `size ${a.size}, consistent · ${on} · checked ${age(a.checkedAt)}`;
+    case "ahead":
+      return `size ${a.size} on ${on}, ahead of the verified view; checked again shortly`;
+    case "none":
+      return `nothing anchored on ${on} yet`;
+    case "not-deployed":
+      return `not deployed on ${on}`;
+    case "inconsistent":
+      return `size ${a.size} on ${on}: inconsistent with the verified tree`;
+    default:
+      return `could not read ${on} ${age(a.checkedAt)}: ${a.error ?? "unknown error"}`;
+  }
+}
+
+function signersText(sc, checks) {
+  if (!sc)
+    return checks.teeSigners === "enabled" ? "not checked against a chain" : "not yet enabled";
+  const on = sc.chain ?? `chain ${sc.chainId}`;
+  if (sc.status === "not-deployed") return `not deployed on ${on}`;
+  const before = sc.predating ? ` (${sc.predating} issued before it existed)` : "";
+  const checked = `${sc.leavesChecked} leaves checked against VerdictVerifier on ${on}${before}`;
+  if (sc.status === "error")
+    return `${checked}; could not read it ${age(sc.checkedAt)}: ${sc.error}`;
+  return `${checked} · block ${sc.block}`;
+}
+
 function originCard(r, checks) {
   const degraded = (r.degradedLeaves ?? []).slice(-50);
   const degradedCount = r.degradedCount ?? 0;
@@ -277,12 +308,15 @@ function originCard(r, checks) {
         degradedList,
       ),
       ...row(
-        "TEE signers",
-        el("span", { text: checks.teeSigners === "enabled" ? "checked" : "not yet enabled" }),
+        "On-chain anchor",
+        el("span", { "data-field": "anchor", text: anchorText(r.anchor, checks) }),
+        r.anchor?.status === "inconsistent"
+          ? el("div", { class: "flag", text: "The anchored root is not in the verified tree" })
+          : "",
       ),
       ...row(
-        "On-chain anchor",
-        el("span", { text: checks.anchors === "enabled" ? "checked" : "not yet enabled" }),
+        "TEE signers",
+        el("span", { "data-field": "signers", text: signersText(r.signers, checks) }),
       ),
       ...row(
         "Findings",

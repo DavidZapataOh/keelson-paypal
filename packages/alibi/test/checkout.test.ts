@@ -40,7 +40,13 @@ const bundle = (
   }) as unknown as AlibiBundle;
 
 const run = (b: AlibiBundle) =>
-  runCheck(checkout, b, { now: new Date(), expect: undefined, chain: null });
+  runCheck(checkout, b, {
+    now: new Date(),
+    expect: undefined,
+    chain: null,
+    view: null,
+    receiptKeys: new Map(),
+  });
 
 describe("the checkout total of an Alibi", () => {
   test("passes when the disclosed amount reconciles with the cart and is the countersigned one", async () => {

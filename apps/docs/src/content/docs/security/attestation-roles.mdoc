@@ -1,0 +1,44 @@
+---
+title: Attestation roles
+description: Who attests, who appraises and who relies on Keelson's TEE evidence, in RFC 9334 terms, and how a TCB status is accepted.
+section: Security
+order: 4
+---
+
+Keelson's two TEE legs prove what they run with remote attestation. This page maps each part of that to the roles of the IETF RATS architecture ([RFC 9334](https://www.rfc-editor.org/rfc/rfc9334)), states which Intel TCB statuses are accepted, and records why Keelson does not issue attestation results of its own.
+
+## RFC 9334 roles
+
+- **Attester**: each TEE leg. Leg A produces an Intel TDX quote whose report data binds its signer key; leg B produces an AWS Nitro attestation document whose `public_key` is its signer key.
+- **Verifier**: two independent appraisals of the same evidence. On chain, `VerdictVerifier` checks the TDX quote through Automata's DCAP attestation and the Nitro document through Base's `nitro-validator`, then requires an allowed measurement before it registers a signer. Off chain, `@keelson/attest` checks both in the Alibi verifier, which runs in the browser, and in the API, against Intel's and AWS's roots pinned in code.
+- **Relying Party**: whatever acts on a registered signer: the bond vault, the courts, `CheckpointAnchor`, and anyone verifying an Alibi.
+- **Endorser**: Intel, for the PCK certificate chain, TCB info and QE identity; AWS, for the Nitro root certificate.
+- **Reference Value Provider**: `engine/tee/measurements.json`, produced by the reproducible image build and published with a build provenance attestation, as described in [The TEE image](/security/verify/#tee-image). The measurements it lists are the ones `VerdictVerifier` allows.
+
+Every relying party gets its answer from a Verifier that recomputes the appraisal from raw evidence. No relying party trusts a result that Keelson's API signed.
+
+## TCB appraisal
+
+Intel reports the platform's TCB status with each quote. `@keelson/attest` accepts:
+
+- `UpToDate`;
+- `SWHardeningNeeded`, only when Intel names the advisories and every one is in `ACCEPTED_ADVISORIES` (`packages/attest/src/advisories.ts`), each with the reason it is safe for a confidential VM that runs no SGX enclave and trusts no host-supplied ACPI. Any other advisory fails with `advisory_not_allowed`.
+
+Every other status fails with `tcb_status`. Intel's TCB info for leg A's platform (FMSPC `20A06F000000`) has no `SWHardeningNeeded` level today, so the list is empty and that status is refused.
+
+`packages/attest/scripts/advisories-watch.ts` runs every week in the `dcap-collateral` workflow. It fails when Intel's current TCB info lists a `SWHardeningNeeded` advisory the list does not hold. When it fails:
+
+1. Review the advisory on Intel's page within 72 h.
+2. If its mitigation is applied by the dstack OS image and it does not concern a CVM without SGX enclaves, add it to `ACCEPTED_ADVISORIES` with its reason.
+3. If not, the Guardian Safe calls `VerdictVerifier.disallowMeasurement` for leg A's measurement at once, and leg A moves to a patched platform.
+
+The on-chain check in `VerdictVerifier` does not read this list.
+
+## Attestation results
+
+Keelson does not issue attestation results in the EAR format (EAT Attestation Results), and does not publish CoRIM reference values.
+
+- Every relying party already appraises raw evidence itself: Automata on chain, `@keelson/attest` everywhere else. An EAR signed by Keelson's API would add a hop that relying parties would have to trust, which the design avoids.
+- No consumer of Keelson's results reads EAR today. The only TDX CoRIM profile is an individual Internet-Draft, [draft-cds-rats-intel-corim-profile](https://datatracker.ietf.org/doc/draft-cds-rats-intel-corim-profile/), not a working group document.
+
+Revisit this when a partner's appraisal service asks for EAR, when the Intel CoRIM profile is adopted by the RATS working group, or when Phala or dstack publish CoRIM for their OS images. An EAR would then be produced by the verifier the relying party runs, `@keelson/attest`, never by the API.

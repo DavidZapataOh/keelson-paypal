@@ -2,10 +2,16 @@
 import "../tee/attest.ts";
 import {
   ALIBI_MEDIA_TYPE,
+  ALIBI_MEDIA_TYPE_V2,
   type AlibiBundle,
+  type AlibiBundleV2,
   alibiSchema,
-  encodeAlibi,
+  alibiSchemaV2,
+  encodeAny,
+  fromBase64,
   MAX_ALIBI_BYTES,
+  type SharedSections,
+  statementBundle,
   toBase64,
 } from "@keelson/alibi";
 import { verifyAlibi } from "@keelson/alibi/verify";
@@ -15,6 +21,7 @@ import {
   and,
   asc,
   cardAuthorizations,
+  cardSettlements,
   chainTxs,
   channel3Observations,
   type Db,
@@ -39,9 +46,11 @@ import {
   LOG_WITNESSES,
   leafHash,
   parseWitnessPolicy,
+  receiptKeyMap,
 } from "@keelson/log";
-import { isPersonalDisclosure, withholdPersonal } from "@keelson/mandate";
+import { type AmountCheck, isPersonalDisclosure, withholdPersonal } from "@keelson/mandate";
 import { holdCustomId, purchaseHoldCustomId, purchaseHoldDigest } from "@keelson/paypal";
+import { decodeSign1, encodeSign1, RECEIPTS, statementImprint, TST_CTT } from "@keelson/scitt";
 import { calculateJwkThumbprint, type JWK } from "jose";
 import type { Logger } from "pino";
 import { getAddress } from "viem";
@@ -141,6 +150,24 @@ async function issuerOf(tee: IssueDeps["tee"], thumbprint: string): Promise<JWK>
 }
 
 const json = (v: unknown) => v as Record<string, Json>;
+
+/**
+ * The receipt keys to check a new Alibi's receipt with: the pinned ones and the ones leg A serves,
+ * so an Alibi issued before a new key is pinned is checked too. Verifiers trust only pinned keys.
+ */
+async function receiptKeysOf(tee: IssueDeps["tee"]): Promise<Map<string, Uint8Array>> {
+  const keys = receiptKeyMap();
+  if (!tee) return keys;
+  const health = (await tee.client.a.health()) as {
+    log_keys?: { receipt_key?: string; receipt_kid?: string }[];
+  };
+  for (const k of health.log_keys ?? []) {
+    if (k.receipt_key && k.receipt_kid) {
+      keys.set(k.receipt_kid, Uint8Array.from(Buffer.from(k.receipt_key, "hex")));
+    }
+  }
+  return keys;
+}
 
 /** How long a purchase's Alibi waits for leg A's C1 proof before it is issued without one. */
 const C1_GRACE_MS = 60_000;
@@ -317,45 +344,39 @@ export async function issueAlibi(deps: IssueDeps, input: IssueInput): Promise<vo
     customId = holdCustomId(env, m.id, m.mandateHash);
   }
 
-  const text = new TextDecoder().decode(leaf);
-  const bundle: AlibiBundle = {
-    type: ALIBI_MEDIA_TYPE,
-    alibi_id: purchaseId,
-    leaf: toBase64(leaf),
-    leaf_view: JSON.parse(text.slice(LEAF_PREFIX.length)),
-    tlog_proof: append.proof,
-    policy: { origin, text: policyText },
-    timestamps: [],
-    tee: {
-      domain: {
-        name: "Keelson",
-        version: "1",
-        chain_id: chainId,
-        verifying_contract: VERIFYING_CONTRACT,
-      },
-      countersign: Object.fromEntries(
-        Object.entries(c).map(([k, v]) => [k, v.startsWith("0x") ? v.toLowerCase() : v]),
-      ) as AlibiBundle["tee"]["countersign"],
-      digest: out.digest.toLowerCase(),
-      mode: out.mode,
-      signatures: [
-        {
-          kind: "tdx" as const,
-          signer: out.signers.tdx,
-          signature: out.signatures.tdx.toLowerCase(),
-        },
-        ...(out.signers.nitro && out.signatures.nitro
-          ? [
-              {
-                kind: "nitro" as const,
-                signer: out.signers.nitro,
-                signature: out.signatures.nitro.toLowerCase(),
-              },
-            ]
-          : []),
-      ],
-      attestations,
+  const tee: AlibiBundle["tee"] = {
+    domain: {
+      name: "Keelson",
+      version: "1",
+      chain_id: chainId,
+      verifying_contract: VERIFYING_CONTRACT,
     },
+    countersign: Object.fromEntries(
+      Object.entries(c).map(([k, v]) => [k, v.startsWith("0x") ? v.toLowerCase() : v]),
+    ) as AlibiBundle["tee"]["countersign"],
+    digest: out.digest.toLowerCase(),
+    mode: out.mode,
+    signatures: [
+      {
+        kind: "tdx" as const,
+        signer: out.signers.tdx,
+        signature: out.signatures.tdx.toLowerCase(),
+      },
+      ...(out.signers.nitro && out.signatures.nitro
+        ? [
+            {
+              kind: "nitro" as const,
+              signer: out.signers.nitro,
+              signature: out.signatures.nitro.toLowerCase(),
+            },
+          ]
+        : []),
+    ],
+    attestations,
+  };
+  const sections: SharedSections = {
+    alibi_id: purchaseId,
+    policy: { origin, text: policyText },
     eval: p.evalTrace as AlibiBundle["eval"],
     mandate: {
       sd_jwt: m.openMandate,
@@ -364,6 +385,7 @@ export async function issueAlibi(deps: IssueDeps, input: IssueInput): Promise<vo
       // The assertion as the open mandate signs it: the stored one also keeps credentialId and userHandle.
       user_auth: userAuthOf(m.userAuth),
       issuer_jwk: json(issuerJwk),
+      ...(m.decoySalts.length > 0 ? { decoy_salts: m.decoySalts } : {}),
     },
     manifest: { public: evidence.manifest, disclosures: evidence.disclosures },
     ...(evidence.cart ? { cart: evidence.cart } : {}),
@@ -400,19 +422,40 @@ export async function issueAlibi(deps: IssueDeps, input: IssueInput): Promise<vo
           },
         }),
   };
+  const bundle: AlibiBundle | AlibiBundleV2 = p.statement
+    ? statementBundle({
+        sections,
+        attestations,
+        statement: p.statement,
+        receipts: append.receipt ? [append.receipt] : [],
+        tlogProof: append.proof,
+      })
+    : {
+        ...sections,
+        type: ALIBI_MEDIA_TYPE,
+        leaf: toBase64(leaf),
+        leaf_view: JSON.parse(new TextDecoder().decode(leaf).slice(LEAF_PREFIX.length)),
+        tlog_proof: append.proof,
+        timestamps: [],
+        tee,
+      };
   let bytes: Uint8Array;
   try {
-    bytes = encodeAlibi(bundle);
+    bytes = encodeAny(bundle);
   } catch (err) {
     throw new AlibiIssueError("format", err instanceof Error ? err.message : String(err));
   }
   if (bytes.length > MAX_ALIBI_BYTES) {
     throw new AlibiIssueError("size", `the bundle is ${bytes.length} bytes`);
   }
+  const receiptKeys = p.statement ? await receiptKeysOf(deps.tee) : undefined;
   const report = await span("alibi.verify", {}, () => {
     // Each check's span ends when it settles: the checks run together.
     const started = Date.now();
-    return verifyAlibi(bundle, { onCheck: (c) => mark(`alibi.check.${c.id}`, started) });
+    return verifyAlibi(bundle, {
+      onCheck: (c) => mark(`alibi.check.${c.id}`, started),
+      ...(receiptKeys ? { receiptKeys } : {}),
+    });
   });
   const failed = report.checks.filter((c) => c.status === "fail");
   if (failed.length > 0) {
@@ -508,7 +551,10 @@ async function disclosures(db: Db, root: Buffer) {
  * the RFC 3161 tokens of its leaf, the capture and invoice ids and the anchor. Every earlier
  * section is byte-identical across versions.
  */
-export async function loadAlibi(db: Db, purchaseId: string): Promise<AlibiBundle | null> {
+export async function loadAlibi(
+  db: Db,
+  purchaseId: string,
+): Promise<AlibiBundle | AlibiBundleV2 | null> {
   const [row] = await db
     .select({
       bundle: alibis.bundle,
@@ -520,6 +566,7 @@ export async function loadAlibi(db: Db, purchaseId: string): Promise<AlibiBundle
       intent: purchases.paypalOrderIntent,
       payee: purchases.paypalPayeeId,
       conversion: purchases.conversion,
+      amountCheck: purchases.amountCheck,
       currency: purchases.currency,
       amountMinor: purchases.amountMinor,
     })
@@ -527,24 +574,8 @@ export async function loadAlibi(db: Db, purchaseId: string): Promise<AlibiBundle
     .innerJoin(purchases, eq(purchases.id, alibis.purchaseId))
     .where(eq(alibis.purchaseId, purchaseId));
   if (!row) return null;
-  const tokens = await db
-    .select({ tsa: timestamps.tsa, token: timestamps.token })
-    .from(timestamps)
-    .where(
-      and(
-        eq(timestamps.hash, row.leafHash),
-        eq(timestamps.kind, "leaf"),
-        eq(timestamps.status, "stamped"),
-      ),
-    )
-    .orderBy(asc(timestamps.tsa));
-  const core = row.bundle as AlibiBundle;
-  return alibiSchema.parse({
-    ...core,
-    ...(core.cart === undefined ? await cartOf(db, core) : {}),
-    ...(row.anchor ? { anchor: row.anchor } : {}),
-    timestamps: tokens.map((t) => ({ tsa: t.tsa, token: toBase64(t.token as Uint8Array) })),
-    ...(core.paypal
+  const paypal = (core: AlibiBundle | AlibiBundleV2) =>
+    core.paypal
       ? {
           paypal: {
             ...core.paypal,
@@ -566,12 +597,107 @@ export async function loadAlibi(db: Db, purchaseId: string): Promise<AlibiBundle
                   },
                 }
               : {}),
+            ...(row.amountCheck ? { amount_authority: amountAuthorityOf(row.amountCheck) } : {}),
           },
         }
-      : {}),
+      : {};
+  const stored = row.bundle as AlibiBundle | AlibiBundleV2;
+  if (stored.type === ALIBI_MEDIA_TYPE_V2) {
+    const core = stored as AlibiBundleV2;
+    const sign1 = decodeSign1(fromBase64(core.statement));
+    const [first, ...more] = await stampsOf(db, statementImprint(sign1.signature), "statement");
+    const unprotected = new Map(sign1.unprotected);
+    if (first) unprotected.set(TST_CTT, fromBase64(first.token));
+    return alibiSchemaV2.parse({
+      ...core,
+      statement: toBase64(encodeSign1({ ...sign1, unprotected })),
+      ...(more.length ? { timestamps: more } : {}),
+      ...(row.anchor ? { anchor: row.anchor } : {}),
+      ...paypal(core),
+      ...(row.conversion ? { conversion: row.conversion } : {}),
+      ...(core.card ? { card: await cardSectionV2(db, purchaseId, core.card) } : {}),
+    });
+  }
+  const core = stored as AlibiBundle;
+  return alibiSchema.parse({
+    ...core,
+    ...(core.cart === undefined ? await cartOf(db, core) : {}),
+    ...(row.anchor ? { anchor: row.anchor } : {}),
+    timestamps: await stampsOf(db, row.leafHash, "leaf"),
+    ...paypal(core),
     ...(row.conversion ? { conversion: row.conversion } : {}),
     ...(core.card ? { card: await cardSection(db, purchaseId, core.card) } : {}),
   });
+}
+
+/** The RFC 3161 tokens stamped over `hash`, by TSA. */
+async function stampsOf(db: Db, hash: Uint8Array, kind: "leaf" | "statement") {
+  const tokens = await db
+    .select({ tsa: timestamps.tsa, token: timestamps.token })
+    .from(timestamps)
+    .where(
+      and(
+        eq(timestamps.hash, Buffer.from(hash)),
+        eq(timestamps.kind, kind),
+        eq(timestamps.status, "stamped"),
+      ),
+    )
+    .orderBy(asc(timestamps.tsa));
+  return tokens.map((t) => ({ tsa: t.tsa, token: toBase64(t.token as Uint8Array) }));
+}
+
+/**
+ * A v2 card purchase's card section as it stands now: the v1 one, each logged decision's and the
+ * settlement's transparent statement, and the issuer's transaction exactly as leg A read it.
+ */
+async function cardSectionV2(
+  db: Db,
+  purchaseId: string,
+  issued: NonNullable<AlibiBundleV2["card"]>,
+): Promise<NonNullable<AlibiBundleV2["card"]>> {
+  const { statements: _, settlement: __, ...v1 } = issued;
+  const { settlement: ___, ...card } = await cardSection(db, purchaseId, {
+    ...v1,
+    authorizations: [],
+  });
+  const decisions = await db
+    .select({ statement: cardAuthorizations.statement, receipt: cardAuthorizations.receipt })
+    .from(cardAuthorizations)
+    .where(eq(cardAuthorizations.purchaseId, purchaseId))
+    .orderBy(asc(cardAuthorizations.createdAt));
+  const [settled] = await db
+    .select()
+    .from(cardSettlements)
+    .where(eq(cardSettlements.purchaseId, purchaseId))
+    .orderBy(asc(cardSettlements.createdAt))
+    .limit(1);
+  const [pc] = await db
+    .select({ settledAt: purchaseCards.settledAt })
+    .from(purchaseCards)
+    .where(eq(purchaseCards.purchaseId, purchaseId));
+  const transparent = (statement: Uint8Array, receipt: Uint8Array | null) => {
+    const s = decodeSign1(statement);
+    return toBase64(
+      encodeSign1({ ...s, unprotected: new Map(receipt ? [[RECEIPTS, [receipt]]] : []) }),
+    );
+  };
+  return {
+    ...card,
+    statements: [
+      ...decisions.flatMap((d) => (d.statement ? [transparent(d.statement, d.receipt)] : [])),
+      ...(settled ? [transparent(settled.statement, settled.receipt)] : []),
+    ],
+    ...(settled
+      ? {
+          settlement: {
+            transaction_token: settled.transactionToken,
+            settled_minor: settled.settledMinor.toString(),
+            settled_at: (pc?.settledAt ?? settled.createdAt).toISOString(),
+            raw: toBase64(settled.transaction),
+          },
+        }
+      : {}),
+  };
 }
 
 const LEG: Readonly<Record<number, "tdx" | "nitro">> = { 1: "tdx", 2: "nitro" };
@@ -650,7 +776,7 @@ async function cartOf(db: Db, b: AlibiBundle): Promise<{ cart?: Record<string, J
  * The public copy of an Alibi: the mandate presented without the user's login id and risk data.
  * Their digests stay in the signed payload, so the copy verifies as the original does.
  */
-export function publicCopy(b: AlibiBundle): AlibiBundle {
+export function publicCopy<T extends AlibiBundle | AlibiBundleV2>(b: T): T {
   return {
     ...b,
     mandate: {
@@ -667,4 +793,34 @@ function userAuthOf(stored: unknown): Record<string, string> {
     throw new AlibiIssueError("format", "the stored passkey assertion is incomplete");
   }
   return { authenticatorData, clientDataJSON, signature };
+}
+
+/** A stored `keelson.amount_check/1` as the Alibi carries it, field by field. */
+function amountAuthorityOf(stored: Record<string, unknown>): AmountCheck {
+  const c = stored as unknown as AmountCheck;
+  const a = c.evidence?.assertion;
+  return {
+    v: c.v,
+    authority: c.authority,
+    ...(c.via ? { via: c.via } : {}),
+    read_by: c.read_by,
+    order_id_hash: c.order_id_hash,
+    total: { currency: c.total.currency, minor: c.total.minor },
+    payee: c.payee,
+    intent: c.intent,
+    checked_at: c.checked_at,
+    cross_check: c.cross_check,
+    ...(a
+      ? {
+          evidence: {
+            assertion: {
+              credentialId: a.credentialId,
+              authenticatorData: a.authenticatorData,
+              clientDataJSON: a.clientDataJSON,
+              signature: a.signature,
+            },
+          },
+        }
+      : {}),
+  };
 }

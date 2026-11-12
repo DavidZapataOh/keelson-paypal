@@ -573,7 +573,14 @@
               "host": [
                 "{{baseUrl}}"
               ],
-              "query": [],
+              "query": [
+                {
+                  "disabled": false,
+                  "key": "version",
+                  "value": "<string>",
+                  "description": "`2`: the Alibi as an IETF SCITT transparent statement (RFC 9943). A v1 Alibi is served as the bridge statement that carries its countersigned facts, once there is one."
+                }
+              ],
               "variable": []
             },
             "header": [

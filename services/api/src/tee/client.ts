@@ -2,6 +2,7 @@ import { Agent, fetch as undiciFetch } from "undici";
 import { type Hex, hexToBytes } from "viem";
 import { z } from "zod";
 import { getCollateral, type SignerAttestation } from "./attest.ts";
+import type { StatementAsk } from "./statements.ts";
 
 const hex = (pattern: RegExp) => z.custom<Hex>((v) => typeof v === "string" && pattern.test(v));
 const Hex32 = hex(/^0x[0-9a-f]{64}$/);
@@ -83,6 +84,8 @@ const CountersignedSchema = z.strictObject({
   tee: z.number(),
   trace_jcs: z.string(),
   observation: ObservationSchema,
+  /** The purchase's SCITT statement, standard base64; only legs that sign statements send it. */
+  statement: z.base64().optional(),
 });
 export type Countersigned = z.infer<typeof CountersignedSchema>;
 
@@ -108,6 +111,70 @@ const CardAuthorizedSchema = z.strictObject({
 });
 export type CardAuthorized = z.infer<typeof CardAuthorizedSchema>;
 
+const StatementSignedSchema = z.strictObject({ statement: z.base64() });
+export type StatementSigned = z.infer<typeof StatementSignedSchema>;
+
+const SettlementObservationSchema = z.strictObject({
+  transaction: z.base64(),
+  card: z.base64(),
+  observed_at: z.number(),
+});
+/** @internal */
+export type SettlementObservation = z.infer<typeof SettlementObservationSchema>;
+
+const CardSettledSchema = z.strictObject({
+  settlement: z.strictObject({
+    requestId: Hex32,
+    cardRef: Hex32,
+    transactionHash: Hex32,
+    settledMinor: z.string(),
+    currency: z.string(),
+    status: z.string(),
+    settledAt: z.string(),
+    observedAt: z.string(),
+  }),
+  digest: Hex32,
+  signature: Hex65,
+  signer: Address,
+  observation: SettlementObservationSchema,
+  statement: z.base64(),
+});
+export type CardSettled = z.infer<typeof CardSettledSchema>;
+
+/** `POST /v1/statements/card-authorization`: a decision both legs signed, as its own statement. */
+export interface CardStatementRequest {
+  authorization: Record<string, string>;
+  signatures: { tdx: Hex; nitro?: Hex };
+  measurements: { tdx: Hex; nitro?: Hex };
+  parent: Hex;
+  issuer: string;
+  card_token: string;
+  ref_salt: Hex;
+  chain_id?: number;
+}
+
+/** `POST /v1/card/settlement`: leg A reads the settlement from the issuer; leg B checks its reading. */
+export interface CardSettlementRequest {
+  request_id: string;
+  transaction_token: string;
+  card_token: string;
+  issuer: string;
+  parent: Hex;
+  ref_salt: Hex;
+  measurements: { tdx: Hex; nitro?: Hex };
+  observation?: SettlementObservation;
+  leg_a?: { signer: string; signature: Hex };
+  chain_id?: number;
+}
+
+/** `POST /v1/statements/bridge`: a v1 Alibi carried into a SCITT statement by leg A. */
+export interface BridgeRequest {
+  leaf: string;
+  tlog_proof: string;
+  countersign: CountersignJson;
+  chain_id?: number;
+}
+
 /** A card network authorization, as the card issuer's real-time request reported it. */
 export interface CardNetworkAuthorization {
   id: string;
@@ -124,6 +191,8 @@ export interface CardAuthorizeRequest {
   signature: Hex;
   payload_sd: unknown;
   disclosures: string[];
+  /** The mandate's decoy salts; sent only when it has any, to legs that resolve them. */
+  decoy_salts?: string[];
   authorization: CardNetworkAuthorization;
 }
 
@@ -141,6 +210,16 @@ const HealthSchema = z.looseObject({
   boot_epoch: z.number(),
   oci_digest: z.string(),
   now_ms: z.number(),
+  /** 1 on a leg that signs SCITT statements. */
+  statements: z.number().optional(),
+  /** 1 on a leg that resolves decoy digests by their salts. */
+  decoys: z.number().optional(),
+  /** 1 on a leg that checks the mandate status list. */
+  status_list: z.number().optional(),
+  /** 1 on leg B when it reads PayPal itself. */
+  paypal_reads: z.number().optional(),
+  /** On the TDX leg: whether its clock was set from authenticated time at boot. */
+  clock: z.enum(["verified", "unverified"]).optional(),
 });
 type Health = z.infer<typeof HealthSchema>;
 
@@ -242,6 +321,12 @@ export interface CountersignRequest {
   observation?: Observation;
   /** The mandate's commitment salt as leg A sealed it, standard base64; leg A proves C1 with it. */
   sealed_salt?: string;
+  /** Asks for the purchase's SCITT statement; sent only to legs that sign them. */
+  statement?: StatementAsk;
+  /** The mandate's decoy salts; sent only when it has any, to legs that resolve them. */
+  decoy_salts?: string[];
+  /** The current status list token, for a mandate with a status list entry. */
+  status_list?: string;
 }
 
 /** The body of `POST /v1/mandates/register` on leg A. */
@@ -253,6 +338,10 @@ interface RegisterMandate {
   /** The commitment salt, 16 bytes of lowercase hex. */
   salt: Hex;
   user_credential?: string;
+  /** The mandate's decoy salts; sent only when it has any, to legs that resolve them. */
+  decoy_salts?: string[];
+  /** The mandate's index in the status list, once both legs check it. */
+  status_idx?: number;
 }
 
 interface ChainBlock {
@@ -328,6 +417,7 @@ export class LegClient {
       const timedOut = err instanceof DOMException && err.name === "TimeoutError";
       throw new LegError(this.leg, timedOut ? "timeout" : "unreachable");
     }
+    if (res.status === 204) return undefined;
     let json: unknown;
     try {
       json = await res.json();
@@ -387,6 +477,34 @@ export class LegClient {
       CardAuthorizedSchema,
       await this.call("POST", "/v1/card/authorize", req, { timeoutMs }),
     );
+  }
+
+  async cardStatement(req: CardStatementRequest): Promise<StatementSigned> {
+    return this.parse(
+      StatementSignedSchema,
+      await this.call("POST", "/v1/statements/card-authorization", req),
+    );
+  }
+
+  async cardSettlement(req: CardSettlementRequest): Promise<CardSettled> {
+    return this.parse(CardSettledSchema, await this.call("POST", "/v1/card/settlement", req));
+  }
+
+  /** `POST /v1/paypal/prefetch` on leg B: it reads the authorization now, for the countersign next. */
+  async prefetch(req: { authorization_id: string }): Promise<void> {
+    await this.call("POST", "/v1/paypal/prefetch", req);
+  }
+
+  /** `POST /v1/status/sign` on leg A: the status list token over `lst`. */
+  async signStatus(req: { uri: string; lst: string }): Promise<{ token: string }> {
+    return this.parse(
+      z.strictObject({ token: z.string() }),
+      await this.call("POST", "/v1/status/sign", req),
+    );
+  }
+
+  async bridge(req: BridgeRequest): Promise<StatementSigned> {
+    return this.parse(StatementSignedSchema, await this.call("POST", "/v1/statements/bridge", req));
   }
 
   async registerMandate(req: RegisterMandate): Promise<MandateIssued> {

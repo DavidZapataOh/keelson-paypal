@@ -2,7 +2,7 @@ import { type Json, jcs } from "@keelson/core";
 import { LEAF_PREFIX } from "@keelson/log";
 import { fromBase64, fromBase64url, toBase64, toBase64url } from "../b64.ts";
 import { pointer } from "../codec.ts";
-import type { AlibiBundle, AlibiReceipt } from "../schema.ts";
+import type { AlibiBundle, AlibiReceipt, AnyAlibi } from "../schema.ts";
 
 /**
  * Pointers no signature or hash covers. PayPal assigns the capture id after the countersign, so
@@ -32,7 +32,7 @@ function tryExpand<T>(s: string, parse: (s: string) => T, back: (v: T) => string
  * and each SD-JWT disclosure as its array. A part that would not re-encode to the same bytes
  * stays encoded.
  */
-export function expand(b: AlibiBundle | AlibiReceipt): unknown {
+export function expand(b: AnyAlibi): unknown {
   const e = structuredClone(b) as Expanded;
   if (typeof e.leaf === "string") {
     e.leaf = tryExpand(

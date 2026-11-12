@@ -4,6 +4,7 @@ import { appendFileSync } from "node:fs";
 import Anthropic from "@anthropic-ai/sdk";
 import {
   ALFRED,
+  amountAuthority,
   apiClient,
   checkout,
   decimal,
@@ -18,15 +19,16 @@ import {
   runAgent,
   runCheckout,
   shopifyCart,
+  storePayPalMerchantId,
 } from "@keelson/agent";
 import { decodeAlibi } from "@keelson/alibi";
 import { verifyAlibi } from "@keelson/alibi/verify";
 import type { CheckoutTotal, FxReference } from "@keelson/core";
 import { startRecorder } from "@keelson/evidence/capture";
-import { maxSpreadBps, parseMandate } from "@keelson/mandate";
+import { allowedPayees, maxSpreadBps, parseMandate } from "@keelson/mandate";
 import { demoOperator } from "../test/pipeline-live.ts";
 import { SoftwarePasskey, signedMandate } from "../test/tee-live.ts";
-import { type Hold, openHold, signIn } from "./public-client.ts";
+import { type Hold, openHold, revokeMandate, signIn } from "./public-client.ts";
 
 // The shopping agent at a real store, with real money, under a fresh mandate for one digital
 // copy of the live item from Alfred Music (at most $5). The buyer's PayPal session is the KERNEL
@@ -95,23 +97,54 @@ async function settle(id: string) {
   }
 }
 
+/**
+ * The bench user answering each amount confirmation the gate asks for, with its passkey, as the
+ * user would on their phone: Alfred Music's PayPal orders are created by its own PayPal app, so
+ * Keelson cannot read them and the user confirms the amount. Runs until `signal` aborts.
+ */
+async function confirmAmounts(purchase: () => string, signal: AbortSignal): Promise<void> {
+  while (!signal.aborted) {
+    const path = `/v1/purchases/${purchase()}/amount-confirmation`;
+    const res = await user.api.request(path).catch(() => undefined);
+    const c = res?.ok ? ((await res.json()) as { state: string; challenge: string }) : undefined;
+    if (c?.state === "PENDING") {
+      const assertion = await passkey.assert(Buffer.from(c.challenge, "base64url"));
+      await user.api.request(path, {
+        method: "POST",
+        headers: { "content-type": "application/json", "idempotency-key": crypto.randomUUID() },
+        body: JSON.stringify({ assertion: { ...assertion, credentialId: passkey.credentialId } }),
+      });
+    }
+    await new Promise((r) => setTimeout(r, 2_000));
+  }
+}
+
 const log = (s: { at: number; kind: string; detail: string }) =>
   console.error(`+${s.at}ms ${s.kind} ${s.detail.slice(0, 160)}`);
 
 let held: Hold | undefined;
 try {
-  let mandate: unknown;
-  const hold: Hold = await openHold(
-    user,
-    (sub, edit) => signedMandate(passkey, sub, demoOperator, edit),
-    (m) => {
-      liveMandate(m, MAX_MINOR, process.env.ALFRED_PAYPAL_MERCHANT_ID ?? "unknown");
-      mandate = structuredClone(m);
-    },
-  );
-  held = hold;
   const session = await openSession({ hosts: ALFRED.hosts, profile: PROFILE, locale: "en-US" });
   try {
+    // The mandate names the PayPal account the store's own PayPal integration names; one that
+    // names another than the store's known account is never signed for.
+    await session.page.goto(productUrl);
+    await session.page.waitForLoadState("networkidle", { timeout: 15_000 }).catch(() => {});
+    const served = await storePayPalMerchantId(session.page);
+    if (served && served !== ALFRED.paypalMerchantId) {
+      throw new Error("the store's PayPal integration names another PayPal account");
+    }
+    let mandate: unknown;
+    const hold: Hold = await openHold(
+      user,
+      (sub, edit) => signedMandate(passkey, sub, demoOperator, edit),
+      (m) => {
+        liveMandate(m, MAX_MINOR, served ?? ALFRED.paypalMerchantId);
+        mandate = structuredClone(m);
+      },
+    );
+    held = hold;
+    const signed = parseMandate(structuredClone(mandate));
     let proposal: ProposedCart;
     let agent: Awaited<ReturnType<typeof runAgent>> | undefined;
     if (RUN === "buy") {
@@ -167,17 +200,17 @@ try {
       live: { store: ALFRED.origin },
     });
     const allowed = result.status < 300 && result.body.decision === "allow";
+    // The purchase the payment is for: the first countersign, or the last re-quote Keelson allowed.
+    let paid = result.requestId;
     const gate = new PayGate({
       checkoutHosts: ALFRED.checkoutHosts,
       cart: shopifyCart(session.context, ALFRED.origin),
-      maxSpreadBps: maxSpreadBps(parseMandate(structuredClone(mandate))),
-      ...(process.env.ALFRED_PAYPAL_MERCHANT_ID
-        ? { payee: process.env.ALFRED_PAYPAL_MERCHANT_ID }
-        : {}),
+      maxSpreadBps: maxSpreadBps(signed),
+      payees: allowedPayees(signed),
+      // PayPal's Orders API or the user's passkey decides the amount; the checkout cross-checks.
+      authority: amountAuthority(agentApi, () => paid),
     });
     if (allowed) gate.allow(quote.total, result.reference);
-    // The purchase the payment is for: the first countersign, or the last re-quote Keelson allowed.
-    let paid = result.requestId;
     const requotes: Record<string, unknown>[] = [];
     // A re-quoted total is countersigned on evidence captured in a tab of its own on the product
     // page, so nothing of the checkout's pages, which show the buyer's address, is sealed.
@@ -232,6 +265,10 @@ try {
     };
 
     const paying = RUN === "blocked" || allowed;
+    // The pay click comes after this; the activity entry for it cannot be older.
+    const since = new Date();
+    const confirming = new AbortController();
+    const confirmer = paying ? confirmAmounts(() => paid, confirming.signal) : undefined;
     const run = paying
       ? await runCheckout({
           client,
@@ -243,18 +280,18 @@ try {
           proposal,
           requote,
           onStep: log,
-        })
+        }).finally(() => confirming.abort())
       : undefined;
+    await confirmer;
     const purchase = await settle(paid);
     let transactionId: string | undefined;
     let recorded: number | undefined;
     if (run?.outcome === "paid") {
-      transactionId = await paypalTransactionId(
-        session.context,
-        session.page,
-        decimal(run.total.currency, run.total.minor),
-        "Alfred",
-      );
+      transactionId = await paypalTransactionId(session.context, session.page, {
+        currency: run.total.currency,
+        value: decimal(run.total.currency, run.total.minor),
+        since,
+      });
       if (transactionId) {
         const res = await agentApi.request(`/v1/purchases/${paid}/paypal-transaction`, {
           method: "PUT",
@@ -299,6 +336,9 @@ try {
       agent: agent && { outcome: agent.outcome, ms: agent.ms, usd: agent.usage.usd },
       checkout: run && {
         outcome: run.outcome,
+        // What the agent said the page showed, and where a checkout that did not pay ended.
+        note: run.note,
+        ...(run.stop ? { stop: run.stop } : {}),
         ms: run.ms,
         usd: run.usage.usd,
         refusedByGate: gate.refused,
@@ -309,6 +349,12 @@ try {
           payee: gate.paid.charge.payee,
         },
         conversion: gate.paid?.conversion,
+        // What decided the amount: PayPal's Orders API or the user's passkey.
+        amountAuthority: gate.paid?.check && {
+          authority: gate.paid.check.authority,
+          via: gate.paid.check.via,
+          crossCheck: gate.paid.check.cross_check,
+        },
         // Where PayPal's charge to the buyer was read, the rate it gives and the rate PayPal shows.
         funding: gate.paid?.funding,
         // Only the amounts read on each page where a pay action was held.
@@ -341,6 +387,9 @@ try {
           recorded === 200 &&
           summary.alibi.status === 200 &&
           summary.alibi.listed;
+    if (run?.outcome === "declined") {
+      console.error(`declined: the store or PayPal declined the payment. ${run.note}`);
+    }
     if (!ok) process.exitCode = 1;
   } finally {
     await session.close();
@@ -348,7 +397,6 @@ try {
 } finally {
   // As every run does: the mandate's sandbox hold is released.
   if (held) {
-    const revoked = await user.post(`/v1/mandates/${held.mid}/revoke`);
-    if (revoked.status >= 300) console.error(`mandate ${held.mid} not revoked: ${revoked.status}`);
+    await revokeMandate(user, held.mid).catch((err: unknown) => console.error(String(err)));
   }
 }

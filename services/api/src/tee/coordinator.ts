@@ -18,6 +18,13 @@ import {
   type Observation,
 } from "./client.ts";
 import { activeSigner, type Leg, refreshLeg, revokeSigner, type TeeConfig } from "./signers.ts";
+import {
+  type Capabilities,
+  capabilitiesOf,
+  chosenStatement,
+  NO_CAPABILITIES,
+  statementAsk,
+} from "./statements.ts";
 
 /** The channel the coordinator raises its alarms on. */
 const TEE_EVENTS = "public:tee";
@@ -27,7 +34,9 @@ type CoordinatorSlug =
   | "paypal-unavailable"
   | "tee-divergence"
   | "tee-unregistered-signer"
-  | "tee-contradiction";
+  | "tee-contradiction"
+  | "clock-unverified"
+  | "paypal-disagree";
 
 /** A refusal to countersign; it never carries a signature. */
 export class CoordinatorError extends Error {
@@ -70,9 +79,64 @@ interface CoordinatedCountersign {
   signers: { tdx: Address; nitro: Address | null };
   trace: Json;
   observation: Observation;
+  /** The purchase's SCITT statement, standard base64, when the legs that answered sign them. */
+  statement: string | null;
 }
 
 const DOMAIN_CHAIN = CHAIN_IDS.arbitrumSepolia;
+
+const HEALTH_TTL_MS = 60_000;
+const health = new Map<Leg, { capabilities: Capabilities; at: number }>();
+
+/**
+ * What a leg's engine does, from its `/v1/health` (cached a minute, read again after any
+ * failure): a leg on an older engine refuses a request carrying a field it does not know.
+ */
+async function legCapabilities(
+  deps: { tee: Pick<TeeConfig, "client"> },
+  leg: Leg,
+): Promise<Capabilities> {
+  const cached = health.get(leg);
+  if (cached && Date.now() - cached.at < HEALTH_TTL_MS) return cached.capabilities;
+  try {
+    const capabilities = capabilitiesOf(await deps.tee.client[leg].health());
+    health.set(leg, { capabilities, at: Date.now() });
+    return capabilities;
+  } catch {
+    health.delete(leg);
+    return NO_CAPABILITIES;
+  }
+}
+
+/** Whether a leg signs SCITT statements; see {@link legCapabilities}. */
+export async function legSupportsStatements(
+  deps: { tee: Pick<TeeConfig, "client"> },
+  leg: Leg,
+): Promise<boolean> {
+  return (await legCapabilities(deps, leg)).statements;
+}
+
+/**
+ * Whether the SP1 program the deployed `EngineProofVerifier` pins reads decoy salts. It does not:
+ * that verifier is immutable, so a mandate with decoys could not have its countersign proven, and
+ * decoys stay off until a verifier of a program that reads them is deployed.
+ */
+const ENGINE_PROOF_READS_DECOYS = false;
+
+/** What both legs do: a feature is used only once each leg reports it. */
+export async function bothLegs(deps: { tee: Pick<TeeConfig, "client"> }): Promise<Capabilities> {
+  const [a, b] = await Promise.all([legCapabilities(deps, "a"), legCapabilities(deps, "b")]);
+  return {
+    statements: a.statements && b.statements,
+    decoys: a.decoys && b.decoys && ENGINE_PROOF_READS_DECOYS,
+    status_list: a.status_list && b.status_list,
+    paypal_reads: b.paypal_reads,
+  };
+}
+
+/** The 32-byte measurement of a `tdx:<hex>` or `nitro:<hex>` id. */
+const measurementHex = (id: string | undefined) =>
+  id && /^(tdx|nitro):[0-9a-f]{64}$/.test(id) ? (`0x${id.split(":")[1]}` as Hex) : null;
 
 /** The typed `Countersign` message of its JSON form. */
 export function countersignMessage(c: CountersignJson): Countersign {
@@ -305,17 +369,44 @@ export async function countersign2of2(
   deps: CoordinatorDeps,
   req: CountersignRequest,
   want: CountersignExpectation,
+  refSalt?: Hex,
 ): Promise<CoordinatedCountersign> {
   const unavailable = () =>
     new CoordinatorError("tee-unavailable", "A TEE signer is not available.", 503);
 
-  if (!(await activeSigner(deps.db, 1))) {
+  const signerA = await activeSigner(deps.db, 1);
+  if (!signerA) {
     void readmit(deps, "a");
     throw unavailable();
   }
+  const signerB = await activeSigner(deps.db, 2);
+  const measurements = {
+    tdx: measurementHex(signerA.measurement),
+    nitro: measurementHex(signerB?.measurement),
+  };
+  const [statementsA, capabilitiesB] = await Promise.all([
+    legSupportsStatements(deps, "a"),
+    legCapabilities(deps, "b"),
+  ]);
+  const statementsB = capabilitiesB.statements;
+  const readsB = capabilitiesB.paypal_reads;
+  // Leg B reads the authorization while leg A countersigns, so its own read adds no wait.
+  if (readsB && req.authorization_id) {
+    void deps.tee.client.b
+      .prefetch({ authorization_id: req.authorization_id })
+      .catch((err: unknown) => deps.log.warn({ err }, "leg b prefetch failed"));
+  }
+  const askA =
+    measurements.tdx === null
+      ? undefined
+      : statementAsk({
+          supports: statementsA,
+          measurements: { tdx: measurements.tdx, nitro: measurements.nitro },
+          refSalt,
+        });
   let a: Countersigned;
   try {
-    a = await deps.tee.client.a.countersign(req);
+    a = await deps.tee.client.a.countersign(askA ? { ...req, statement: askA } : req);
   } catch (err) {
     if (err instanceof LegError) {
       deps.log.warn(
@@ -333,12 +424,27 @@ export async function countersign2of2(
   }
   const first = await checked(deps, "a", a, req, want);
 
-  // Leg B has no root to open the salt with.
-  const { authorization_id: _read, sealed_salt: _salt, ...forB } = req;
+  // Leg B has no root to open the salt with; it reads the authorization itself only on an
+  // engine that does.
+  const { authorization_id: authorizationId, sealed_salt: _salt, ...rest } = req;
+  const forB = readsB && authorizationId ? { ...rest, authorization_id: authorizationId } : rest;
   let b: Countersigned | undefined;
-  if (await activeSigner(deps.db, 2)) {
+  if (signerB) {
+    const askB =
+      a.statement && measurements.tdx !== null
+        ? statementAsk({
+            supports: statementsB,
+            measurements: { tdx: measurements.tdx, nitro: measurements.nitro },
+            refSalt,
+            legA: { signer: a.signer, signature: a.signature },
+          })
+        : undefined;
     try {
-      b = await deps.tee.client.b.countersign({ ...forB, observation: a.observation });
+      b = await deps.tee.client.b.countersign({
+        ...forB,
+        observation: a.observation,
+        ...(askB ? { statement: askB } : {}),
+      });
     } catch (err) {
       if (!unreachable(err)) {
         const code = err instanceof LegError ? (err.code ?? null) : null;
@@ -352,6 +458,15 @@ export async function countersign2of2(
           "leg b did not countersign",
         );
         if (notJudged(err)) throw unavailable();
+        // Leg B read PayPal itself and saw another state (a capture landed between the reads):
+        // nothing is signed, and the same request may be driven again.
+        if (code === "paypal_disagree") {
+          throw new CoordinatorError(
+            "paypal-disagree",
+            "The two TEEs read different PayPal states; try again.",
+            503,
+          );
+        }
         emit(deps, "tee.divergence", req.request_id, { digests: [first.digest, null], code });
         throw divergence();
       }
@@ -360,6 +475,15 @@ export async function countersign2of2(
 
   const { trace } = first;
   if (!b) {
+    // Leg A alone answers for the time a mandate's `exp` and the countersign window are read on:
+    // only a clock it authenticated at boot may.
+    if ((await legCapabilities(deps, "a")).clock === "unverified") {
+      throw new CoordinatorError(
+        "clock-unverified",
+        "Leg B is down and leg A's clock is not authenticated, so nothing is countersigned now.",
+        503,
+      );
+    }
     await record(deps, req.request_id, [first]);
     deps.log.warn({ requestId: req.request_id }, "leg b is down, countersigned by leg a alone");
     emit(deps, "tee.degraded", req.request_id, { digest: first.digest });
@@ -371,6 +495,7 @@ export async function countersign2of2(
       signers: { tdx: first.signer, nitro: null },
       trace,
       observation: a.observation,
+      statement: chosenStatement("degraded", a.statement, undefined),
     };
   }
 
@@ -388,5 +513,6 @@ export async function countersign2of2(
     signers: { tdx: first.signer, nitro: second.signer },
     trace,
     observation: a.observation,
+    statement: chosenStatement("2of2", a.statement, b.statement),
   };
 }

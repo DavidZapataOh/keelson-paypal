@@ -58,7 +58,9 @@ export const liveEnv = () => ({
   TEE_B_URL: process.env.TEE_B_URL as string,
   KEELSON_TEE_TOKEN: process.env.KEELSON_TEE_TOKEN as string,
   ARBITRUM_SEPOLIA_RPC_URL: process.env.ARBITRUM_SEPOLIA_RPC_URL,
-  KEELSON_ISSUER_THUMBPRINT: process.env.KEELSON_ISSUER_THUMBPRINT as `0x${string}`,
+  KEELSON_ISSUER_THUMBPRINTS: process.env.KEELSON_ISSUER_THUMBPRINTS?.split(",") as
+    | `0x${string}`[]
+    | undefined,
 });
 
 /** The origin the deployed legs accept passkey assertions on; its RP ID is `keelson.finance`. */

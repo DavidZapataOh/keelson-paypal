@@ -14,7 +14,7 @@ use keelson_core::{AcirField, currency_numeric};
 use keelson_mandate::{
     ClosedMandateVerifyOptions, EMBED_ORIGIN, Expected, Fr, Jwk, OpenMandateParams,
     OpenMandateVerifyOptions, PasskeyCredential, RP_ID, USER_CREDENTIAL_TYP, UserAuth,
-    UserCredentialParams, WebAuthnError, decode_mandate, h_sd, issue_open_mandate,
+    UserCredentialParams, WebAuthnError, decode_mandate_with_decoys, h_sd, issue_open_mandate,
     issue_user_credential, mandate_challenge, mandate_commitment, mandate_opening, merchant_leaf,
     merchant_membership, spc_details, verify_assertion, verify_closed_mandate, verify_credential,
 };
@@ -68,6 +68,8 @@ const MAX_SUB: usize = 128;
 const MAX_STRING: usize = 256;
 /// Longest credential or presentation, in bytes.
 const MAX_TOKEN: usize = 128 * 1024;
+/// Longest status list token a countersign may carry, in bytes.
+const MAX_STATUS_TOKEN: usize = 16 * 1024;
 /// Longest serialized `payload_sd`, in bytes.
 const MAX_PAYLOAD: usize = 128 * 1024;
 /// Most disclosures a mandate comes with.
@@ -152,6 +154,10 @@ pub enum EngineError {
     Checkpoint(CheckpointError),
     /// The log checkpoint was not signed.
     Log(SignError),
+    /// The status list refused: `status_not_extending`, `status_stale` or `mandate_revoked`.
+    Status(&'static str),
+    /// Leg B's own PayPal reading differs from the one leg A observed.
+    PayPalDisagree,
 }
 
 impl EngineError {
@@ -173,6 +179,8 @@ impl EngineError {
             Self::Signer(_) => "signer".into(),
             Self::Checkpoint(e) => e.code().into(),
             Self::Log(e) => e.code().into(),
+            Self::Status(code) => (*code).into(),
+            Self::PayPalDisagree => "paypal_disagree".into(),
         }
     }
 }
@@ -217,6 +225,8 @@ pub struct Engine {
     /// The Alibi origins' log keys leg A holds, `(origin, Ed25519 key)`: leg A's own, or on leg B
     /// the ones its boot message carried with a KMS chain that verified.
     tee_log_keys: Vec<(&'static str, [u8; 32])>,
+    /// The record the latest signed status list was found at, where the next search starts.
+    status_at: Mutex<usize>,
 }
 
 /// What leg A needs to prove C1 for an ALLOW it already answered.
@@ -263,6 +273,8 @@ struct Authenticated {
     mandate_hash: [u8; 32],
     commitment: [u8; 32],
     user_key: Jwk,
+    /// The open mandate's entry in the status list.
+    status: Option<keelson_mandate::StatusRef>,
 }
 
 impl Engine {
@@ -302,6 +314,7 @@ impl Engine {
             c1: C1Proofs::default(),
             log: None,
             tee_log_keys: Vec::new(),
+            status_at: Mutex::new(0),
         }
     }
 
@@ -439,7 +452,8 @@ impl Engine {
     ) -> Result<MandateIssued, EngineError> {
         let root = self.root.as_ref().ok_or(EngineError::NoRoot)?;
         check_register(r)?;
-        let m = decode_mandate(&r.payload_sd, &r.disclosures).map_err(|_| bad("mandate"))?;
+        let m = decode_mandate_with_decoys(&r.payload_sd, &r.disclosures, &r.decoy_salts)
+            .map_err(|_| bad("mandate"))?;
         if m["user"]["sub"] != r.sub.as_str() {
             return Err(bad("sub"));
         }
@@ -511,6 +525,10 @@ impl Engine {
                 },
                 aud: OPEN_MANDATE_AUD.into(),
                 nonce: m["mid"].as_str().unwrap_or_default().into(),
+                status: r.status_idx.map(|idx| keelson_mandate::StatusRef {
+                    idx,
+                    uri: keelson_mandate::STATUS_URI.into(),
+                }),
             },
             &holder,
             &mut random_salt,
@@ -708,7 +726,8 @@ impl Engine {
         if !self.signer.signed(&digest, &r.signature.0) {
             return Err(bad("signature"));
         }
-        let m = decode_mandate(&r.payload_sd, &r.disclosures).map_err(|_| bad("mandate"))?;
+        let m = decode_mandate_with_decoys(&r.payload_sd, &r.disclosures, &r.decoy_salts)
+            .map_err(|_| bad("mandate"))?;
         let cm = commitment(&m).ok_or(bad("mandate"))?;
         let h = h_sd(&r.payload_sd).map_err(|_| bad("mandate"))?;
         let mandate_hash = mandate_challenge(&h, &Fr::from_be_bytes_reduce(&cm));
@@ -836,6 +855,610 @@ impl Engine {
     /// the authorization can back it (see [`PayPalDeny`]). Without it, the amount comes from the
     /// [`CapturedSource`]. Leg B takes the reading from the request's observation and refuses
     /// one passed here.
+    /// The purchase's SCITT signed statement (RFC 9943): leg A signs its own leg alone
+    /// (`degraded`); leg B, given leg A's signature over the same digest, signs both (`2of2`).
+    /// `None` on leg B without leg A's signature.
+    fn purchase_statement(
+        &self,
+        ask: &wire::StatementRequest,
+        c: &Countersign,
+        chain_id: u64,
+        signature: &[u8; 65],
+        paypal: Option<&PayPalObservation>,
+        alibi_id: &str,
+    ) -> Result<Option<Vec<u8>>, EngineError> {
+        use keelson_core::statement::{
+            LegSignature, Mode, StatementClaims, claims_bytes, pay_ref, statement,
+            statement_protected, to_be_signed,
+        };
+        let domain = keelson_core::domain(chain_id, self.config.verifying_contract)
+            .map_err(|_| bad("chain_id"))?;
+        let digest = crate::countersign_digest(c, &domain);
+        let own = LegSignature {
+            kind: self.config.tee_kind.into(),
+            signer: self.signer.address().into_array(),
+            signature: *signature,
+            measurement: match self.config.tee_kind {
+                TeeKind::Tdx => ask.measurements.tdx.0,
+                TeeKind::Nitro => ask.measurements.nitro.ok_or(bad("measurements"))?.0,
+            },
+        };
+        let legs = match (self.config.tee_kind, &ask.leg_a) {
+            (TeeKind::Tdx, _) => vec![own],
+            (TeeKind::Nitro, Some(a)) => {
+                if crate::recover_address(&digest, &a.signature.0) != Some(a.signer) {
+                    return Err(bad("leg_a"));
+                }
+                vec![
+                    LegSignature {
+                        kind: TeeKind::Tdx.into(),
+                        signer: a.signer.into_array(),
+                        signature: a.signature.0,
+                        measurement: ask.measurements.tdx.0,
+                    },
+                    own,
+                ]
+            }
+            (TeeKind::Nitro, None) => return Ok(None),
+        };
+        let reference = ask.ref_salt.and_then(|salt| {
+            paypal
+                .filter(|p| !p.order_id.is_empty() && !p.authorization_id.is_empty())
+                .map(|p| pay_ref(&salt.0, &p.order_id, &p.authorization_id))
+        });
+        let claims = StatementClaims {
+            countersign: c,
+            chain_id,
+            verifying_contract: self.config.verifying_contract.into_array(),
+            mode: if legs.len() == 2 {
+                Mode::TwoOfTwo
+            } else {
+                Mode::Degraded
+            },
+            legs: &legs,
+            pay_ref: reference,
+        };
+        let payload = claims_bytes(&claims);
+        let protected = statement_protected(
+            self.signer.address().into_array(),
+            alibi_id,
+            c.issuedAt.to::<u64>(),
+        );
+        let sig = self
+            .signer
+            .sign_statement(&to_be_signed(&protected, &payload))
+            .map_err(EngineError::Signer)?;
+        Ok(Some(statement(protected, payload, sig)))
+    }
+
+    /// A card network authorization decision as a SCITT statement: this leg's own signature must
+    /// be in it, the other leg's must be over the same decision, and the signer is the last leg
+    /// that decided (leg B in 2of2, leg A alone). The card it commits to is the one the settlement
+    /// statement later shows leg A read from the issuer.
+    pub fn card_authorization_statement(
+        &self,
+        r: &wire::CardStatementRequest,
+    ) -> Result<wire::StatementSigned, EngineError> {
+        use keelson_core::statement::{
+            CARD_AUTHORIZATION_CONTENT_TYPE, CardAuthorizationClaims, LegSignature, Mode,
+            card_authorization_claims_bytes, card_ref, protected_header, statement, to_be_signed,
+        };
+        within(&r.issuer, MAX_STRING, "issuer")?;
+        within(&r.card_token, MAX_STRING, "card_token")?;
+        let chain_id = r.chain_id.unwrap_or(self.config.chain_id);
+        let domain = keelson_core::domain(chain_id, self.config.verifying_contract)
+            .map_err(|_| bad("chain_id"))?;
+        let a = card_authorization_of(&r.authorization)?;
+        let digest: [u8; 32] = alloy_sol_types::SolStruct::eip712_signing_hash(&a, &domain).0;
+        let own = match (self.config.tee_kind, r.signatures.nitro) {
+            (TeeKind::Tdx, None) => r.signatures.tdx,
+            (TeeKind::Nitro, Some(n)) => n,
+            _ => return Err(bad("card.mode")),
+        };
+        if crate::recover_address(&digest, &own.0) != Some(self.signer.address()) {
+            return Err(bad("card.unknown"));
+        }
+        let tdx = crate::recover_address(&digest, &r.signatures.tdx.0).ok_or(bad("card.digest"))?;
+        let mut legs = vec![LegSignature {
+            kind: TeeKind::Tdx.into(),
+            signer: tdx.into_array(),
+            signature: r.signatures.tdx.0,
+            measurement: r.measurements.tdx.0,
+        }];
+        if let Some(n) = r.signatures.nitro {
+            legs.push(LegSignature {
+                kind: TeeKind::Nitro.into(),
+                signer: self.signer.address().into_array(),
+                signature: n.0,
+                measurement: r.measurements.nitro.ok_or(bad("measurements"))?.0,
+            });
+        }
+        let claims = CardAuthorizationClaims {
+            authorization: &a,
+            card_ref: card_ref(&r.ref_salt.0, &r.issuer, &r.card_token),
+            parent: r.parent.0,
+            chain_id,
+            verifying_contract: self.config.verifying_contract.into_array(),
+            mode: if legs.len() == 2 {
+                Mode::TwoOfTwo
+            } else {
+                Mode::Degraded
+            },
+            legs: &legs,
+        };
+        let payload = card_authorization_claims_bytes(&claims);
+        let alibi_id = Ulid::from_bytes(
+            a.requestId.0[16..]
+                .try_into()
+                .map_err(|_| bad("request_id"))?,
+        );
+        if a.requestId.0[..16].iter().any(|b| *b != 0) {
+            return Err(bad("request_id"));
+        }
+        let protected = protected_header(
+            self.signer.address().into_array(),
+            &alibi_id.to_string(),
+            a.issuedAt.to::<u64>(),
+            CARD_AUTHORIZATION_CONTENT_TYPE,
+        );
+        let sig = self
+            .signer
+            .sign_statement(&to_be_signed(&protected, &payload))
+            .map_err(EngineError::Signer)?;
+        Ok(wire::StatementSigned {
+            statement: Base64(statement(protected, payload, sig)),
+        })
+    }
+
+    /// Signs a card settlement from the issuer's raw answers: the transaction must be the card's,
+    /// the card the one issued for this purchase (its memo names the request), and the status a
+    /// final one. Leg A answers with a degraded statement; leg B, given leg A's reading and
+    /// signature over the same facts, with the 2of2 one.
+    pub fn card_settlement(
+        &self,
+        r: &wire::CardSettlementRequest,
+        observed: &wire::SettlementObservation,
+    ) -> Result<wire::CardSettled, EngineError> {
+        use keelson_core::eip712::CardSettlement;
+        use keelson_core::statement::{
+            CARD_SETTLEMENT_CONTENT_TYPE, CardSettlementClaims, LegSignature, Mode, card_ref,
+            card_settlement_claims_bytes, protected_header, statement, to_be_signed,
+        };
+        #[derive(serde::Deserialize)]
+        struct Amount {
+            amount: i64,
+            currency: String,
+        }
+        #[derive(serde::Deserialize)]
+        struct Amounts {
+            settlement: Amount,
+        }
+        #[derive(serde::Deserialize)]
+        struct Transaction {
+            token: String,
+            card_token: String,
+            status: String,
+            settled_amount: i64,
+            amounts: Amounts,
+            updated: String,
+        }
+        #[derive(serde::Deserialize)]
+        struct Card {
+            token: String,
+            memo: Option<String>,
+        }
+        within(&r.issuer, MAX_STRING, "issuer")?;
+        within(&r.card_token, MAX_STRING, "card_token")?;
+        within(&r.transaction_token, MAX_STRING, "transaction_token")?;
+        let t: Transaction = serde_json::from_slice(&observed.transaction.0)
+            .map_err(|_| bad("settlement.transaction"))?;
+        let card: Card =
+            serde_json::from_slice(&observed.card.0).map_err(|_| bad("settlement.card"))?;
+        if t.token != r.transaction_token
+            || t.card_token != r.card_token
+            || card.token != r.card_token
+            || card.memo.as_deref() != Some(format!("Keelson {}", r.request_id).as_str())
+        {
+            return Err(bad("settlement.card"));
+        }
+        let status: u8 = match t.status.as_str() {
+            "SETTLED" => 1,
+            "VOIDED" => 2,
+            "EXPIRED" => 3,
+            _ => return Err(bad("settlement.status")),
+        };
+        if t.settled_amount != t.amounts.settlement.amount || t.settled_amount < 0 {
+            return Err(bad("settlement.amount"));
+        }
+        let settled_at =
+            OffsetDateTime::parse(&t.updated, &time::format_description::well_known::Rfc3339)
+                .map_err(|_| bad("settlement.updated"))?
+                .unix_timestamp();
+        let chain_id = r.chain_id.unwrap_or(self.config.chain_id);
+        let domain = keelson_core::domain(chain_id, self.config.verifying_contract)
+            .map_err(|_| bad("chain_id"))?;
+        let mut request_id = [0u8; 32];
+        request_id[16..].copy_from_slice(&r.request_id.to_bytes());
+        let reference = card_ref(&r.ref_salt.0, &r.issuer, &r.card_token);
+        let settlement = CardSettlement {
+            requestId: B256::new(request_id),
+            cardRef: B256::new(reference),
+            transactionHash: B256::new(Sha256::digest(&observed.transaction.0).into()),
+            settledMinor: u64::try_from(t.settled_amount).map_err(|_| bad("settlement.amount"))?,
+            currency: currency_numeric(&t.amounts.settlement.currency)
+                .map_err(|_| bad("settlement.currency"))?,
+            status,
+            settledAt: U40::from(u64::try_from(settled_at).map_err(|_| bad("settlement.updated"))?),
+            observedAt: U40::from(observed.observed_at),
+        };
+        let digest: [u8; 32] =
+            alloy_sol_types::SolStruct::eip712_signing_hash(&settlement, &domain).0;
+        let signature = self
+            .signer
+            .sign_digest_of(&digest)
+            .map_err(EngineError::Signer)?;
+        let own = LegSignature {
+            kind: self.config.tee_kind.into(),
+            signer: self.signer.address().into_array(),
+            signature,
+            measurement: match self.config.tee_kind {
+                TeeKind::Tdx => r.measurements.tdx.0,
+                TeeKind::Nitro => r.measurements.nitro.ok_or(bad("measurements"))?.0,
+            },
+        };
+        let legs = match (self.config.tee_kind, &r.leg_a) {
+            (TeeKind::Tdx, _) => vec![own],
+            (TeeKind::Nitro, Some(a)) => {
+                if crate::recover_address(&digest, &a.signature.0) != Some(a.signer) {
+                    return Err(bad("leg_a"));
+                }
+                vec![
+                    LegSignature {
+                        kind: TeeKind::Tdx.into(),
+                        signer: a.signer.into_array(),
+                        signature: a.signature.0,
+                        measurement: r.measurements.tdx.0,
+                    },
+                    own,
+                ]
+            }
+            (TeeKind::Nitro, None) => return Err(bad("leg_a")),
+        };
+        let claims = CardSettlementClaims {
+            settlement: &settlement,
+            parent: r.parent.0,
+            chain_id,
+            verifying_contract: self.config.verifying_contract.into_array(),
+            mode: if legs.len() == 2 {
+                Mode::TwoOfTwo
+            } else {
+                Mode::Degraded
+            },
+            legs: &legs,
+        };
+        let payload = card_settlement_claims_bytes(&claims);
+        let protected = protected_header(
+            self.signer.address().into_array(),
+            &r.request_id.to_string(),
+            observed.observed_at,
+            CARD_SETTLEMENT_CONTENT_TYPE,
+        );
+        let sig = self
+            .signer
+            .sign_statement(&to_be_signed(&protected, &payload))
+            .map_err(EngineError::Signer)?;
+        Ok(wire::CardSettled {
+            settlement: wire::CardSettlementJson {
+                request_id: Hex(request_id),
+                card_ref: Hex(reference),
+                transaction_hash: Hex(settlement.transactionHash.0),
+                settled_minor: settlement.settledMinor.to_string(),
+                currency: settlement.currency.to_string(),
+                status: status.to_string(),
+                settled_at: settled_at.to_string(),
+                observed_at: observed.observed_at.to_string(),
+            },
+            digest: Hex(digest),
+            signature: Hex(signature),
+            signer: self.signer.address(),
+            observation: observed.clone(),
+            statement: Base64(statement(protected, payload, sig)),
+        })
+    }
+
+    /// Carries a v1 Alibi into a SCITT bridge statement, after checking it in full: the leaf's
+    /// digest is the countersign's, its signatures recover over it in the number its mode says, and
+    /// this leg's own log key signed a checkpoint that includes it, so the log admitted it under
+    /// the signer registry. The facts are exactly the v1 countersign's; nothing is added.
+    pub fn bridge(&self, r: &wire::BridgeRequest) -> Result<wire::StatementSigned, EngineError> {
+        use keelson_core::statement::{
+            BRIDGE_CONTENT_TYPE, BridgeClaims, LegSignature, Mode, bridge_claims_bytes,
+            protected_header, statement, to_be_signed,
+        };
+        #[derive(serde::Deserialize)]
+        struct V1Leaf {
+            alibi_id: String,
+            countersign_digest: String,
+            mode: String,
+            tee_sigs: Vec<String>,
+            measurements: Vec<String>,
+        }
+        let log = self.log.as_deref().ok_or(bad("bridge.leg"))?;
+        let body = r
+            .leaf
+            .0
+            .strip_prefix(b"keelson.finance/alibi/v1\n".as_slice())
+            .ok_or(bad("bridge.leaf"))?;
+        let v1: V1Leaf = serde_json::from_slice(body).map_err(|_| bad("bridge.leaf"))?;
+        let b32 = |s: &str| -> Result<[u8; 32], EngineError> {
+            URL_SAFE_NO_PAD
+                .decode(s)
+                .ok()
+                .and_then(|b| b.try_into().ok())
+                .ok_or(bad("bridge.leaf"))
+        };
+        let chain_id = r.chain_id.unwrap_or(self.config.chain_id);
+        let domain = keelson_core::domain(chain_id, self.config.verifying_contract)
+            .map_err(|_| bad("chain_id"))?;
+        let c = countersign_of(&r.countersign)?;
+        let digest = crate::countersign_digest(&c, &domain);
+        if digest != b32(&v1.countersign_digest)? {
+            return Err(bad("bridge.digest"));
+        }
+        let mut request_id = [0u8; 16];
+        request_id.copy_from_slice(&c.requestId.0[16..]);
+        if c.requestId.0[..16].iter().any(|b| *b != 0)
+            || Ulid::from_bytes(request_id).to_string() != v1.alibi_id
+        {
+            return Err(bad("bridge.digest"));
+        }
+        let (mode, n) = match v1.mode.as_str() {
+            "2of2" => (Mode::TwoOfTwo, 2),
+            "degraded" => (Mode::Degraded, 1),
+            _ => return Err(bad("bridge.mode")),
+        };
+        if v1.tee_sigs.len() != n || v1.measurements.len() != n {
+            return Err(bad("bridge.mode"));
+        }
+        let mut legs = Vec::with_capacity(n);
+        for (i, (sig, measurement)) in v1.tee_sigs.iter().zip(&v1.measurements).enumerate() {
+            let signature: [u8; 65] = URL_SAFE_NO_PAD
+                .decode(sig)
+                .ok()
+                .and_then(|b| b.try_into().ok())
+                .ok_or(bad("bridge.leaf"))?;
+            let signer = crate::recover_address(&digest, &signature).ok_or(bad("bridge.signer"))?;
+            legs.push(LegSignature {
+                kind: if i == 0 { TeeKind::Tdx } else { TeeKind::Nitro }.into(),
+                signer: signer.into_array(),
+                signature,
+                measurement: b32(measurement)?,
+            });
+        }
+        let origin = crate::checkpoint::ORIGINS
+            .iter()
+            .find(|o| o.chain_id == chain_id)
+            .ok_or(bad("chain_id"))?;
+        if !log.includes(origin.name, &r.leaf.0, &r.tlog_proof) {
+            return Err(bad("bridge.inclusion"));
+        }
+        let predecessor: [u8; 32] = Sha256::new()
+            .chain_update([0])
+            .chain_update(&r.leaf.0)
+            .finalize()
+            .into();
+        let claims = BridgeClaims {
+            countersign: &c,
+            chain_id,
+            verifying_contract: self.config.verifying_contract.into_array(),
+            mode,
+            legs: &legs,
+            predecessor,
+        };
+        let payload = bridge_claims_bytes(&claims);
+        let protected = protected_header(
+            self.signer.address().into_array(),
+            &v1.alibi_id,
+            c.issuedAt.to::<u64>(),
+            BRIDGE_CONTENT_TYPE,
+        );
+        let sig = self
+            .signer
+            .sign_statement(&to_be_signed(&protected, &payload))
+            .map_err(EngineError::Signer)?;
+        Ok(wire::StatementSigned {
+            statement: Base64(statement(protected, payload, sig)),
+        })
+    }
+
+    /// On leg B: requires its own reading of the request's PayPal authorization to say what leg
+    /// A's observation says, field for field. The countersign then judges the reading both
+    /// legs agree on.
+    pub fn confirm_paypal(
+        &self,
+        r: &CountersignRequest,
+        own: &PayPalObservation,
+    ) -> Result<(), EngineError> {
+        let observed = r.observation.as_ref().ok_or(bad("observation"))?;
+        if r.authorization_id.as_deref() != Some(own.authorization_id.as_str())
+            || !crate::paypal::same_reading(&observed.paypal, own)
+        {
+            return Err(EngineError::PayPalDisagree);
+        }
+        Ok(())
+    }
+
+    /// Signs the status list token over `r.lst` with the credential issuer key, on leg A only,
+    /// and only when the list keeps every bit the last one it signed for `r.uri` sets. The token
+    /// is recorded as the current one a countersign must present.
+    pub fn sign_status(
+        &self,
+        r: &wire::StatusSignRequest,
+        now: OffsetDateTime,
+    ) -> Result<wire::StatusSigned, EngineError> {
+        use crate::status::{DurableStatus, decode_list, extends, sign_token};
+        let root = self.root.as_ref().ok_or(EngineError::NoRoot)?;
+        let users = self.users.as_ref().ok_or(EngineError::NotReady)?;
+        let issuer = self.issuer.as_ref().ok_or(EngineError::NoRoot)?;
+        if r.uri != keelson_mandate::STATUS_URI {
+            return Err(bad("status.uri"));
+        }
+        let bits = decode_list(&r.lst).ok_or(bad("status.lst"))?;
+        let records = DurableStatus {
+            root,
+            users: users.as_ref(),
+        };
+        let mut at = self
+            .status_at
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let latest = records.latest(&r.uri, *at);
+        if latest.as_ref().is_some_and(|l| !extends(&l.bits, &bits)) {
+            return Err(EngineError::Status("status_not_extending"));
+        }
+        let n = latest.as_ref().map_or(0, |l| l.n + 1);
+        let kid = URL_SAFE_NO_PAD.encode(issuer.thumbprint());
+        let token = sign_token(
+            &root.issuer_key(),
+            &kid,
+            &r.uri,
+            &r.lst,
+            now.unix_timestamp(),
+        );
+        if !records.append(&r.uri, n, &token, &bits) {
+            return Err(EngineError::Busy);
+        }
+        *at = n;
+        Ok(wire::StatusSigned { token })
+    }
+
+    /// Requires a fresh status list token, signed by the issuer, in which the mandate's bit is
+    /// clear; leg A also requires it to be the last token it signed for the list.
+    fn check_status(
+        &self,
+        status: &keelson_mandate::StatusRef,
+        token: Option<&str>,
+        now: i64,
+    ) -> Result<(), EngineError> {
+        use crate::status::{DurableStatus, StatusError, check_token, token_digest};
+        let token = token.ok_or(bad("status_list"))?;
+        if token.len() > MAX_STATUS_TOKEN {
+            return Err(EngineError::TooLarge("status_list"));
+        }
+        let issuer = self
+            .issuer
+            .as_ref()
+            .ok_or(EngineError::NoRoot)?
+            .verifying_key()
+            .map_err(|_| EngineError::NoRoot)?;
+        match check_token(token, &issuer, status, now) {
+            Err(StatusError::Revoked) => return Err(EngineError::Status("mandate_revoked")),
+            Err(StatusError::Invalid) => return Err(bad("status_list")),
+            Ok(()) => {}
+        }
+        if let (Some(root), Some(users)) = (&self.root, &self.users) {
+            let records = DurableStatus {
+                root,
+                users: users.as_ref(),
+            };
+            let mut at = self
+                .status_at
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let latest = records
+                .latest(&status.uri, *at)
+                .ok_or(EngineError::Status("status_stale"))?;
+            *at = latest.n;
+            if latest.token != token_digest(token) {
+                return Err(EngineError::Status("status_stale"));
+            }
+        }
+        Ok(())
+    }
+
+    /// Signs a standard export with leg A's credential-issuer key (compact ES256 JWS), only when
+    /// the statement it carries was logged under this leg's own receipt key, its signatures hold,
+    /// `keelson.facts` is the statement's, and its profile's bound pointers hold their facts.
+    pub fn sign_export(&self, r: &wire::ExportRequest) -> Result<wire::ExportSigned, EngineError> {
+        use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64;
+        use keelson_core::statement::{read_purchase, to_be_signed, verify_receipt};
+        let (Some(log), Some(root), Some(issuer)) = (self.log.as_deref(), &self.root, &self.issuer)
+        else {
+            return Err(bad("export.leg"));
+        };
+        let read = read_purchase(&r.statement.0).ok_or(bad("export.statement"))?;
+        let keys: Vec<[u8; 32]> = log.keys().iter().map(|k| k.receipt_public_key()).collect();
+        read.receipts
+            .first()
+            .and_then(|receipt| verify_receipt(receipt, &read.registered, &keys))
+            .ok_or(bad("export.receipt"))?;
+        // A purchase statement's ES256K signature is by the leg its mode names; a bridge's is by a
+        // leg A signer, whose statement this leg's own log registered (the receipt above). The
+        // legs signed its facts either way.
+        let last = read.legs.last().ok_or(bad("export.statement"))?.signer;
+        let expected = if read.predecessor.is_some() {
+            read.kid
+        } else {
+            last
+        };
+        let digest: [u8; 32] =
+            Sha256::digest(to_be_signed(&read.protected, &read.claims_bytes)).into();
+        let by_kid = [27u8, 28].iter().any(|v| {
+            let mut sig = [0u8; 65];
+            sig[..64].copy_from_slice(&read.signature);
+            sig[64] = *v;
+            crate::recover_address(&digest, &sig).map(|a| a.into_array()) == Some(read.kid)
+        });
+        let domain = keelson_core::domain(read.chain_id, self.config.verifying_contract)
+            .map_err(|_| bad("export.statement"))?;
+        let countersign = crate::countersign_digest(&read.countersign, &domain);
+        let legs_signed = read.legs.iter().all(|l| {
+            crate::recover_address(&countersign, &l.signature).map(|a| a.into_array())
+                == Some(l.signer)
+        });
+        if read.kid != expected || !by_kid || !legs_signed {
+            return Err(bad("export.statement"));
+        }
+        let k = &r.payload["keelson"];
+        if k["statement"].as_str() != Some(B64.encode(&r.statement.0).as_str())
+            || k["facts"] != crate::exports::facts(&read.countersign, &read.alibi_id)
+        {
+            return Err(bad("export.facts"));
+        }
+        let profile = crate::exports::profiles()
+            .iter()
+            .find(|p| Some(p.profile.as_str()) == k["profile"].as_str())
+            .ok_or(bad("export.profile"))?;
+        if profile.typ != r.typ {
+            return Err(bad("export.typ"));
+        }
+        for row in &profile.rows {
+            let value = r
+                .payload
+                .pointer(&row.pointer)
+                .ok_or(bad("export.binding"))?;
+            let fact = &k["facts"][row.fact.as_str()];
+            if !crate::exports::holds(value, fact, row.transform.as_deref(), &read.countersign) {
+                return Err(bad("export.binding"));
+            }
+        }
+        let header = serde_json::json!({
+            "alg": "ES256",
+            "kid": B64.encode(issuer.thumbprint()),
+            "typ": r.typ,
+        });
+        let signing_input = format!(
+            "{}.{}",
+            B64.encode(crate::exports::ascii_json(&header)),
+            B64.encode(crate::exports::ascii_json(&r.payload))
+        );
+        let signature: p256::ecdsa::Signature =
+            p256::ecdsa::signature::Signer::sign(&root.issuer_key(), signing_input.as_bytes());
+        Ok(wire::ExportSigned {
+            jws: format!("{signing_input}.{}", B64.encode(signature.to_bytes())),
+        })
+    }
+
     pub fn countersign_with(
         &self,
         r: &CountersignRequest,
@@ -886,6 +1509,9 @@ impl Engine {
         }
         let cart_hash = cart_hash(&r.cart).map_err(|_| bad("cart"))?;
         let a = self.authenticate(r, now_s, &cart_hash)?;
+        if let Some(status) = &a.status {
+            self.check_status(status, r.status_list.as_deref(), now_s)?;
+        }
         // Bind the request id to its whole input before anything is evaluated or reserved.
         // The record holds the reservation and expires with the countersign; dropping the claim
         // without an answer removes both.
@@ -1070,6 +1696,17 @@ impl Engine {
             {
                 continue;
             }
+            let scitt = match &r.statement {
+                Some(ask) => self.purchase_statement(
+                    ask,
+                    &c,
+                    chain_id,
+                    &signature,
+                    observed,
+                    &r.request_id.to_string(),
+                )?,
+                None => None,
+            };
             let statement = allow.then(|| Statement {
                 c_m: Fr::from_be_bytes_reduce(&a.commitment),
                 amount,
@@ -1094,6 +1731,7 @@ impl Engine {
                         user_key: a.user_key.clone(),
                         paypal: observed.cloned().unwrap_or_default(),
                     },
+                    statement: scitt.map(Base64),
                 },
                 statement,
             );
@@ -1271,6 +1909,7 @@ impl Engine {
                 expected_nonce: nonce.clone(),
                 now: now_s,
                 max_skew_sec: MAX_SKEW_SEC,
+                decoy_salts: r.decoy_salts.clone(),
             },
             request_id: r.request_id.to_string(),
             cart_hash: sha256_tag(cart_hash),
@@ -1283,6 +1922,7 @@ impl Engine {
                 _ => auth("open_mandate"),
             })?;
         let open = closed.open;
+        let status = open.status.clone();
         let mut claims = open.claims;
         if claims.get("mid").and_then(Value::as_str) != Some(nonce.as_str()) {
             return Err(auth("open_nonce"));
@@ -1317,6 +1957,7 @@ impl Engine {
             mandate_hash,
             commitment,
             user_key,
+            status,
         })
     }
 
@@ -1626,4 +2267,24 @@ fn random_salt() -> [u8; 16] {
     let mut salt = [0; 16];
     getrandom::fill(&mut salt).expect("the OS RNG is available");
     salt
+}
+
+fn card_authorization_of(
+    j: &wire::CardAuthorizationJson,
+) -> Result<CardAuthorization, EngineError> {
+    let n = |s: &str, what: &'static str| s.parse::<u64>().map_err(|_| bad(what));
+    Ok(CardAuthorization {
+        requestId: B256::new(j.request_id.0),
+        countersignDigest: B256::new(j.countersign_digest.0),
+        authorizationHash: B256::new(j.authorization_hash.0),
+        merchantHash: B256::new(j.merchant_hash.0),
+        mcc: u16::try_from(n(&j.mcc, "mcc")?).map_err(|_| bad("mcc"))?,
+        country: alloy_primitives::FixedBytes(j.country.0),
+        amount: n(&j.amount, "amount")?,
+        currency: u16::try_from(n(&j.currency, "currency")?).map_err(|_| bad("currency"))?,
+        decision: u8::try_from(n(&j.decision, "decision")?).map_err(|_| bad("decision"))?,
+        failedMask: u32::try_from(n(&j.failed_mask, "failed_mask")?)
+            .map_err(|_| bad("failed_mask"))?,
+        issuedAt: U40::from(n(&j.issued_at, "issued_at")?),
+    })
 }

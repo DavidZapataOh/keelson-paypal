@@ -18,7 +18,7 @@ const encoder = new TextEncoder();
 const decoder = new TextDecoder("utf-8", { fatal: true });
 
 /** The 64-byte `r ‖ s` of a DER ECDSA P-256 signature. */
-function rawSignature(der: Uint8Array): Uint8Array {
+export function rawSignature(der: Uint8Array): Uint8Array {
   const int = (at: number): [Uint8Array, number] => {
     if (der[at] !== 0x02) throw new TypeError("malformed DER signature");
     const n = der[at + 1] as number;
@@ -40,7 +40,7 @@ function rawSignature(der: Uint8Array): Uint8Array {
 }
 
 /** The user's credential as the mandate's disclosures reveal it; `payload_sd` alone holds only its digest. */
-const userOf = (b: AlibiBundle): { id?: string; jwk?: JWK } | undefined => {
+export const userOf = (b: AlibiBundle): { id?: string; jwk?: JWK } | undefined => {
   try {
     const m = decodeDisclosed(b.mandate.payload_sd as object, b.mandate.disclosures as string[]);
     return (m as { user?: { cred?: { id?: string; jwk?: JWK } } }).user?.cred;
@@ -70,6 +70,7 @@ export function openMandate(b: AlibiBundle): Promise<VerifiedOpenMandate> {
         maxSkewSec: 300,
         // A public Alibi withholds the user's login id and risk data; their digests stay signed.
         personalWithheld: true,
+        decoySalts: b.mandate.decoy_salts ?? [],
       });
     })();
     opened.set(b, open);

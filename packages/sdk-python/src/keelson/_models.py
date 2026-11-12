@@ -22,6 +22,10 @@ class AgentRun(BaseModel):
     ] = None
 
 
+class AlibiEar(RootModel[dict[str, Any]]):
+    root: dict[str, Any]
+
+
 class Timestamp(BaseModel):
     tsa: str
     token: str
@@ -161,6 +165,30 @@ class AmberCase(BaseModel):
             description="`AmberContradictionCourt`'s conviction on Arbitrum Sepolia: a C2b proof that the store's own answer, notarized by leg A, holds another value of `field`. Null while there is none."
         ),
     ]
+
+
+class Authority(StrEnum):
+    paypal_order = "paypal_order"
+    merchant_signed_cart = "merchant_signed_cart"
+    user_confirmed = "user_confirmed"
+    checkout_page = "checkout_page"
+
+
+class Via(StrEnum):
+    own = "own"
+    partner = "partner"
+    ucp = "ucp"
+
+
+class CrossCheck(StrEnum):
+    agrees = "agrees"
+    unavailable = "unavailable"
+
+
+class AmountAuthority(BaseModel):
+    authority: Authority
+    via: Via | None = None
+    crossCheck: CrossCheck
 
 
 class Line(BaseModel):
@@ -520,6 +548,7 @@ class Card(BaseModel):
 class Live1(BaseModel):
     store: str
     transactionId: str | None
+    amountAuthority: AmountAuthority | None = None
 
 
 class DeviceAuthorization(BaseModel):
@@ -978,7 +1007,7 @@ class Purchase(BaseModel):
     live: Annotated[
         Live1 | None,
         Field(
-            description="A purchase the buyer pays at the store's own checkout: the store's origin and the PayPal transaction id once the agent recorded it. Never covered nor captured."
+            description="A purchase the buyer pays at the store's own checkout: the store's origin, what decided the amount at the pay click, and the PayPal transaction id once the agent recorded it. Never covered nor captured."
         ),
     ] = None
 
@@ -1198,6 +1227,6 @@ class Countersigned(BaseModel):
     live: Annotated[
         Live1 | None,
         Field(
-            description="A purchase the buyer pays at the store's own checkout: the store's origin and the PayPal transaction id once the agent recorded it. Never covered nor captured."
+            description="A purchase the buyer pays at the store's own checkout: the store's origin, what decided the amount at the pay click, and the PayPal transaction id once the agent recorded it. Never covered nor captured."
         ),
     ] = None

@@ -32,6 +32,10 @@
           "state"
         ]
       },
+      "AlibiEar": {
+        "type": "object",
+        "additionalProperties": {}
+      },
       "AlibiReceipt": {
         "type": "object",
         "properties": {
@@ -357,6 +361,40 @@
           "conviction"
         ],
         "description": "What the operator attested about the item it bought, and whether it was proven false. Null when the purchase carries no attestation (a cart of several lines, or bought before attestations)."
+      },
+      "AmountAuthority": {
+        "type": "object",
+        "properties": {
+          "authority": {
+            "type": "string",
+            "enum": [
+              "paypal_order",
+              "merchant_signed_cart",
+              "user_confirmed",
+              "checkout_page"
+            ]
+          },
+          "via": {
+            "type": "string",
+            "enum": [
+              "own",
+              "partner",
+              "ucp"
+            ]
+          },
+          "crossCheck": {
+            "type": "string",
+            "enum": [
+              "agrees",
+              "unavailable"
+            ]
+          }
+        },
+        "required": [
+          "authority",
+          "crossCheck"
+        ],
+        "description": "`paypal_order`: PayPal's Orders API returned the order at the countersigned total. `user_confirmed`: the user confirmed it with the passkey that signed the mandate. `crossCheck` is whether PayPal's checkout stated the same order."
       },
       "Cart": {
         "type": "object",
@@ -1186,13 +1224,16 @@
                   "string",
                   "null"
                 ]
+              },
+              "amountAuthority": {
+                "$ref": "#/components/schemas/AmountAuthority"
               }
             },
             "required": [
               "store",
               "transactionId"
             ],
-            "description": "A purchase the buyer pays at the store's own checkout: the store's origin and the PayPal transaction id once the agent recorded it. Never covered nor captured."
+            "description": "A purchase the buyer pays at the store's own checkout: the store's origin, what decided the amount at the pay click, and the PayPal transaction id once the agent recorded it. Never covered nor captured."
           }
         },
         "required": [
@@ -2264,13 +2305,16 @@
                   "string",
                   "null"
                 ]
+              },
+              "amountAuthority": {
+                "$ref": "#/components/schemas/AmountAuthority"
               }
             },
             "required": [
               "store",
               "transactionId"
             ],
-            "description": "A purchase the buyer pays at the store's own checkout: the store's origin and the PayPal transaction id once the agent recorded it. Never covered nor captured."
+            "description": "A purchase the buyer pays at the store's own checkout: the store's origin, what decided the amount at the pay click, and the PayPal transaction id once the agent recorded it. Never covered nor captured."
           }
         },
         "required": [
@@ -4090,6 +4134,20 @@
             "description": "The Alibi id: the purchase's ULID.",
             "name": "id",
             "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1",
+                "2"
+              ],
+              "description": "`2`: the Alibi as an IETF SCITT transparent statement (RFC 9943). A v1 Alibi is served as the bridge statement that carries its countersigned facts, once there is one."
+            },
+            "required": false,
+            "description": "`2`: the Alibi as an IETF SCITT transparent statement (RFC 9943). A v1 Alibi is served as the bridge statement that carries its countersigned facts, once there is one.",
+            "name": "version",
+            "in": "query"
           }
         ],
         "responses": {
@@ -4097,6 +4155,12 @@
             "description": "The bundle",
             "content": {
               "application/vnd.keelson.alibi.v1+json": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "application/vnd.keelson.alibi.v2+json": {
                 "schema": {
                   "type": "string",
                   "format": "binary"
@@ -4136,16 +4200,33 @@
                 "type": "string",
                 "format": "binary"
               }
+            },
+            "application/vnd.keelson.alibi.v2+json": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            },
+            "application/scitt-statement+cose": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
             }
           }
         },
         "responses": {
           "200": {
-            "description": "The report",
+            "description": "The report; with `Accept: application/eat-ucs+json`, the same appraisal as an EAT Attestation Result (draft-ietf-rats-ear)",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AlibiReport"
+                }
+              },
+              "application/eat-ucs+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlibiEar"
                 }
               }
             }

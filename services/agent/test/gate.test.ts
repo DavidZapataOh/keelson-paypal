@@ -126,7 +126,11 @@ describe("the pay-click gate", () => {
   /** The pages served here as PayPal's host: every action on them is gated. */
   const asPayPal = async () => {
     await driver.close();
-    gate = new PayGate({ checkoutHosts: ["127.0.0.1"], convertHosts: ["127.0.0.1"] });
+    gate = new PayGate({
+      checkoutHosts: ["127.0.0.1"],
+      convertHosts: ["127.0.0.1"],
+      payees: ["SANDBOXPAYEE01"],
+    });
     driver = await StoreBrowser.attach(context, tab, { hosts: ["127.0.0.1"], gate });
   };
   const click = (target: Record<string, unknown>) =>

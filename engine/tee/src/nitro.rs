@@ -265,6 +265,76 @@ struct BootRequest {
     /// The hex SHA-256 of the bearer token; the token itself never reaches the enclave.
     token_sha256: Hex32,
     block: Block,
+    /// Leg B's own PayPal credential, its secret sealed to this image with KMS. Without it the
+    /// enclave confirms no PayPal reading of its own.
+    #[serde(default)]
+    paypal: Option<BootPayPal>,
+    /// The parent's instance-role session, which may only decrypt the sealed secret.
+    #[serde(default)]
+    aws: Option<crate::kmsseal::AwsSession>,
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct BootPayPal {
+    /// `sandbox` or `live`.
+    env: String,
+    client_id: String,
+    /// The KMS `CiphertextBlob` of the client secret, standard base64.
+    secret_ciphertext: String,
+}
+
+/// The parent's vsock-proxy ports (CID 3): PayPal's sandbox, PayPal's live API, and AWS KMS.
+const PROXY_CID: u32 = 3;
+const PAYPAL_SANDBOX_PORT: u32 = 8101;
+const PAYPAL_LIVE_PORT: u32 = 8102;
+const KMS_PORT: u32 = 8103;
+
+/// Opens leg B's sealed PayPal secret: a fresh RSA key attested by the NSM, KMS `Decrypt` with
+/// that `Recipient`, the envelope opened in the enclave. The client then reads PayPal through
+/// the parent's proxy with TLS terminated here.
+async fn paypal_client(
+    nsm: &Nsm,
+    paypal: &BootPayPal,
+    aws: &crate::kmsseal::AwsSession,
+) -> Result<crate::paypal::PayPalClient, String> {
+    let live = match paypal.env.as_str() {
+        "sandbox" => false,
+        "live" => true,
+        _ => return Err("paypal.env must be sandbox or live".into()),
+    };
+    let ciphertext = STANDARD
+        .decode(&paypal.secret_ciphertext)
+        .map_err(|_| "paypal.secret_ciphertext is not base64".to_owned())?;
+    let (key, spki) = crate::kmsseal::recipient_key().map_err(|e| e.to_string())?;
+    let attestation = nsm.attest(&[], &[], &spki).map_err(|e| e.to_string())?;
+    let amz_date = host_now()
+        .format(time::macros::format_description!(
+            "[year][month][day]T[hour][minute][second]Z"
+        ))
+        .map_err(|e| e.to_string())?;
+    let kms = crate::tls_client::Connect::Vsock {
+        cid: PROXY_CID,
+        port: KMS_PORT,
+    };
+    let secret = crate::kmsseal::unseal(&ciphertext, aws, &key, &attestation, &kms, &amz_date)
+        .await
+        .map_err(|e| e.to_string())?;
+    let secret = String::from_utf8(secret.to_vec()).map_err(|_| "the secret is not UTF-8")?;
+    let port = if live {
+        PAYPAL_LIVE_PORT
+    } else {
+        PAYPAL_SANDBOX_PORT
+    };
+    Ok(crate::paypal::PayPalClient::over_stream(
+        live,
+        crate::tls_client::Connect::Vsock {
+            cid: PROXY_CID,
+            port,
+        },
+        &paypal.client_id,
+        zeroize::Zeroizing::new(secret),
+    ))
 }
 
 #[derive(Deserialize)]
@@ -395,7 +465,20 @@ async fn boot(
         .get_or_try_init(|| async {
             first.store(true, Ordering::Relaxed);
             let engine = request.config.engine()?;
-            let state = AppState::new(engine, request.token_sha256.0).with_clock(host_now);
+            let mut state = AppState::new(engine, request.token_sha256.0).with_clock(host_now);
+            match (&request.paypal, &request.aws) {
+                (Some(paypal), Some(aws)) => {
+                    let client = paypal_client(&enclave.nsm, paypal, aws)
+                        .await
+                        .map_err(|e| {
+                            eprintln!("keelson-engine: paypal credential: {e}");
+                            Problem::new(StatusCode::BAD_GATEWAY, "paypal_credential")
+                        })?;
+                    state = state.with_paypal(client);
+                }
+                (None, None) => {}
+                _ => return Err(invalid("bad_request")),
+            }
             let nsm = enclave.nsm.clone();
             let block = request.block;
             let state = tokio::task::spawn_blocking(move || {
