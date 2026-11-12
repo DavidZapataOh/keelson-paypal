@@ -44,7 +44,11 @@ async def test_buys_a_sandbox_pair_and_verifies_it(tmp_path: Path) -> None:
     os.environ.setdefault("KEELSON_VERIFY_COMMAND", f"node {VERIFY_CLI}")
     report = keelson.verify_alibi(await client.alibis.retrieve(purchase.id))
     assert report["verdict"] in ("verified-offline", "verified-unanchored")
-    again = await client.purchases.countersign(mandate=mandate, evidence_root=sealed["evidenceRoot"], cart=q["cart"])
+    # The same cart again, with what the agent saw this time, is the same purchase.
+    resealed = await client.evidence.seal(
+        mandate_id=mandate.id, sources={**q["sources"], "observation": "Pace Lite, size 10, $99.00."}
+    )
+    again = await client.purchases.countersign(mandate=mandate, evidence_root=resealed["evidenceRoot"], cart=q["cart"])
     assert again.existing and again.purchase_id == signed.purchase_id
 
 

@@ -85,7 +85,10 @@ export async function judge(o: { cache?: string } = {}): Promise<User> {
     const { credentials } = await cdp.send("WebAuthn.getCredentials", { authenticatorId });
     const entry: Cached = {
       at: at ?? Date.now(),
-      storageState: await context.storageState(),
+      storageState: await context.storageState().then((st) => ({
+        ...st,
+        cookies: st.cookies.filter((c) => !/paypal\.com$/.test(c.domain)),
+      })),
       credentials,
     };
     await writeFile(CACHE, JSON.stringify(entry), { mode: 0o600 });
@@ -178,6 +181,8 @@ export async function judge(o: { cache?: string } = {}): Promise<User> {
       }
       await save();
       if (!o.hold) return;
+      // PayPal's own session from an earlier hold would skip its login, which approveOnPage expects.
+      await context.clearCookies({ domain: /paypal\.com$/ });
       await page.getByRole("link", { name: /^Hold .* on PayPal$/ }).click();
       await page.locator("paypal-button").waitFor();
       const popup = context.waitForEvent("page", { timeout: 20_000 });
