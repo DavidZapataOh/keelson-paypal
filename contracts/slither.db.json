@@ -5,13 +5,13 @@
         "type": "function",
         "name": "depositWithPermit",
         "source_mapping": {
-          "start": 6693,
+          "start": 6882,
           "length": 664,
           "filename_relative": "src/KeelsonBondVault.sol",
-          "filename_absolute": "/Users/david/Projects/paypal/keelson-wt-verify/contracts/src/KeelsonBondVault.sol",
+          "filename_absolute": "/home/runner/work/keelson-paypal/keelson-paypal/contracts/src/KeelsonBondVault.sol",
           "filename_short": "src/KeelsonBondVault.sol",
           "is_dependency": false,
-          "lines": [130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145],
+          "lines": [137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152],
           "starting_column": 5,
           "ending_column": 6
         },
@@ -21,9 +21,9 @@
             "name": "KeelsonBondVault",
             "source_mapping": {
               "start": 2071,
-              "length": 26177,
+              "length": 27868,
               "filename_relative": "src/KeelsonBondVault.sol",
-              "filename_absolute": "/Users/david/Projects/paypal/keelson-wt-verify/contracts/src/KeelsonBondVault.sol",
+              "filename_absolute": "/home/runner/work/keelson-paypal/keelson-paypal/contracts/src/KeelsonBondVault.sol",
               "filename_short": "src/KeelsonBondVault.sol",
               "is_dependency": false,
               "lines": [
@@ -59,7 +59,10 @@
                 536, 537, 538, 539, 540, 541, 542, 543, 544, 545, 546, 547, 548, 549, 550, 551, 552,
                 553, 554, 555, 556, 557, 558, 559, 560, 561, 562, 563, 564, 565, 566, 567, 568, 569,
                 570, 571, 572, 573, 574, 575, 576, 577, 578, 579, 580, 581, 582, 583, 584, 585, 586,
-                587, 588, 589, 590, 591, 592, 593, 594, 595, 596, 597, 598, 599, 600
+                587, 588, 589, 590, 591, 592, 593, 594, 595, 596, 597, 598, 599, 600, 601, 602, 603,
+                604, 605, 606, 607, 608, 609, 610, 611, 612, 613, 614, 615, 616, 617, 618, 619, 620,
+                621, 622, 623, 624, 625, 626, 627, 628, 629, 630, 631, 632, 633, 634, 635, 636, 637,
+                638, 639, 640
               ],
               "starting_column": 1,
               "ending_column": 2
@@ -72,13 +75,13 @@
         "type": "node",
         "name": "pyusd.safeTransferFrom(owner,address(this),amount)",
         "source_mapping": {
-          "start": 7257,
+          "start": 7446,
           "length": 52,
           "filename_relative": "src/KeelsonBondVault.sol",
-          "filename_absolute": "/Users/david/Projects/paypal/keelson-wt-verify/contracts/src/KeelsonBondVault.sol",
+          "filename_absolute": "/home/runner/work/keelson-paypal/keelson-paypal/contracts/src/KeelsonBondVault.sol",
           "filename_short": "src/KeelsonBondVault.sol",
           "is_dependency": false,
-          "lines": [143],
+          "lines": [150],
           "starting_column": 9,
           "ending_column": 61
         },
@@ -87,14 +90,14 @@
             "type": "function",
             "name": "depositWithPermit",
             "source_mapping": {
-              "start": 6693,
+              "start": 6882,
               "length": 664,
               "filename_relative": "src/KeelsonBondVault.sol",
-              "filename_absolute": "/Users/david/Projects/paypal/keelson-wt-verify/contracts/src/KeelsonBondVault.sol",
+              "filename_absolute": "/home/runner/work/keelson-paypal/keelson-paypal/contracts/src/KeelsonBondVault.sol",
               "filename_short": "src/KeelsonBondVault.sol",
               "is_dependency": false,
               "lines": [
-                130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145
+                137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152
               ],
               "starting_column": 5,
               "ending_column": 6
@@ -105,9 +108,9 @@
                 "name": "KeelsonBondVault",
                 "source_mapping": {
                   "start": 2071,
-                  "length": 26177,
+                  "length": 27868,
                   "filename_relative": "src/KeelsonBondVault.sol",
-                  "filename_absolute": "/Users/david/Projects/paypal/keelson-wt-verify/contracts/src/KeelsonBondVault.sol",
+                  "filename_absolute": "/home/runner/work/keelson-paypal/keelson-paypal/contracts/src/KeelsonBondVault.sol",
                   "filename_short": "src/KeelsonBondVault.sol",
                   "is_dependency": false,
                   "lines": [
@@ -145,7 +148,10 @@
                     540, 541, 542, 543, 544, 545, 546, 547, 548, 549, 550, 551, 552, 553, 554, 555,
                     556, 557, 558, 559, 560, 561, 562, 563, 564, 565, 566, 567, 568, 569, 570, 571,
                     572, 573, 574, 575, 576, 577, 578, 579, 580, 581, 582, 583, 584, 585, 586, 587,
-                    588, 589, 590, 591, 592, 593, 594, 595, 596, 597, 598, 599, 600
+                    588, 589, 590, 591, 592, 593, 594, 595, 596, 597, 598, 599, 600, 601, 602, 603,
+                    604, 605, 606, 607, 608, 609, 610, 611, 612, 613, 614, 615, 616, 617, 618, 619,
+                    620, 621, 622, 623, 624, 625, 626, 627, 628, 629, 630, 631, 632, 633, 634, 635,
+                    636, 637, 638, 639, 640
                   ],
                   "starting_column": 1,
                   "ending_column": 2
@@ -157,10 +163,10 @@
         }
       }
     ],
-    "description": "KeelsonBondVault.depositWithPermit(uint256,address,uint256,uint256,bytes) (src/KeelsonBondVault.sol#130-145) uses arbitrary from in transferFrom: pyusd.safeTransferFrom(owner,address(this),amount) (src/KeelsonBondVault.sol#143)\n",
-    "markdown": "[KeelsonBondVault.depositWithPermit(uint256,address,uint256,uint256,bytes)](src/KeelsonBondVault.sol#L130-L145) uses arbitrary from in transferFrom: [pyusd.safeTransferFrom(owner,address(this),amount)](src/KeelsonBondVault.sol#L143)\n",
-    "first_markdown_element": "src/KeelsonBondVault.sol#L130-L145",
-    "id": "20392230ff99ca8ffd770eecb62ebd0a844f5f86eeaffd65fbb1640729105195",
+    "description": "KeelsonBondVault.depositWithPermit(uint256,address,uint256,uint256,bytes) (src/KeelsonBondVault.sol#137-152) uses arbitrary from in transferFrom: pyusd.safeTransferFrom(owner,address(this),amount) (src/KeelsonBondVault.sol#150)\n",
+    "markdown": "[KeelsonBondVault.depositWithPermit(uint256,address,uint256,uint256,bytes)](src/KeelsonBondVault.sol#L137-L152) uses arbitrary from in transferFrom: [pyusd.safeTransferFrom(owner,address(this),amount)](src/KeelsonBondVault.sol#L150)\n",
+    "first_markdown_element": "src/KeelsonBondVault.sol#L137-L152",
+    "id": "145d6ca7a7f4ba1e05c13d1f07b129681e8eff76e6a822d648596709338107e7",
     "check": "arbitrary-send-erc20",
     "impact": "High",
     "confidence": "High",
@@ -646,13 +652,13 @@
         "type": "function",
         "name": "_credit",
         "source_mapping": {
-          "start": 23050,
+          "start": 24289,
           "length": 352,
           "filename_relative": "src/KeelsonBondVault.sol",
-          "filename_absolute": "/Users/david/Projects/paypal/keelson-wt-verify/contracts/src/KeelsonBondVault.sol",
+          "filename_absolute": "/home/runner/work/keelson-paypal/keelson-paypal/contracts/src/KeelsonBondVault.sol",
           "filename_short": "src/KeelsonBondVault.sol",
           "is_dependency": false,
-          "lines": [500, 501, 502, 503, 504, 505, 506],
+          "lines": [529, 530, 531, 532, 533, 534, 535],
           "starting_column": 5,
           "ending_column": 6
         },
@@ -662,9 +668,9 @@
             "name": "KeelsonBondVault",
             "source_mapping": {
               "start": 2071,
-              "length": 26177,
+              "length": 27868,
               "filename_relative": "src/KeelsonBondVault.sol",
-              "filename_absolute": "/Users/david/Projects/paypal/keelson-wt-verify/contracts/src/KeelsonBondVault.sol",
+              "filename_absolute": "/home/runner/work/keelson-paypal/keelson-paypal/contracts/src/KeelsonBondVault.sol",
               "filename_short": "src/KeelsonBondVault.sol",
               "is_dependency": false,
               "lines": [
@@ -700,7 +706,10 @@
                 536, 537, 538, 539, 540, 541, 542, 543, 544, 545, 546, 547, 548, 549, 550, 551, 552,
                 553, 554, 555, 556, 557, 558, 559, 560, 561, 562, 563, 564, 565, 566, 567, 568, 569,
                 570, 571, 572, 573, 574, 575, 576, 577, 578, 579, 580, 581, 582, 583, 584, 585, 586,
-                587, 588, 589, 590, 591, 592, 593, 594, 595, 596, 597, 598, 599, 600
+                587, 588, 589, 590, 591, 592, 593, 594, 595, 596, 597, 598, 599, 600, 601, 602, 603,
+                604, 605, 606, 607, 608, 609, 610, 611, 612, 613, 614, 615, 616, 617, 618, 619, 620,
+                621, 622, 623, 624, 625, 626, 627, 628, 629, 630, 631, 632, 633, 634, 635, 636, 637,
+                638, 639, 640
               ],
               "starting_column": 1,
               "ending_column": 2
@@ -713,13 +722,13 @@
         "type": "node",
         "name": "agentId.toUint64()",
         "source_mapping": {
-          "start": 23214,
+          "start": 24453,
           "length": 18,
           "filename_relative": "src/KeelsonBondVault.sol",
-          "filename_absolute": "/Users/david/Projects/paypal/keelson-wt-verify/contracts/src/KeelsonBondVault.sol",
+          "filename_absolute": "/home/runner/work/keelson-paypal/keelson-paypal/contracts/src/KeelsonBondVault.sol",
           "filename_short": "src/KeelsonBondVault.sol",
           "is_dependency": false,
-          "lines": [502],
+          "lines": [531],
           "starting_column": 9,
           "ending_column": 27
         },
@@ -728,13 +737,13 @@
             "type": "function",
             "name": "_credit",
             "source_mapping": {
-              "start": 23050,
+              "start": 24289,
               "length": 352,
               "filename_relative": "src/KeelsonBondVault.sol",
-              "filename_absolute": "/Users/david/Projects/paypal/keelson-wt-verify/contracts/src/KeelsonBondVault.sol",
+              "filename_absolute": "/home/runner/work/keelson-paypal/keelson-paypal/contracts/src/KeelsonBondVault.sol",
               "filename_short": "src/KeelsonBondVault.sol",
               "is_dependency": false,
-              "lines": [500, 501, 502, 503, 504, 505, 506],
+              "lines": [529, 530, 531, 532, 533, 534, 535],
               "starting_column": 5,
               "ending_column": 6
             },
@@ -744,9 +753,9 @@
                 "name": "KeelsonBondVault",
                 "source_mapping": {
                   "start": 2071,
-                  "length": 26177,
+                  "length": 27868,
                   "filename_relative": "src/KeelsonBondVault.sol",
-                  "filename_absolute": "/Users/david/Projects/paypal/keelson-wt-verify/contracts/src/KeelsonBondVault.sol",
+                  "filename_absolute": "/home/runner/work/keelson-paypal/keelson-paypal/contracts/src/KeelsonBondVault.sol",
                   "filename_short": "src/KeelsonBondVault.sol",
                   "is_dependency": false,
                   "lines": [
@@ -784,7 +793,10 @@
                     540, 541, 542, 543, 544, 545, 546, 547, 548, 549, 550, 551, 552, 553, 554, 555,
                     556, 557, 558, 559, 560, 561, 562, 563, 564, 565, 566, 567, 568, 569, 570, 571,
                     572, 573, 574, 575, 576, 577, 578, 579, 580, 581, 582, 583, 584, 585, 586, 587,
-                    588, 589, 590, 591, 592, 593, 594, 595, 596, 597, 598, 599, 600
+                    588, 589, 590, 591, 592, 593, 594, 595, 596, 597, 598, 599, 600, 601, 602, 603,
+                    604, 605, 606, 607, 608, 609, 610, 611, 612, 613, 614, 615, 616, 617, 618, 619,
+                    620, 621, 622, 623, 624, 625, 626, 627, 628, 629, 630, 631, 632, 633, 634, 635,
+                    636, 637, 638, 639, 640
                   ],
                   "starting_column": 1,
                   "ending_column": 2
@@ -796,10 +808,10 @@
         }
       }
     ],
-    "description": "KeelsonBondVault._credit(uint256,address,uint256) (src/KeelsonBondVault.sol#500-506) ignores return value by agentId.toUint64() (src/KeelsonBondVault.sol#502)\n",
-    "markdown": "[KeelsonBondVault._credit(uint256,address,uint256)](src/KeelsonBondVault.sol#L500-L506) ignores return value by [agentId.toUint64()](src/KeelsonBondVault.sol#L502)\n",
-    "first_markdown_element": "src/KeelsonBondVault.sol#L500-L506",
-    "id": "260f4e59d75cde39deeea35ddb9d6997c5476b01fa77964a4fd6da41d53e96d8",
+    "description": "KeelsonBondVault._credit(uint256,address,uint256) (src/KeelsonBondVault.sol#529-535) ignores return value by agentId.toUint64() (src/KeelsonBondVault.sol#531)\n",
+    "markdown": "[KeelsonBondVault._credit(uint256,address,uint256)](src/KeelsonBondVault.sol#L529-L535) ignores return value by [agentId.toUint64()](src/KeelsonBondVault.sol#L531)\n",
+    "first_markdown_element": "src/KeelsonBondVault.sol#L529-L535",
+    "id": "8033e05a6e3aa364412df62eae78d46125de8bb285dc36a5d6f9ac5cb1b3c23f",
     "check": "unused-return",
     "impact": "Medium",
     "confidence": "Medium",
@@ -811,13 +823,13 @@
         "type": "function",
         "name": "_recover",
         "source_mapping": {
-          "start": 12911,
+          "start": 13571,
           "length": 204,
           "filename_relative": "src/VerdictVerifier.sol",
-          "filename_absolute": "/Users/david/Projects/paypal/keelson-wt-verify/contracts/src/VerdictVerifier.sol",
+          "filename_absolute": "/home/runner/work/keelson-paypal/keelson-paypal/contracts/src/VerdictVerifier.sol",
           "filename_short": "src/VerdictVerifier.sol",
           "is_dependency": false,
-          "lines": [263, 264, 265],
+          "lines": [272, 273, 274],
           "starting_column": 5,
           "ending_column": 6
         },
@@ -827,9 +839,9 @@
             "name": "VerdictVerifier",
             "source_mapping": {
               "start": 1633,
-              "length": 14229,
+              "length": 14889,
               "filename_relative": "src/VerdictVerifier.sol",
-              "filename_absolute": "/Users/david/Projects/paypal/keelson-wt-verify/contracts/src/VerdictVerifier.sol",
+              "filename_absolute": "/home/runner/work/keelson-paypal/keelson-paypal/contracts/src/VerdictVerifier.sol",
               "filename_short": "src/VerdictVerifier.sol",
               "is_dependency": false,
               "lines": [
@@ -850,7 +862,8 @@
                 279, 280, 281, 282, 283, 284, 285, 286, 287, 288, 289, 290, 291, 292, 293, 294, 295,
                 296, 297, 298, 299, 300, 301, 302, 303, 304, 305, 306, 307, 308, 309, 310, 311, 312,
                 313, 314, 315, 316, 317, 318, 319, 320, 321, 322, 323, 324, 325, 326, 327, 328, 329,
-                330, 331, 332, 333, 334, 335, 336, 337, 338, 339
+                330, 331, 332, 333, 334, 335, 336, 337, 338, 339, 340, 341, 342, 343, 344, 345, 346,
+                347, 348
               ],
               "starting_column": 1,
               "ending_column": 2
@@ -863,13 +876,13 @@
         "type": "node",
         "name": "(signer,None,None) = ECDSA.tryRecover(digest,uint8(sig[64]),bytes32(sig),bytes32(sig))",
         "source_mapping": {
-          "start": 13014,
+          "start": 13674,
           "length": 94,
           "filename_relative": "src/VerdictVerifier.sol",
-          "filename_absolute": "/Users/david/Projects/paypal/keelson-wt-verify/contracts/src/VerdictVerifier.sol",
+          "filename_absolute": "/home/runner/work/keelson-paypal/keelson-paypal/contracts/src/VerdictVerifier.sol",
           "filename_short": "src/VerdictVerifier.sol",
           "is_dependency": false,
-          "lines": [264],
+          "lines": [273],
           "starting_column": 9,
           "ending_column": 103
         },
@@ -878,13 +891,13 @@
             "type": "function",
             "name": "_recover",
             "source_mapping": {
-              "start": 12911,
+              "start": 13571,
               "length": 204,
               "filename_relative": "src/VerdictVerifier.sol",
-              "filename_absolute": "/Users/david/Projects/paypal/keelson-wt-verify/contracts/src/VerdictVerifier.sol",
+              "filename_absolute": "/home/runner/work/keelson-paypal/keelson-paypal/contracts/src/VerdictVerifier.sol",
               "filename_short": "src/VerdictVerifier.sol",
               "is_dependency": false,
-              "lines": [263, 264, 265],
+              "lines": [272, 273, 274],
               "starting_column": 5,
               "ending_column": 6
             },
@@ -894,9 +907,9 @@
                 "name": "VerdictVerifier",
                 "source_mapping": {
                   "start": 1633,
-                  "length": 14229,
+                  "length": 14889,
                   "filename_relative": "src/VerdictVerifier.sol",
-                  "filename_absolute": "/Users/david/Projects/paypal/keelson-wt-verify/contracts/src/VerdictVerifier.sol",
+                  "filename_absolute": "/home/runner/work/keelson-paypal/keelson-paypal/contracts/src/VerdictVerifier.sol",
                   "filename_short": "src/VerdictVerifier.sol",
                   "is_dependency": false,
                   "lines": [
@@ -918,7 +931,8 @@
                     282, 283, 284, 285, 286, 287, 288, 289, 290, 291, 292, 293, 294, 295, 296, 297,
                     298, 299, 300, 301, 302, 303, 304, 305, 306, 307, 308, 309, 310, 311, 312, 313,
                     314, 315, 316, 317, 318, 319, 320, 321, 322, 323, 324, 325, 326, 327, 328, 329,
-                    330, 331, 332, 333, 334, 335, 336, 337, 338, 339
+                    330, 331, 332, 333, 334, 335, 336, 337, 338, 339, 340, 341, 342, 343, 344, 345,
+                    346, 347, 348
                   ],
                   "starting_column": 1,
                   "ending_column": 2
@@ -930,10 +944,10 @@
         }
       }
     ],
-    "description": "VerdictVerifier._recover(bytes32,bytes) (src/VerdictVerifier.sol#263-265) ignores return value by (signer,None,None) = ECDSA.tryRecover(digest,uint8(sig[64]),bytes32(sig),bytes32(sig)) (src/VerdictVerifier.sol#264)\n",
-    "markdown": "[VerdictVerifier._recover(bytes32,bytes)](src/VerdictVerifier.sol#L263-L265) ignores return value by [(signer,None,None) = ECDSA.tryRecover(digest,uint8(sig[64]),bytes32(sig),bytes32(sig))](src/VerdictVerifier.sol#L264)\n",
-    "first_markdown_element": "src/VerdictVerifier.sol#L263-L265",
-    "id": "31bc14e9358ed4636d5327eaf6c58ae2aeeb243f362cd91bbe6d2c388c6a4e0f",
+    "description": "VerdictVerifier._recover(bytes32,bytes) (src/VerdictVerifier.sol#272-274) ignores return value by (signer,None,None) = ECDSA.tryRecover(digest,uint8(sig[64]),bytes32(sig),bytes32(sig)) (src/VerdictVerifier.sol#273)\n",
+    "markdown": "[VerdictVerifier._recover(bytes32,bytes)](src/VerdictVerifier.sol#L272-L274) ignores return value by [(signer,None,None) = ECDSA.tryRecover(digest,uint8(sig[64]),bytes32(sig),bytes32(sig))](src/VerdictVerifier.sol#L273)\n",
+    "first_markdown_element": "src/VerdictVerifier.sol#L272-L274",
+    "id": "bcd4136d4959dae906191a6f5c929a9a7516668ef732afe461bd6268f12c9611",
     "check": "unused-return",
     "impact": "Medium",
     "confidence": "Medium",
