@@ -238,10 +238,10 @@ describe("judge sessions", () => {
   test("addresses of one IPv6 /64 share the limit", async () => {
     const prefix = `2001:db8:${(Date.now() % 65_000).toString(16)}:1`;
     const statuses: number[] = [];
-    for (let i = 1; i <= 6; i++)
+    for (let i = 1; i <= 21; i++)
       statuses.push((await startJudge(`${prefix}::${i.toString(16)}`)).status);
-    expect(statuses.filter((s) => s === 201)).toHaveLength(5);
-    expect(statuses[5]).toBe(429);
+    expect(statuses.filter((s) => s === 201)).toHaveLength(20);
+    expect(statuses[20]).toBe(429);
   });
 
   test("a judge cannot link a PayPal account to its tenant", async () => {
@@ -266,12 +266,12 @@ describe("judge sessions", () => {
     expect((await call("/v1/merchants/me", cookie)).status).toBe(401);
   });
 
-  test("five judges an hour per address", async () => {
+  test("twenty judges an hour per address", async () => {
     const statuses: number[] = [];
     const ip = `10.9.${Date.now() % 250}.9`;
-    for (let i = 0; i < 6; i++) statuses.push((await startJudge(ip)).status);
-    expect(statuses.slice(0, 5)).toEqual([201, 201, 201, 201, 201]);
-    expect(statuses[5]).toBe(429);
+    for (let i = 0; i < 21; i++) statuses.push((await startJudge(ip)).status);
+    expect(statuses.slice(0, 20)).toEqual(Array(20).fill(201));
+    expect(statuses[20]).toBe(429);
   });
 });
 
@@ -579,13 +579,17 @@ describe("invite", () => {
     judgeInvite: invite,
   });
   const today = () => new Date().toISOString().slice(0, 10);
-  const open = (target: OpenAPIHono, body?: unknown) =>
+  const open = (
+    target: OpenAPIHono,
+    body?: unknown,
+    ip = `10.8.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}`,
+  ) =>
     target.request("/v1/judge/sessions", {
       method: "POST",
       headers: {
         origin: baseURL,
         "idempotency-key": ulid(),
-        "x-forwarded-for": `10.8.${Math.floor(Math.random() * 250)}.${Math.floor(Math.random() * 250)}, 10.255.0.1, 10.255.0.2`,
+        "x-forwarded-for": `${ip}, 10.255.0.1, 10.255.0.2`,
         ...(body === undefined ? {} : { "content-type": "application/json" }),
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
@@ -604,6 +608,13 @@ describe("invite", () => {
     expect(res.status).toBe(201);
     expect(res.headers.getSetCookie().join()).toContain("better-auth.session_token=");
     expect(await testKv.get(`judge:invited:${today()}`)).toBe("1");
+  });
+
+  test("invited judges behind one address are not held by the per-address limit", async () => {
+    const ip = `10.7.${Date.now() % 250}.7`;
+    const statuses: number[] = [];
+    for (let i = 0; i < 25; i++) statuses.push((await open(invited, { invite }, ip)).status);
+    expect(statuses).toEqual(Array(25).fill(201));
   });
 
   test("a wrong invite gets no bypass", async () => {

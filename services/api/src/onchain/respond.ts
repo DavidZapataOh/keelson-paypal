@@ -1,5 +1,5 @@
 import { z } from "@hono/zod-openapi";
-import { type Relayer, RelayerError, type TxRecord } from "@keelson/relayer";
+import { type Relayer, RelayerError, type RelayerErrorCode, type TxRecord } from "@keelson/relayer";
 import type { Context } from "hono";
 import { ProblemSchema, problem } from "../problem.ts";
 
@@ -111,7 +111,9 @@ export async function relay(
       transaction: body,
     });
   }
-  return problem(c, 503, record.errorCode ?? "chain-unavailable", "Not sent", undefined, {
+  // The relayer stores only its own error codes.
+  const slug = (record.errorCode as RelayerErrorCode | undefined) ?? "chain-unavailable";
+  return problem(c, 503, slug, "Not sent", undefined, {
     code: record.errorCode,
     transaction: body,
   });
