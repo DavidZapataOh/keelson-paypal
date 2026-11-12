@@ -114,6 +114,8 @@ chain. To trust no Keelson server, drop the same file on https://verify.keelson.
 
 ```mermaid
 flowchart LR
+  accTitle: How a purchase flows through Keelson
+  accDescr: The user signs a mandate, the agent sends a cart, both TEEs countersign, PayPal captures the countersigned total, and the Alibi goes to the public log and its anchor on chain.
   U([User]) -- passkey-signed mandate --> K[Keelson API]
   G([Your agent]) -- cart --> K
   K --> T[Two TEEs: Intel TDX and AWS Nitro]
