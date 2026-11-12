@@ -4,7 +4,7 @@ import { fileURLToPath } from "node:url";
 import { type Browser, type BrowserContext, chromium, type Page } from "playwright";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
 
-type Fixture = { monitor: string; log: string; control: string };
+type Fixture = { monitor: string; log: string; control: string; production: string };
 
 let fixture: Fixture;
 let proc: ChildProcess;
@@ -166,6 +166,39 @@ describe("the monitor page", () => {
     expect(logs.length).toBeGreaterThan(0);
     for (const log of logs)
       expect(res.headers.get("link")).toContain(`<${log}>; rel=preconnect; crossorigin`);
+  });
+
+  test("shows the production origins checked against the chain", async () => {
+    const context = await browser.newContext();
+    const page = await context.newPage();
+    await page.goto(fixture.production);
+    const sandbox = page.locator('[data-origin="log.keelson.finance/alibi/2026-1"]');
+    const live = page.locator('[data-origin="log.keelson.finance/alibi-live/2026-1"]');
+    await expect
+      .poll(async () => sandbox.locator('[data-field="anchor"]').textContent(), { timeout: 60_000 })
+      .toMatch(/^size \d+, consistent · Arbitrum Sepolia/);
+    expect(await live.locator('[data-field="anchor"]').textContent()).toBe(
+      "not deployed on Arbitrum One",
+    );
+    expect(await live.locator('[data-field="signers"]').textContent()).toBe(
+      "not deployed on Arbitrum One",
+    );
+
+    const report = await (await fetch(new URL("/report", fixture.production))).json();
+    const r = report.origins.find(
+      (o: { origin: string }) => o.origin === "log.keelson.finance/alibi/2026-1",
+    );
+    expect(report.checks).toEqual({ teeSigners: "enabled", anchors: "enabled" });
+    expect(r.signers.status).toBe("checked");
+    expect(r.signers.next).toBe(r.leavesAudited);
+    expect(r.signers.leavesChecked).toBeGreaterThan(0);
+    expect(r.findings.filter((f: { kind: string }) => /^(anchor|leaf\.tee_)/.test(f.kind))).toEqual(
+      [],
+    );
+    expect(await sandbox.locator('[data-field="signers"]').textContent()).toContain(
+      `${r.signers.leavesChecked} leaves checked against VerdictVerifier on Arbitrum Sepolia`,
+    );
+    await context.close();
   });
 
   test("renders at 360 px without horizontal scroll", async () => {
