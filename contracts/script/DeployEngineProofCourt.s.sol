@@ -19,8 +19,8 @@ contract DeployEngineProofCourt is KeelsonDeploy {
     using stdJson for string;
 
     string internal constant NAME = "EngineProofCourt";
-    /// @notice Reads the coverage's countersign from `KeelsonValidationRegistry`.
-    string public constant VERSION = "EngineProofCourt/2";
+    /// @notice Over `EngineProofVerifier/8`.
+    string public constant VERSION = "EngineProofCourt/3";
 
     function run() external returns (EngineProofCourt court) {
         vm.startBroadcast(_owner());

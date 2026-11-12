@@ -14,7 +14,7 @@ contract DeployEngineProofVerifier is KeelsonDeploy {
 
     string internal constant NAME = "EngineProofVerifier";
     /// @notice Over Succinct's immutable SP1 v6.1.0 Groth16 verifier.
-    string public constant VERSION = "EngineProofVerifier/7";
+    string public constant VERSION = "EngineProofVerifier/8";
 
     function run() external returns (EngineProofVerifier verifier) {
         vm.startBroadcast(_owner());
