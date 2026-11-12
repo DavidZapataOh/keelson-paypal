@@ -128,6 +128,21 @@ contract BondVaultDepositForkTest is VaultBase {
         this.viaTimelock(address(vault), abi.encodeCall(vault.setParams, (p)));
     }
 
+    /// @dev A withdrawal delay of exactly the dispute, veto and grace windows is enough, and each window counts.
+    function test_setParams_withdrawalDelayCoversEveryWindow() public {
+        IKeelsonBondVault.Params memory p = _demoParams();
+        p.disputeWindow = 1000;
+        p.vetoWindow = 100;
+        p.grace = 10;
+        p.withdrawalDelay = 1110;
+        _viaTimelock(address(vault), abi.encodeCall(vault.setParams, (p)));
+        assertEq(abi.encode(vault.params()), abi.encode(p));
+
+        p.withdrawalDelay = 1109;
+        vm.expectRevert(IKeelsonBondVault.InvalidParams.selector);
+        this.viaTimelock(address(vault), abi.encodeCall(vault.setParams, (p)));
+    }
+
     function test_setParams_onlyAdmin() public {
         IKeelsonBondVault.Params memory p = _demoParams();
         p.disputeWindow += 60;
