@@ -34,6 +34,7 @@ const problems = {
 const list = createRoute({
   method: "get",
   path: "/v1/passkeys",
+  operationId: "listPasskeys",
   tags: ["passkeys"],
   summary: "List the signed-in user's passkeys",
   description: "The credentials a mandate can be signed with, oldest first.",
@@ -47,6 +48,7 @@ const list = createRoute({
 const remove = createRoute({
   method: "delete",
   path: "/v1/passkeys/{id}",
+  operationId: "deletePasskey",
   tags: ["passkeys"],
   summary: "Remove one of the signed-in user's passkeys",
   description:

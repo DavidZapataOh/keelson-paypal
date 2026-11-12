@@ -191,10 +191,18 @@ async function demoCompiled() {
 }
 
 /** A signed-in buyer whose API answers come from `answer`; anything else is refused. */
+/** An answer of the stubbed API with a status other than 200. */
+class Status {
+  constructor(
+    readonly status: number,
+    readonly body?: unknown,
+  ) {}
+}
+
 async function signedIn(
   kind: keyof typeof VIEWPORTS,
   path: string,
-  answer: (path: string, body: string | null) => unknown | Promise<unknown>,
+  answer: (path: string, body: string | null, method: string) => unknown | Promise<unknown>,
 ) {
   const context = await browser.newContext(VIEWPORTS[kind]);
   await context.route("https://api.keelson.finance/**", async (route) => {
@@ -204,18 +212,28 @@ async function signedIn(
       "access-control-allow-origin": base,
       "access-control-allow-credentials": "true",
       "access-control-allow-headers": "content-type, idempotency-key, keelson-device",
+      "access-control-allow-methods": "GET, POST, PUT, DELETE",
     };
     if (req.method() === "OPTIONS") return route.fulfill({ status: 204, headers });
     const value =
       url.pathname === "/api/auth/get-session"
         ? SESSION()
-        : await answer(url.pathname, req.postData());
+        : await answer(url.pathname, req.postData(), req.method());
     if (value === undefined) return route.abort("connectionrefused");
     if (value instanceof Uint8Array) {
       return route.fulfill({
         headers,
         contentType: "application/scitt-statement+cose",
         body: Buffer.from(value),
+      });
+    }
+    if (value instanceof Status) {
+      return route.fulfill({
+        status: value.status,
+        headers,
+        ...(value.body === undefined
+          ? {}
+          : { contentType: "application/problem+json", body: JSON.stringify(value.body) }),
       });
     }
     return route.fulfill({ headers, contentType: "application/json", body: JSON.stringify(value) });
@@ -465,6 +483,78 @@ describe("signing and going live", () => {
     await page.getByRole("heading", { level: 1, name: "Your agent is live" }).waitFor();
     expect(await page.getByRole("list", { name: "All steps done" }).count()).toBe(1);
     expect(await page.getByRole("link", { name: "Go home" }).getAttribute("href")).toBe("/");
+    await context.close();
+  });
+});
+
+describe("saved PayPal", () => {
+  const passkeys = {
+    passkeys: [{ id: "pk_1", name: "Keelson", credentialId: "cred-1", createdAt: null }],
+  };
+  const noWallet = new Status(404, { type: "https://api.keelson.finance/problems/not-found" });
+  const saved = { email: "buyer@example.com", createdAt: "2026-11-11T20:00:00.000Z" };
+
+  test("with none saved, the passkeys page offers to save PayPal for holds", async () => {
+    const { context, page } = await signedIn("desktop", "/passkeys/", (path) => {
+      if (path === "/v1/passkeys") return passkeys;
+      if (path === "/v1/paypal/wallet") return noWallet;
+      return undefined;
+    });
+    const section = page.getByRole("region", { name: "Saved PayPal" });
+    await section.getByText("Save PayPal once and your holds need no PayPal window.").waitFor();
+    const { violations } = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
+    expect(violations.map((v) => `${v.id}: ${v.nodes.length}`)).toEqual([]);
+    await context.close();
+  });
+
+  test("a saved PayPal shows its account and is removed after a confirmation", async () => {
+    let wallet: unknown = saved;
+    const deletes: string[] = [];
+    const { context, page } = await signedIn("desktop", "/passkeys/", (path, _body, method) => {
+      if (path === "/v1/passkeys") return passkeys;
+      if (path === "/v1/paypal/wallet" && method === "DELETE") {
+        deletes.push(path);
+        wallet = noWallet;
+        return new Status(204);
+      }
+      if (path === "/v1/paypal/wallet") return wallet;
+      return undefined;
+    });
+    const section = page.getByRole("region", { name: "Saved PayPal" });
+    await section.getByText("buyer@example.com").waitFor();
+    await section.getByRole("button", { name: "Remove" }).click();
+    expect(deletes).toEqual([]);
+    await section.getByRole("button", { name: "Remove PayPal" }).click();
+    await section.getByText("Save PayPal once and your holds need no PayPal window.").waitFor();
+    expect(deletes).toEqual(["/v1/paypal/wallet"]);
+    await context.close();
+  });
+
+  test("a mandate is held with the saved PayPal, with no PayPal window", async () => {
+    const id = "01M7MANDATE000000000000009";
+    let state = "SIGNED";
+    const calls: string[] = [];
+    const { context, page } = await signedIn("desktop", `/new/?hold=${id}`, (path, body) => {
+      if (path === `/v1/mandates/${id}`) return viewIn(id, state);
+      if (path === "/v1/paypal/wallet") return saved;
+      if (path === `/v1/mandates/${id}/hold`) {
+        calls.push(path);
+        return { orderId: "8K832279M55989614", state: "HOLD_PENDING", approved: true };
+      }
+      if (path === `/v1/mandates/${id}/hold/authorize`) {
+        calls.push(`${path} ${body}`);
+        state = "ACTIVE";
+        return { state: "ACTIVE", authorizationId: "7X550106NA4440028", expiresAt: "" };
+      }
+      return undefined;
+    });
+    await page.getByRole("heading", { level: 1, name: "Hold $100.00 on PayPal" }).waitFor();
+    await page.getByRole("button", { name: "Hold with buyer@example.com" }).click();
+    await page.getByRole("heading", { level: 1, name: "Your agent is live" }).waitFor();
+    expect(calls).toEqual([
+      `/v1/mandates/${id}/hold`,
+      `/v1/mandates/${id}/hold/authorize {"orderId":"8K832279M55989614"}`,
+    ]);
     await context.close();
   });
 });

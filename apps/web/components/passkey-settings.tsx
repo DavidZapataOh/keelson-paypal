@@ -11,6 +11,7 @@ import { addPasskey, localPasskeys, type Passkey } from "../lib/passkeys";
 import { AppShell } from "./app-shell";
 import { ErrorNotice } from "./notice";
 import { PageHead } from "./page-head";
+import { PayPalWallet } from "./paypal-wallet";
 
 const added = new Intl.DateTimeFormat("en-US", { dateStyle: "medium" });
 
@@ -185,6 +186,8 @@ export function PasskeySettings() {
           </Button>
         )}
         {error ? <ErrorNotice>{error}</ErrorNotice> : null}
+
+        {judge ? null : <PayPalWallet />}
       </div>
     </AppShell>
   );

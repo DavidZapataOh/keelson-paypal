@@ -23,6 +23,7 @@ const Feedback = z
 const route = createRoute({
   method: "get",
   path: "/v1/feedback/{coverageId}",
+  operationId: "getFeedback",
   tags: ["reputation"],
   summary: "Feedback file of a rated coverage",
   description:

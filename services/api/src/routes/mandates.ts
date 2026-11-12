@@ -259,6 +259,7 @@ const problemContent = { "application/problem+json": { schema: ProblemSchema } }
 const create = createRoute({
   method: "post",
   path: "/v1/mandates",
+  operationId: "createMandate",
   tags: ["mandates"],
   summary: "Store a passkey-signed mandate",
   description:
@@ -290,6 +291,7 @@ const create = createRoute({
 const read = createRoute({
   method: "get",
   path: "/v1/mandates/{id}",
+  operationId: "getMandate",
   tags: ["mandates"],
   summary: "Get a mandate",
   description:
@@ -306,6 +308,7 @@ const read = createRoute({
 const list = createRoute({
   method: "get",
   path: "/v1/mandates",
+  operationId: "listMandates",
   tags: ["mandates"],
   summary: "List your mandates",
   description: `The signed-in user's latest ${MANDATES_SHOWN} signed mandates, newest first.`,

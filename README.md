@@ -1,135 +1,144 @@
 # Keelson
 
-The liability layer for AI-agent purchases on PayPal. Keelson checks every purchase against what the
-user signed before it is paid, seals it with an Alibi anyone can verify, and makes the party at
-fault pay.
+The liability layer for AI-agent purchases on PayPal. Keelson checks every purchase an agent makes
+against what the user signed, before PayPal pays; seals each decision in an Alibi anyone can verify;
+and makes the party at fault pay.
 
-- **Product:** https://app.keelson.finance ([Judge Mode](https://app.keelson.finance/judge), no sign-up)
-- **Verifier:** https://verify.keelson.finance
-- **Status:** https://app.keelson.finance/status
-- **Demo store:** https://store.keelson.finance
-- **Transparency log:** https://log.keelson.finance/alibi/2026-1/checkpoint
-- **MCP server:** `https://api.keelson.finance/mcp`
+It is for the people an AI agent spends for: the user who signs a mandate, the merchant who ships,
+and the operator who runs the agent and bonds it. Today, when an agent buys the wrong thing, nobody
+can show who was at fault, and the user carries the loss.
 
-Payments run on the PayPal sandbox and the contracts on Arbitrum Sepolia. The TEEs, the log, its
-witnesses and the AI run in production. [What is real and what is sandbox](docs/environments.md).
+- **Try it, no sign-up:** [Judge Mode](https://app.keelson.finance/judge)
+- **Verify a real Alibi in one minute:** https://docs.keelson.finance/quickstart/verify-an-alibi/
+- **Documentation:** https://docs.keelson.finance
+- **Code:** this repository, Apache-2.0
+
+> [!IMPORTANT]
+> Payments run on the PayPal sandbox and the contracts on Arbitrum Sepolia, so no real money moves.
+> The two TEEs, the public log and its witnesses, the monitor and the AI run in production. Every
+> dependency and how to check it: [Real or sandbox](https://docs.keelson.finance/security/environments/).
+
+## Verify it in one command
+
+This sends a real Alibi, from a purchase paid on the PayPal sandbox, to the verifier:
+
+```sh check=readme-verify
+curl -sL https://raw.githubusercontent.com/DavidZapataOh/keelson-paypal/main/packages/alibi/test/fixtures/01M6ZWZJHWRRHQEYNJAT7NMSV8.alibi \
+| curl -s https://api.keelson.finance/v1/alibis/verify \
+    -H 'content-type: application/vnd.keelson.alibi.v1+json' \
+    -H "idempotency-key: readme-$RANDOM$RANDOM" --data-binary @- \
+| jq -r '"\(.verdict) \(.mode)"'
+# expect: ^verified 2of2$
+```
+
+`verified 2of2` means both TEEs, Intel TDX and AWS Nitro, countersigned it, and each check passed:
+the user's passkey, both attestations, inclusion in the public log, the witnesses, the anchor on
+chain. To trust no Keelson server, drop the same file on https://verify.keelson.finance.
 
 ## How it works
 
 ```mermaid
 flowchart LR
+  accTitle: How a purchase flows through Keelson
+  accDescr: The user signs a mandate, the agent sends a cart, both TEEs countersign, PayPal captures, the Alibi goes to the public log and its anchor on chain, and a dispute ends in a signed verdict.
   U([User]) -- passkey-signed mandate --> K[Keelson API]
   G([AI agent]) -- cart --> K
-  K --> A[Leg A: Intel TDX]
-  K --> B[Leg B: AWS Nitro]
-  A & B -- 2-of-2 countersign --> K
-  K -- capture exactly the countersigned total --> P[(PayPal)]
-  K -- Alibi leaf --> L[Public log + witnesses]
+  K --> T[Two TEEs: Intel TDX and AWS Nitro]
+  T -- 2-of-2 countersign --> K
+  K -- capture the countersigned total --> P[(PayPal)]
+  K -- Alibi --> L[Public log and witnesses]
   L -- anchor --> C[(Arbitrum)]
   P -- dispute --> K
-  K -- signed verdict: slash the bond or pay the warranty --> C
 ```
 
-1. **Mandate.** The user says what the agent may buy, where, for how much and until when. Two
-   models draft the mandate, and the user signs the rendered card with a passkey. PayPal holds the
-   budget.
-2. **Countersign.** Before each payment, the same engine in two TEEs from two vendors checks the
-   cart against the mandate with Cedar and signs ALLOW or DENY. Only an ALLOW is captured, for
-   exactly the countersigned amount.
-3. **Alibi.** Every decision is sealed with what the agent saw, appended to a public transparency
-   log, cosigned by witnesses, co-logged in Sigsum and anchored on chain. Anyone can verify it in the
-   browser.
-4. **Liability.** When a purchase is disputed, the TEEs attribute it with a proven decision table:
-   the operator's PYUSD bond is slashed, Keelson's reserve pays its warranty, or the Alibi goes to
-   PayPal as evidence for the merchant or the user. PayPal adjudicates.
+1. **Mandate.** The user says what the agent may buy, where, for how much and until when. Two models
+   draft the mandate, and the user signs the rendered card with a passkey. PayPal holds the budget.
+2. **Countersign.** Before each payment, the same engine in two TEEs from two vendors checks the cart
+   against the mandate with Cedar and signs ALLOW or DENY. Only an ALLOW is captured, for exactly
+   the countersigned amount.
+3. **Alibi.** Every decision is sealed with what the agent saw, appended to a public transparency log,
+   cosigned by witnesses, co-logged in Sigsum and anchored on chain.
+4. **Liability.** When a purchase is disputed, both TEEs attribute it with a fixed decision table: the
+   operator's PYUSD bond is slashed, Keelson's reserve pays its warranty, or the Alibi goes to PayPal
+   as evidence. PayPal adjudicates.
 
-## What is live, and how to check it
+More: [How it works](https://docs.keelson.finance/concepts/how-it-works/) and the
+[specification](https://docs.keelson.finance/reference/spec/).
 
-| Claim                                                                                                                                          | Check                                                                                                                                                     |
-| ---------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Both TEE legs run the same reproducible image, `sha256:62dcd6071507130db485c5fa67bd371fc28188310cf83d82fdb9b7e22341b8cd`                       | `curl https://tee-b.keelson.finance/v1/health`; [`engine/tee/measurements.json`](engine/tee/measurements.json); rebuild with `make -C engine/tee measure` |
-| Leg A is Intel TDX on Phala Cloud, measurement `tdx:ccdbe1020654595759c24698591df8025d3385f079d4c0e4e73770b3a73fe62f`                          | The `tee-verify` workflow checks its quote against Intel's collateral and replays its event log                                                           |
-| Leg B is an AWS Nitro Enclave, measurement `nitro:1348a25408d15f524f289e75b0bd9301e7a28575113fc29087e4c03d1da9c9b7` (PCR0 `2c77e9fb…6f442400`) | `curl https://tee-b.keelson.finance/v1/attestation`                                                                                                       |
-| Every countersign, ALLOW or DENY, is in a public log with a 2-of-3 witness quorum                                                              | `curl https://log.keelson.finance/alibi/2026-1/checkpoint`; [services/log](services/log/README.md)                                                        |
-| Checkpoints are co-logged in Sigsum and anchored on Arbitrum Sepolia                                                                           | [`sigsum-verify`](services/log/README.md#sigsum); [`cast call` on `CheckpointAnchor`](services/log/README.md#anchors)                                     |
-| The log's key is bonded and an equivocation slashes it on chain                                                                                | `curl https://api.keelson.finance/v1/log/bonds`; a drill slashed the conformance log's bond                                                               |
-| A public monitor audits every leaf                                                                                                             | https://keelson-monitor-production.up.railway.app/report                                                                                                  |
-| Disputes are attributed by both TEEs and settled on chain                                                                                      | Judge Mode, step "dispute"; [Dispute evaluation](services/api/README.md#dispute-evaluation)                                                               |
-| ZK: C1, C2a, C2b, C3 and C1+C3 verify on chain                                                                                                 | [Deployments](contracts/README.md#deployments)                                                                                                            |
-| Card mandates pay card merchants through single-use cards funded by a PayPal hold                                                              | [Card mandates](docs/architecture.md#card-mandates)                                                                                                       |
-| Hosts (claude.ai, ChatGPT, Cursor) act for a user over OAuth; approvals can be signed in their frame                                           | [Apps acting for a user](services/api/README.md#apps-acting-for-a-user)                                                                                   |
-| One click stops every agent; push and email alerts                                                                                             | [Agents and hosts](docs/architecture.md#agents-and-hosts)                                                                                                 |
+## Verify it yourself
 
-**In progress:** an SP1 proof of the engine's evaluation for disputes, currency conversion in the
-live checkout, and the Arbitrum One deployment. See [environments](docs/environments.md#in-progress).
+Each claim links to a command that checks it, and most also have a path that trusts no Keelson
+server. The repository's tests run every one against production.
 
-## Documentation
+| Claim                                                                 | Check                                                                                                                                            |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| The TEE image is reproducible, and leg B reports the committed digest | [TEE image](https://docs.keelson.finance/security/verify/#tee-image)                                                                             |
+| Leg A is a genuine Intel TDX VM running that image                    | [Leg A](https://docs.keelson.finance/security/verify/#leg-a-tdx)                                                                                 |
+| Leg B is a genuine AWS Nitro Enclave with the pinned measurement      | [Leg B](https://docs.keelson.finance/security/verify/#leg-b-nitro)                                                                               |
+| Every decision, ALLOW or DENY, is in a public log                     | [Log](https://docs.keelson.finance/security/verify/#log-checkpoint)                                                                              |
+| Witnesses cosign it, and Sigsum keeps a copy Keelson does not run     | [Witnesses](https://docs.keelson.finance/security/verify/#witnesses), [Sigsum](https://docs.keelson.finance/security/verify/#sigsum)             |
+| Checkpoints are anchored on Arbitrum Sepolia                          | [Anchor](https://docs.keelson.finance/security/verify/#anchor)                                                                                   |
+| The log's key is bonded, and an equivocation slashes it               | [Log bond](https://docs.keelson.finance/security/verify/#log-bond)                                                                               |
+| The bond vault, reserve, verifiers and courts are deployed            | [Contracts](https://docs.keelson.finance/security/verify/#contracts), [ZK verifiers](https://docs.keelson.finance/security/verify/#zk-verifiers) |
+| Payments run on the PayPal sandbox                                    | [PayPal](https://docs.keelson.finance/security/verify/#paypal-sandbox)                                                                           |
+| A public monitor audits every leaf                                    | [Monitor](https://docs.keelson.finance/security/verify/#monitor)                                                                                 |
 
-| Document                                                                 | What it covers                                                                       |
-| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------ |
-| [Specification](docs/spec.md)                                            | Mandates, policy, countersign, evidence, Alibi, log, PayPal, contracts, disputes, ZK |
-| [Architecture](docs/architecture.md)                                     | Components, purchase, dispute and card flows, trust anchors, hosting                 |
-| [Threat model](docs/threat-model.md)                                     | Attacks, defenses and the limits stated plainly                                      |
-| [Environments](docs/environments.md)                                     | What is real, what is sandbox, what is in progress                                   |
-| [PayPal Agent Mandate Extension](docs/paypal-agent-mandate-extension.md) | The open `ks1.` convention for tagging agent payments on PayPal                      |
-| [OpenAPI](openapi)                                                       | The API's OpenAPI 3.1 document                                                       |
-| [Agent skill](apps/landing/public/skill.md)                              | How an agent connects and buys through MCP                                           |
+What an Alibi guarantees, and what it does not: [Threat model](https://docs.keelson.finance/security/threat-model/).
 
-Each component's README is its detailed reference: [engine/tee](engine/tee/README.md),
-[engine/policy](engine/policy/README.md), [services/api](services/api/README.md),
-[services/log](services/log/README.md), [services/monitor](services/monitor/README.md),
-[contracts](contracts/README.md), [apps/verify](apps/verify/README.md),
-[packages/evidence](packages/evidence/README.md), [packages/mandate](packages/mandate/README.md).
+## PayPal and AI, exactly where
 
-## Judge Mode
+| What                                      | Where                                   | How it is used                                                             |
+| ----------------------------------------- | --------------------------------------- | -------------------------------------------------------------------------- |
+| PayPal Orders v2                          | `packages/paypal/src/hold.ts`           | Holds the mandate's budget; captures exactly the countersigned total       |
+| PayPal Payments v2 refunds                | `packages/paypal/src/refunds.ts`        | Pays a verdict's refund, tagged with the verdict                           |
+| PayPal Disputes                           | `packages/paypal/src/disputes.ts`       | Reads disputes and sends the Alibi as evidence                             |
+| PayPal Webhooks                           | `packages/paypal/src/webhook-verify.ts` | Verified in-house, then re-read with an authenticated `GET`                |
+| PayPal Payouts                            | `packages/paypal/src/payouts.ts`        | Pays a merchant when a verdict settles off chain                           |
+| PayPal JavaScript SDK v6                  | `apps/store/src/pages.ts`               | The sandbox demo store's checkout                                          |
+| Claude Opus 5.5, Sonnet 5.5 and Haiku 5.5 | `packages/compiler/src/compile.ts`      | Two models draft each mandate; a third checks the card against the request |
+| Claude Sonnet 5.5 and a hosted browser    | `services/agent/src/agent.ts`           | The shopping agent that buys under a mandate                               |
+| Claude Opus 5.5 and Haiku 5.5             | `services/api/src/disputes/drafter.ts`  | Drafts dispute evidence from the Alibi                                     |
+| MCP                                       | `services/mcp/src/server.ts`            | Claude, ChatGPT and Cursor connect over OAuth 2.1                          |
 
-https://app.keelson.finance/judge opens a temporary tenant with one click (no keys, no sign-up)
-and walks through the product in nine steps: a real mandate, the agent run that bought under it
-and the injected run Keelson blocked, its Alibi in the verifier, a PayPal sandbox dispute with its
-signed verdict and settlement, the demo merchant's console (read only), the operator's grade, the
-red-team scoreboard and live status. A judge can ask the merchant console's assistant questions on
-its own budget; it changes nothing, and the nightly reset closes the tenant after 12 hours.
+Keelson also proposes the convention it uses in PayPal's fields as the open
+[PayPal Agent Mandate Extension](https://docs.keelson.finance/reference/ks1/), with real test
+vectors.
 
-`JUDGE_LIVE_ORIGIN=https://app.keelson.finance pnpm --filter @keelson/web exec vitest run test/e2e/judge.live.test.ts`
-runs the judge's journey on production from a clean browser; `.github/workflows/judge-journey.yml`
-runs it every hour and opens an issue when it fails.
+## Questions judges ask
 
-## MCP server
+### Why two TEEs?
 
-Keelson's MCP server is served by the API at `https://api.keelson.finance/mcp` (Streamable HTTP,
-stateless). It is an OAuth 2.1 protected resource: clients find the authorization server at
-`/.well-known/oauth-protected-resource`. An agent's own client gets a token with the client
-credentials grant for the resource `https://api.keelson.finance`; a host acting for a user
-(claude.ai, ChatGPT, Cursor) registers itself and gets one with the authorization code grant, and
-buys under the mandates the user approves for it (see
-[the API's README](services/api/README.md#apps-acting-for-a-user)). Each tool asks for the scope
-its API calls need. `keelson.get_alibi` renders the Alibi as an MCP App.
+One vendor's flaw should not be enough to forge a countersign. Every ALLOW needs a signature from an
+Intel TDX VM and from an AWS Nitro Enclave, under two vendors' roots of trust. When leg B is down,
+leg A signs alone, the result says `degraded`, and it waits a longer veto window on chain.
 
-Closing a mandate for a countersign takes the agent's own key, which Keelson never holds, so
-`keelson.request_countersign` is offered by the STDIO server, run as the agent's process. For
-Claude Desktop, after `pnpm install && pnpm build`, add to `claude_desktop_config.json`:
+### What if both TEEs are compromised?
 
-```json
-{
-  "mcpServers": {
-    "keelson": {
-      "command": "node",
-      "args": ["/path/to/keelson/services/mcp/dist/stdio.js"],
-      "env": {
-        "KEELSON_CLIENT_ID": "…",
-        "KEELSON_CLIENT_SECRET": "…",
-        "KEELSON_AGENT_KEY": "{\"kty\":\"EC\",…}",
-        "AGENT_ID": "351"
-      }
-    }
-  }
-}
-```
+Then Keelson can sign a false countersign or verdict, which is why it is the top row of the
+[threat model](https://docs.keelson.finance/security/threat-model/). Large slashes still wait a veto
+window, the vault rate-limits them, the log keeps a public record a monitor audits, and the
+zero-knowledge courts convict a mandate violation without trusting the TEEs at all.
 
-The OAuth client needs `countersign:write`, `evidence:write` and `alibis:read`, and must be the one
-that linked the operator (`POST /v1/operators`). `KEELSON_AGENT_KEY` is the private P-256 JWK of
-the `cnf` key mandates name. The MCP Inspector runs the same server with
-`npx @modelcontextprotocol/inspector node services/mcp/dist/stdio.js`.
+### Isn't this PayPal Purchase Protection?
+
+No. Purchase Protection covers an item that never arrived or differs from its description. An agent
+that buys a correctly described item the user did not want falls outside it, and PayPal's terms make
+the account holder responsible for what someone they authorized does. Keelson decides whether the
+agent stayed within what the user signed, and if not, who pays. PayPal still adjudicates.
+
+### How is this different from AP2 or ACP mandates?
+
+Those protocols record what the user allowed. Keelson enforces it before the money moves: two TEEs
+check every cart and only an ALLOW is captured. Afterwards it attributes a dispute with a fixed table
+and pays from a bond or a reserve.
+
+### Who pays, and how much?
+
+It depends on the field that was wrong. A green field, which Keelson checks (amount, merchant,
+deadline, quantity), is Keelson's error, and its reserve pays the warranty. An amber field, which the
+operator attests (category, variant, return policy), slashes the operator's PYUSD bond. A gray field
+is a subjective wish only the user can judge. Keelson is not insurance; the rules are in the
+[specification](https://docs.keelson.finance/reference/spec/).
 
 ## Repository layout
 
@@ -137,6 +146,7 @@ the `cnf` key mandates name. The MCP Inspector runs the same server with
 .
 ├── apps/
 │   ├── web/             The product (Next.js): mandates, approvals, agents, disputes, consoles, Judge Mode
+│   ├── docs/            This documentation site, docs.keelson.finance
 │   ├── verify/          The Alibi verifier, in the browser
 │   ├── store/           RunFast, the demo merchant store (PayPal sandbox)
 │   └── landing/         Marketing site
@@ -159,13 +169,15 @@ the `cnf` key mandates name. The MCP Inspector runs the same server with
 │                        evidence, relayer, timestamp, compiler, db, erc8004, ui
 ├── internal/            Go packages shared by the log and the monitor
 ├── openapi/             Generated OpenAPI 3.1 document
-├── docs/                Specification, architecture, threat model, environments, PayPal extension
+├── docs/                Pointers to the documentation site
 ├── .github/workflows/   CI, TEE image and verification, contracts verification, judge journey
 ├── compose.yaml         Local PostgreSQL and Valkey
 └── render.yaml          Render blueprint
 ```
 
 ## Development
+
+Judge Mode and the documentation need none of this; it is for running Keelson from source.
 
 Requires Node.js 26.13.0 (see `.node-version`), pnpm 12.16.1, which Corepack installs from the
 `packageManager` field, Docker, and the Rust toolchain pinned in `rust-toolchain.toml`. The log,
@@ -196,7 +208,7 @@ pair as the sandbox buyer (`PAYPAL_SANDBOX_BUYER_EMAIL` and `PAYPAL_SANDBOX_BUYE
 
 A card mandate's purchase runs end to end against the deployed app and API with
 `pnpm --filter @keelson/api exec node scripts/card-demo.ts` (it needs the card issuer's sandbox
-key; see [Card mandates](docs/architecture.md#card-mandates)).
+key; see [How it works](https://docs.keelson.finance/concepts/how-it-works/)).
 
 ## Security
 

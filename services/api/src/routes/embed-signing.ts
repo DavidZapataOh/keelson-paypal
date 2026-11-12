@@ -79,6 +79,7 @@ const routes = {
   signInOptions: createRoute({
     method: "post",
     path: "/v1/embed/sign-in/options",
+    operationId: "getEmbedSignInOptions",
     tags: ["embed"],
     summary: "Start a passkey sign-in in the embedded approval",
     description:
@@ -92,6 +93,7 @@ const routes = {
   signIn: createRoute({
     method: "post",
     path: "/v1/embed/sign-in",
+    operationId: "signInEmbed",
     tags: ["embed"],
     summary: "Sign in with a passkey in the embedded approval",
     description:
@@ -114,6 +116,7 @@ const routes = {
   linkStart: createRoute({
     method: "post",
     path: "/v1/embed/links",
+    operationId: "createEmbedLink",
     tags: ["embed"],
     summary: "Link the embedded approval to a Keelson window",
     description:
@@ -134,6 +137,7 @@ const routes = {
   linkInspect: createRoute({
     method: "post",
     path: "/v1/embed/links/inspect",
+    operationId: "inspectEmbedLink",
     tags: ["embed"],
     summary: "Read a link in the Keelson window",
     description:
@@ -161,6 +165,7 @@ const routes = {
   linkConfirm: createRoute({
     method: "post",
     path: "/v1/embed/links/confirm",
+    operationId: "confirmEmbedLink",
     tags: ["embed"],
     summary: "Confirm a link from the Keelson window",
     description:
@@ -197,6 +202,7 @@ const routes = {
   linkClaim: createRoute({
     method: "post",
     path: "/v1/embed/links/claim",
+    operationId: "claimEmbedLink",
     tags: ["embed"],
     summary: "Claim a link's grant in the embedded approval",
     description:
@@ -222,6 +228,7 @@ const routes = {
   registerOptions: createRoute({
     method: "post",
     path: "/v1/embed/passkeys/options",
+    operationId: "getEmbedPasskeyOptions",
     tags: ["embed"],
     summary: "Start creating a passkey in the embedded approval",
     description:
@@ -241,6 +248,7 @@ const routes = {
   register: createRoute({
     method: "post",
     path: "/v1/embed/passkeys",
+    operationId: "createEmbedPasskey",
     tags: ["embed"],
     summary: "Create a passkey in the embedded approval",
     description:
@@ -261,6 +269,7 @@ const routes = {
   draft: createRoute({
     method: "post",
     path: "/v1/embed/draft",
+    operationId: "draftEmbedMandate",
     tags: ["embed"],
     summary: "Draft the mandate in the embedded approval",
     description:
@@ -294,6 +303,7 @@ const routes = {
   sign: createRoute({
     method: "post",
     path: "/v1/embed/mandates",
+    operationId: "createEmbedMandate",
     tags: ["embed"],
     summary: "Approve the embedded request with a signed mandate",
     description:

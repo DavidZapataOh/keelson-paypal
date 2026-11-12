@@ -127,6 +127,35 @@ describe("MCP authorization (OAuth 2.1, RFC 7591, RFC 7636, RFC 9728, RFC 9396)"
     expect(greedy.status).toBe(400);
   });
 
+  test("a native client registers a loopback redirect without a port and may use any port (RFC 8252 §7.3)", async () => {
+    const res = await app.request("/api/auth/oauth2/register", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        redirect_uris: ["http://127.0.0.1/callback"],
+        client_name: "Keelson CLI",
+        token_endpoint_auth_method: "none",
+      }),
+    });
+    expect(res.status).toBeLessThan(300);
+    const { client_id } = (await res.json()) as { client_id: string };
+    const consent = await authorize({
+      client_id,
+      redirect_uri: "http://127.0.0.1:53127/callback",
+      code_challenge: challenge(verifier()),
+      code_challenge_method: "S256",
+    });
+    expect(consent.origin + consent.pathname).toBe(`${appOrigin}/consent`);
+  });
+
+  test("a non-loopback http redirect is refused", async () => {
+    const res = await register({
+      redirect_uris: ["http://example.com/callback"],
+      token_endpoint_auth_method: "none",
+    });
+    expect(res.status).toBe(400);
+  });
+
   test("PKCE is required, and only S256", async () => {
     const id = await publicClient();
     const none = await authorize({ client_id: id });

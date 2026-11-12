@@ -2,7 +2,7 @@ import { X509Certificate } from "node:crypto";
 import { Decoder, Encoder } from "cbor-x";
 import { describe, expect, test } from "vitest";
 import { AttestError } from "../src/errors.ts";
-import { isDebugMode, verifyNitro } from "../src/nitro.ts";
+import { isDebugMode, nitroTimestamp, verifyNitro } from "../src/nitro.ts";
 import { AWS_NITRO_ROOT_PEM } from "../src/roots/aws-nitro-root-g1.ts";
 import { nitroEvidence } from "./evidence.ts";
 
@@ -29,6 +29,13 @@ const fail = async (p: Promise<unknown>) => {
   expect(error).toBeInstanceOf(AttestError);
   return (error as AttestError).code;
 };
+
+describe("nitroTimestamp", () => {
+  test("reads when the hypervisor produced the document, without verifying it", async () => {
+    const result = await verifyNitro(document, { now });
+    expect(nitroTimestamp(document).getTime()).toBe(result.timestamp);
+  });
+});
 
 describe("verifyNitro", () => {
   test("verifies the captured document and returns what it attests", async () => {

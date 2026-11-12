@@ -149,6 +149,7 @@ const cached = z.object({ "Cache-Control": z.string() });
 const link = createRoute({
   method: "post",
   path: "/v1/operators",
+  operationId: "linkOperator",
   tags: ["operators"],
   summary: "Link an ERC-8004 agent as an operator",
   description:
@@ -180,6 +181,7 @@ const registrationContent = { "application/json": { schema: Registration } };
 const byAddress = createRoute({
   method: "get",
   path: "/v1/operators/by-address/{address}/registration.json",
+  operationId: "getOwnerRegistration",
   tags: ["operators"],
   summary: "Registration file of an owner's agents",
   description:
@@ -197,6 +199,7 @@ const byAddress = createRoute({
 const byAgent = createRoute({
   method: "get",
   path: "/v1/operators/{chainId}/{agentId}/registration.json",
+  operationId: "getAgentRegistration",
   tags: ["operators"],
   summary: "Registration file of an agent",
   description:
@@ -212,6 +215,7 @@ const byAgent = createRoute({
 const bond = createRoute({
   method: "get",
   path: "/v1/operators/{chainId}/{agentId}/bond",
+  operationId: "getAgentBond",
   tags: ["operators"],
   summary: "Bond, reputation and validations of an agent",
   description:
@@ -250,6 +254,7 @@ const OperatorMandate = z
 const operatorMandates = createRoute({
   method: "get",
   path: "/v1/operators/{agentId}/mandates",
+  operationId: "listOperatorMandates",
   tags: ["operators"],
   summary: "The active mandates naming the operator",
   description:
@@ -285,6 +290,7 @@ const AgentRun = z
 const agentRun = createRoute({
   method: "post",
   path: "/v1/operators/{agentId}/mandates/{mandateId}/runs",
+  operationId: "announceRun",
   tags: ["operators"],
   summary: "Announce an agent run under a mandate",
   description:

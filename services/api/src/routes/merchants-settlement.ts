@@ -80,6 +80,7 @@ export function settlementPreferenceTypedData(message: {
 const route = createRoute({
   method: "put",
   path: "/v1/merchants/{merchantId}/settlement",
+  operationId: "setSettlement",
   tags: ["merchants"],
   summary: "Choose how a merchant is paid when a dispute goes its way",
   description:

@@ -44,6 +44,7 @@ import { startPayPalPoller } from "./paypal/poll.ts";
 import { startPayPalEventWorker } from "./paypal/worker.ts";
 import { createPayPalDeps } from "./paypal.ts";
 import { appEmbedPage } from "./routes/embed-page.ts";
+import { timings } from "./server-timing.ts";
 import { closeServer } from "./shutdown.ts";
 import { startPipelineResumer, startPurchaseSweeper, startSettlementSweeper } from "./sweeper.ts";
 import { createTee } from "./tee/config.ts";
@@ -60,6 +61,7 @@ const destination = pino.destination({ sync: false });
 const log = createLogger(destination);
 const { db, pool } = createDb(env.DATABASE_URL);
 const kv = await createKv(env.REDIS_URL, log);
+timings.use(kv);
 const auth = createAuth(db, env);
 const shutdown = new AbortController();
 const tee =
@@ -243,6 +245,7 @@ const app = createApp({
   appOrigin: env.APP_ORIGIN,
   ...(env.APP_ORIGIN ? { embedPage: appEmbedPage(env.APP_ORIGIN) } : {}),
   verifyOrigin: env.VERIFY_ORIGIN,
+  docsOrigin: env.DOCS_ORIGIN,
   // The public RPCs the browser verifier uses: a report never names the API's keyed RPC URL.
   alibiChain: createChainReader(),
   passkeyRpId: env.PASSKEY_RP_ID,

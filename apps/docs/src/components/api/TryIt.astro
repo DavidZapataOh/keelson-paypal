@@ -1,0 +1,36 @@
+---
+import { API, type Operation } from "../../lib/openapi";
+
+interface Props {
+  op: Operation;
+}
+const { op } = Astro.props;
+const verify = op.method === "post" && op.path === "/v1/alibis/verify";
+const path = op.path.replace("{id}", "01M6ZWZJHWRRHQEYNJAT7NMSV8");
+---
+<div class="tryit" data-tryit data-method={op.method.toUpperCase()} data-url={API + path} data-sample={verify ? "/samples/01M6ZWZJHWRRHQEYNJAT7NMSV8.alibi" : undefined}>
+  <button type="button" class="tryit-send">{verify ? "Send the sample Alibi" : <>Send <code>{op.method.toUpperCase()} {path}</code></>}</button>
+  <output class="tryit-out" aria-live="polite"></output>
+</div>
+<script>
+  for (const box of document.querySelectorAll<HTMLElement>("[data-tryit]")) {
+    const out = box.querySelector("output") as HTMLOutputElement;
+    box.querySelector("button")?.addEventListener("click", async () => {
+      out.textContent = "Sending…";
+      const { method, url, sample } = box.dataset;
+      try {
+        const init: RequestInit = { method };
+        if (sample) {
+          init.headers = { "content-type": "application/vnd.keelson.alibi.v1+json", "idempotency-key": crypto.randomUUID() };
+          init.body = await (await fetch(sample)).arrayBuffer();
+        }
+        const started = performance.now();
+        const res = await fetch(url as string, init);
+        const body = await res.json();
+        out.textContent = `${res.status} in ${Math.round(performance.now() - started)} ms\n${JSON.stringify(body, null, 2)}`;
+      } catch (e) {
+        out.textContent = `The request did not complete: ${(e as Error).message}`;
+      }
+    });
+  }
+</script>

@@ -1,0 +1,165 @@
+---
+title: Verify every claim
+description: Each claim Keelson makes, with a command that checks it and, where it matters, one that trusts no Keelson server.
+section: Security
+order: 1
+---
+
+Every claim on this page comes with a command and the output it should print. The commands that read Keelson's API are the quick way. The ones marked **local** run on your machine, from a checkout of [the repository](https://github.com/DavidZapataOh/keelson-paypal) after `pnpm install && pnpm build`, against roots pinned in the code and public infrastructure: Intel's and AWS's certificate chains, the Sigsum log, and Arbitrum Sepolia.
+
+## How these are checked {% #how-these-are-checked %}
+
+Each block below ends with a `# expect:` line. The repository's tests run every one of them against production on each change to the documentation and every night, and fail when the output stops matching.
+
+## The TEE image {% #tee-image %}
+
+Both TEE legs are built from one reproducible image, committed in `engine/tee/measurements.json` and rebuilt from source by `make -C engine/tee measure`. This check reads the digest leg B reports it booted; leg A's measurement is checked through its attestation, [below](#leg-a-tdx).
+
+```sh {% check="tee-image-api" %}
+test "$(curl -s https://tee-b.keelson.finance/v1/health | jq -r .oci_digest)" = "$(jq -r .oci_digest engine/tee/measurements.json)" && echo "same image"
+# expect: ^same image$
+```
+
+## Leg A, Intel TDX {% #leg-a-tdx %}
+
+Leg A runs in an Intel TDX confidential VM on Phala Cloud. Its quote travels inside every Alibi, so an Alibi is enough to check it.
+
+```sh {% check="leg-a-tdx-api" %}
+curl -sL https://raw.githubusercontent.com/DavidZapataOh/keelson-paypal/main/packages/alibi/test/fixtures/01M6ZWZJHWRRHQEYNJAT7NMSV8.alibi \
+| curl -s https://api.keelson.finance/v1/alibis/verify -H 'content-type: application/vnd.keelson.alibi.v1+json' -H "idempotency-key: docs-$RANDOM$RANDOM" --data-binary @- \
+| jq -r '.checks[] | select(.id == "tee.attestation.tdx") | .status'
+# expect: ^pass$
+```
+
+**Local.** The reference verifier checks the quote against Intel's collateral on your machine.
+
+```sh {% check="leg-a-tdx-local" %}
+node apps/docs/scripts/verify-alibi.ts packages/alibi/test/fixtures/01M6ZWZJHWRRHQEYNJAT7NMSV8.alibi | grep tee.attestation.tdx
+# expect: ^tee\.attestation\.tdx pass$
+```
+
+## Leg B, AWS Nitro {% #leg-b-nitro %}
+
+Leg B runs in an AWS Nitro Enclave and serves its attestation document. The verifier inside the Alibi checks the copy each purchase carries.
+
+```sh {% check="leg-b-nitro-api" %}
+curl -sL https://raw.githubusercontent.com/DavidZapataOh/keelson-paypal/main/packages/alibi/test/fixtures/01M6ZWZJHWRRHQEYNJAT7NMSV8.alibi \
+| curl -s https://api.keelson.finance/v1/alibis/verify -H 'content-type: application/vnd.keelson.alibi.v1+json' -H "idempotency-key: docs-$RANDOM$RANDOM" --data-binary @- \
+| jq -r '.checks[] | select(.id == "tee.attestation.nitro") | .status'
+# expect: ^pass$
+```
+
+**Local.** Verify the document leg B serves against AWS's Nitro root, as of when the enclave produced it (its leaf certificate is short-lived), and compare its measurement with the committed one.
+
+```sh {% check="leg-b-nitro-local" %}
+test "$(curl -s https://tee-b.keelson.finance/v1/attestation | node apps/docs/scripts/verify-nitro.ts)" = "$(jq -r .nitro.id engine/tee/measurements.json)" && echo "measurement matches"
+# expect: ^measurement matches$
+```
+
+## The log's checkpoint {% #log-checkpoint %}
+
+Every decision, ALLOW or DENY, is a leaf of a public [C2SP tlog-tiles](https://c2sp.org/tlog-tiles) log. Its checkpoint is signed with a key held in leg A, which leg B reports.
+
+```sh {% check="log-checkpoint-api" %}
+key=$(curl -s https://tee-b.keelson.finance/v1/health | jq -r '.log_keys[] | select(.origin == "log.keelson.finance/alibi/2026-1") | .vkey | split("+")[1]')
+curl -s https://log.keelson.finance/alibi/2026-1/checkpoint | grep -q "^— log.keelson.finance/alibi/2026-1 " && echo "carries a signature line; leg B reports key $key"
+# expect: ^carries a signature line; leg B reports key [0-9a-f]{8}$
+```
+
+**Local.** The reference verifier proves the sample Alibi's leaf is in the tree and that the checkpoint's signatures follow the pinned policy.
+
+```sh {% check="log-checkpoint-local" %}
+node apps/docs/scripts/verify-alibi.ts packages/alibi/test/fixtures/01M6ZWZJHWRRHQEYNJAT7NMSV8.alibi | grep -E "^log\.(policy|inclusion) " | tr '\n' ' '
+# expect: ^log\.policy pass log\.inclusion pass $
+```
+
+## Witnesses {% #witnesses %}
+
+Each checkpoint is cosigned by witnesses that refuse a checkpoint inconsistent with one they signed before. Keelson runs these three witnesses on three providers, so they are not independent of Keelson; the copy in Sigsum, below, is.
+
+```sh {% check="witnesses-api" %}
+curl -s https://log.keelson.finance/alibi/2026-1/checkpoint | grep -c "^— witness-"
+# expect: ^[2-9]$
+```
+
+## Sigsum {% #sigsum %}
+
+Checkpoints are also co-logged in [Sigsum's seasalp log](https://git.glasklar.is/glasklar/services/sigsum-logs/-/blob/main/instances/seasalp.md), cosigned by witnesses Keelson does not run. The sample Alibi's checkpoint, size 90, is there; Sigsum's own tool checks it.
+
+```sh {% check="sigsum-local" %}
+curl -s -o /tmp/keelson-90.proof https://log.keelson.finance/alibi/2026-1/sigsum/90.proof
+curl -s https://log.keelson.finance/alibi/2026-1/sigsum/90.msg \
+| go run sigsum.org/sigsum-go/cmd/sigsum-verify@v1.0.0 -k services/log/keys/sigsum-submit.pub -p services/log/policy/sigsum-seasalp.policy /tmp/keelson-90.proof \
+&& echo "co-logged in Sigsum"
+# expect: ^co-logged in Sigsum$
+```
+
+## On-chain anchor {% #anchor %}
+
+Witnessed checkpoints are anchored in `CheckpointAnchor` on Arbitrum Sepolia, which accepts a new root only with both legs' signatures and a consistency proof from the previous anchor.
+
+```sh {% check="anchor-api" %}
+curl -sL https://raw.githubusercontent.com/DavidZapataOh/keelson-paypal/main/packages/alibi/test/fixtures/01M6ZWZJHWRRHQEYNJAT7NMSV8.alibi \
+| curl -s https://api.keelson.finance/v1/alibis/verify -H 'content-type: application/vnd.keelson.alibi.v1+json' -H "idempotency-key: docs-$RANDOM$RANDOM" --data-binary @- \
+| jq -r '.checks[] | select(.id == "anchor.root") | .status'
+# expect: ^pass$
+```
+
+**Local.** Read the root anchored for the sample Alibi's tree size straight from the chain and compare it with the root the Alibi states.
+
+```sh {% check="anchor-local" %}
+alibi=packages/alibi/test/fixtures/01M6ZWZJHWRRHQEYNJAT7NMSV8.alibi
+origin=$(cast keccak "log.keelson.finance/alibi/2026-1")
+onchain=$(cast call 0x049621749722D0660d5026456F25192fBD9A57ab "rootAt(bytes32,uint64)(bytes32)" "$origin" "$(jq -r .anchor.anchored_size $alibi)" --rpc-url https://sepolia-rollup.arbitrum.io/rpc)
+test "$onchain" = "$(jq -r .anchor.anchored_root $alibi)" && echo "anchored on chain"
+# expect: ^anchored on chain$
+```
+
+## The log's bond {% #log-bond %}
+
+`LogBond` puts PYUSD behind the log's key: two checkpoints signed by that key with different roots for the same size slash it, and anyone can submit them. A drill slashed the bond of the test origin in [transaction `0x6bbb5fed…`](https://sepolia.arbiscan.io/tx/0x6bbb5fede8ded51491a124835957335eb05c7b5067e3e0448a0f4cbe5221b738).
+
+```sh {% check="log-bond-api" %}
+curl -s https://api.keelson.finance/v1/log/bonds | jq -r '.bonds[] | select(.canonical) | "\(.origin) \(.balanceMinor)"'
+# expect: ^log\.keelson\.finance/alibi/2026-1 [1-9][0-9]*$
+```
+
+## Contracts {% #contracts %}
+
+The bond vault, the reserve, the verdict verifier and the anchor are deployed and source-verified on Arbitrum Sepolia. Their addresses are in [the contracts' deployments](https://github.com/DavidZapataOh/keelson-paypal/tree/main/contracts#deployments).
+
+```sh {% check="contracts-local" %}
+for a in 0x049621749722D0660d5026456F25192fBD9A57ab 0xb39898Ef4333f3CB32d1B420E744f5a1Aa2ae2Bf 0xd10Cb524B3C5EC3c60A420e8900e4f8C5aB88972 0xe16E8767EC1DA59Ef0D9Bc7851637E4D22352d96; do
+  test "$(cast codesize $a --rpc-url https://sepolia-rollup.arbitrum.io/rpc)" -gt 0 || exit 1
+done && echo "all deployed"
+# expect: ^all deployed$
+```
+
+## Zero-knowledge verifiers {% #zk-verifiers %}
+
+The courts and the anonymous proofs verify Noir UltraHonk proofs on chain. Each verifier contract is deployed.
+
+```sh {% check="zk-verifiers-local" %}
+for a in 0x3940A0D26f0Fbac6e9d43Fe8b3F69B8bd6CDA2a0 0x0e82f941A3F75FEe528753B24dBE16964eECAA48 0x378b1DBdf260460c93DDec38F0245E95f36A2414 0x103CC9650C1f1d9568e5EdF45Cd1A3C0978BFc7C 0x18b2F0b2D235F69461989C0B7dB86efa91e6B77c; do
+  test "$(cast codesize $a --rpc-url https://sepolia-rollup.arbitrum.io/rpc)" -gt 0 || exit 1
+done && echo "all deployed"
+# expect: ^all deployed$
+```
+
+## PayPal sandbox {% #paypal-sandbox %}
+
+Payments run on the PayPal sandbox; no real money moves. The API says which PayPal environment it talks to.
+
+```sh {% check="paypal-sandbox-api" %}
+curl -s https://api.keelson.finance/status | jq -r .dependencies.paypal.environment
+# expect: ^sandbox$
+```
+
+## The public monitor {% #monitor %}
+
+A monitor that anyone can run audits every leaf of the log as it grows; the check allows it to trail the log by up to 100 leaves and publishes what it finds, including anything it could not verify, at its [report](https://keelson-monitor-production.up.railway.app/report). Keelson runs this instance on a separate provider.
+
+```sh {% check="monitor-api" %}
+curl -s https://keelson-monitor-production.up.railway.app/report | jq -r '.origins[] | select(.origin == "log.keelson.finance/alibi/2026-1") | if .size - .leavesAudited <= 100 then "audited \(.leavesAudited) of \(.size) leaves" else "behind" end'
+# expect: ^audited [0-9]+ of [0-9]+ leaves$
+```

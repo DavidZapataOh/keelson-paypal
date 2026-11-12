@@ -1,0 +1,21 @@
+---
+// Tabs are rendered here, from the panes in the slot, so the panel never shifts when scripts run.
+const rendered = await Astro.slots.render("default");
+let seen = 0;
+// Only the first file is shown before scripts run; the rest start hidden, as the tabs say.
+const html = rendered.replace(/<div class="pane"/g, (tag) =>
+  seen++ === 0 ? tag : `${tag} hidden`,
+);
+const files = [...html.matchAll(/data-pane="([^"]+)"/g)].map((m) => m[1] as string);
+---
+<div class="walk-files">
+  <div class="files-bar">
+    <div class="tabs" role="tablist" aria-label="Files">
+      {files.map((f, i) => (
+        <button type="button" role="tab" id={`tab-${f}`} data-tab={f} aria-controls={`pane-${f}`} aria-selected={i === 0 ? "true" : "false"}>{f}</button>
+      ))}
+    </div>
+    <button type="button" class="copy" data-copy>Copy</button>
+  </div>
+  <div class="files-body" set:html={html} />
+</div>

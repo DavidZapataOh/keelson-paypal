@@ -74,6 +74,7 @@ const Revoked = z
 const list = createRoute({
   method: "get",
   path: "/v1/agents",
+  operationId: "listAgents",
   tags: ["agents"],
   summary: "List your agents",
   description:
@@ -91,6 +92,7 @@ const list = createRoute({
 const approvals = createRoute({
   method: "get",
   path: "/v1/approvals",
+  operationId: "listApprovals",
   tags: ["agents"],
   summary: "Carts paused for your approval",
   description:
@@ -108,6 +110,7 @@ const approvals = createRoute({
 const disconnect = createRoute({
   method: "post",
   path: "/v1/agents/{agentId}/disconnect",
+  operationId: "disconnectAgent",
   tags: ["agents"],
   summary: "Disconnect an agent",
   description:
@@ -156,6 +159,7 @@ const StopSchema = z
 const stopRoute = createRoute({
   method: "post",
   path: "/v1/agents/stop",
+  operationId: "stopAgents",
   tags: ["agents"],
   summary: "Stop all agents",
   description:
@@ -171,6 +175,7 @@ const stopRoute = createRoute({
 const stops = createRoute({
   method: "get",
   path: "/v1/agents/stops",
+  operationId: "listAgentStops",
   tags: ["agents"],
   summary: "Your stops",
   description: "Each time you stopped all agents, newest first, with its log index.",

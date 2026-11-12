@@ -1,0 +1,33 @@
+---
+import { Code } from "astro:components";
+
+interface Props {
+  content: string;
+  language?: string;
+  file?: string;
+  check?: string;
+}
+const { content, language = "text", file, check } = Astro.props;
+const code = content.replace(/\n$/, "");
+---
+{language === "mermaid" ? (
+  <pre class="mermaid" data-diagram>{code}</pre>
+) : file ? (
+  <div class="pane" id={`pane-${file}`} role="tabpanel" aria-labelledby={`tab-${file}`} data-pane={file} data-lang={language} data-check={check}>
+    <Code code={code} lang={language as never} theme="css-variables" />
+  </div>
+) : (
+  <figure class="codeblock" data-check={check}>
+    {check && <figcaption><a href="/security/verify/#how-these-are-checked">Checked in CI</a></figcaption>}
+    <Code code={code} lang={language as never} theme="css-variables" />
+  </figure>
+)}
+<script>
+  const diagrams = document.querySelectorAll<HTMLElement>("pre[data-diagram]");
+  if (diagrams.length > 0) {
+    const { default: mermaid } = await import("mermaid");
+    const dark = document.documentElement.dataset.theme === "dark";
+    mermaid.initialize({ startOnLoad: false, securityLevel: "strict", theme: dark ? "dark" : "neutral", fontFamily: "Instrument Sans Variable, system-ui, sans-serif" });
+    await mermaid.run({ nodes: [...diagrams] });
+  }
+</script>

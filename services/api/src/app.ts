@@ -16,7 +16,7 @@ import type { Logger } from "pino";
 import type { RedisClientType } from "redis";
 import { ulid } from "ulid";
 import { type Address, BaseError, HttpRequestError, TimeoutError } from "viem";
-import type { Auth } from "./auth.ts";
+import { type Auth, apiAudience, SCOPE_DESCRIPTIONS } from "./auth.ts";
 import type { CardIssuer } from "./cards/issuer.ts";
 import type { ChainReaders } from "./chain/reader.ts";
 import type { Channel3Lookup } from "./channel3/client.ts";
@@ -24,7 +24,7 @@ import type { HostedCaps } from "./hosted-caps.ts";
 import type { LogConfig } from "./log/append.ts";
 import { requestLogger } from "./logger.ts";
 import { registerMcp } from "./mcp.ts";
-import { requireClient } from "./middleware/auth.ts";
+import { requireClient, securityOf } from "./middleware/auth.ts";
 import { idempotency } from "./middleware/idempotency.ts";
 import { type RateLimitOptions, rateLimit } from "./middleware/rate-limit.ts";
 import type { Notifier } from "./notify/notifier.ts";
@@ -71,6 +71,7 @@ import { registerObservations } from "./routes/observations.ts";
 import { registerOperatorConsole } from "./routes/operator-console.ts";
 import { registerOperators } from "./routes/operators.ts";
 import { registerPasskeys } from "./routes/passkeys.ts";
+import { registerPayPalWallet } from "./routes/paypal-wallet.ts";
 import { registerPayPalWebhook } from "./routes/paypal-webhook.ts";
 import { registerPurchaseHolds } from "./routes/purchase-holds.ts";
 import { registerPurchaseTracking } from "./routes/purchase-tracking.ts";
@@ -103,6 +104,9 @@ const STREAMED_POSTS =
 const PUBLIC_READS =
   /^\/v1\/(alibis\/[0-7][0-9A-HJKMNP-TV-Z]{25}|alibis\/[^/]+\/receipt|timestamps\/[^/]+|anonymous-mandates\/[^/]+|anonymous-purchases\/[^/]+|engine-proofs\/[^/]+|user-set\/roots\/[^/]+)$/;
 
+/** Public operations beyond PUBLIC_READS that the documentation's try-it calls. */
+const DOCS_CALLS = /^\/v1\/(live-purchases|log\/bonds|alibis\/verify)$/;
+
 export interface Deps {
   db: Db;
   kv: RedisClientType;
@@ -131,6 +135,8 @@ export interface Deps {
   hostedCaps?: HostedCaps;
   /** Browser origin of the public verifier, allowed to read public Alibis, receipts and timestamps without credentials. */
   verifyOrigin?: string;
+  /** Browser origin of the documentation, whose try-it calls the operations anyone may call, without credentials. */
+  docsOrigin?: string;
   /** Reads the anchor and signer registry for `POST /v1/alibis/verify`; it verifies offline without it. */
   alibiChain?: ChainReader;
   /** WebAuthn RP ID that mandate signatures must be scoped to; defaults to `keelson.finance`. */
@@ -210,6 +216,55 @@ export interface Deps {
  */
 export const apiInfo = { title: "Keelson API", version: "0.0.0" } as const;
 
+const authServer = `${apiAudience}/api/auth`;
+
+/**
+ * Documents on each route the security its guard enforces: OAuth 2.1 client credentials for an
+ * operator's agent, the authorization code grant with PKCE for an app acting for a user, or the
+ * app's session cookie. `openapi` drops a route's middleware before it registers the route.
+ */
+function documentSecurity(app: OpenAPIHono): void {
+  const register = app.openapi;
+  app.openapi = ((route, handler, hook) => {
+    const guards = [route.middleware ?? []].flat() as MiddlewareHandler[];
+    const security = route.security ?? guards.map(securityOf).find((s) => s !== undefined);
+    return register(security ? { ...route, security } : route, handler, hook);
+  }) as typeof app.openapi;
+  app.openAPIRegistry.registerComponent("securitySchemes", "oauth2", {
+    type: "oauth2",
+    description:
+      "OAuth 2.1. An operator's agent uses client credentials; an app acting for a user uses the authorization code grant with PKCE (S256). Every token is requested for the resource `https://api.keelson.finance` (RFC 8707).",
+    flows: {
+      clientCredentials: { tokenUrl: `${authServer}/oauth2/token`, scopes: SCOPE_DESCRIPTIONS },
+      authorizationCode: {
+        authorizationUrl: `${authServer}/oauth2/authorize`,
+        tokenUrl: `${authServer}/oauth2/token`,
+        refreshUrl: `${authServer}/oauth2/token`,
+        scopes: SCOPE_DESCRIPTIONS,
+      },
+    },
+  });
+  app.openAPIRegistry.registerComponent("securitySchemes", "session", {
+    type: "apiKey",
+    in: "cookie",
+    name: "__Secure-better-auth.session_token",
+    description: "The session of a user signed in to the Keelson app.",
+  });
+}
+
+/**
+ * The OpenAPI 3.1 document of an app {@link createApp} built.
+ *
+ * @internal
+ */
+export function openApiDocument(app: OpenAPIHono): ReturnType<OpenAPIHono["getOpenAPI31Document"]> {
+  return app.getOpenAPI31Document({
+    openapi: "3.1.0",
+    info: apiInfo,
+    servers: [{ url: apiAudience, description: "Keelson's API, on the PayPal sandbox" }],
+  });
+}
+
 export function createApp(deps: Deps): OpenAPIHono {
   const app = new OpenAPIHono({
     defaultHook: (result, c) => {
@@ -230,6 +285,7 @@ export function createApp(deps: Deps): OpenAPIHono {
       }
     },
   });
+  documentSecurity(app);
 
   app.use(httpInstrumentationMiddleware());
   app.use(requestId({ generator: () => ulid() }));
@@ -250,10 +306,32 @@ export function createApp(deps: Deps): OpenAPIHono {
   const receiptCors = deps.verifyOrigin
     ? cors({ origin: deps.verifyOrigin, allowMethods: ["GET"], allowHeaders: ["accept"] })
     : undefined;
-  // The app's status page reads the dependency report.
-  if (appCors) app.use("/status", appCors);
-  if (appCors || receiptCors) {
+  // The documentation's try-it calls only operations that need no credentials.
+  const docsCors = deps.docsOrigin
+    ? cors({
+        origin: deps.docsOrigin,
+        allowMethods: ["GET", "POST"],
+        allowHeaders: ["content-type", "idempotency-key", "accept"],
+      })
+    : undefined;
+  const fromDocs = (c: Context) =>
+    docsCors !== undefined && c.req.header("origin") === deps.docsOrigin;
+  // The app's status page reads the dependency report, and so does the documentation.
+  if (appCors || docsCors) {
+    app.use("/status", (c, next) => {
+      if (docsCors && fromDocs(c)) return docsCors(c, next);
+      return appCors ? appCors(c, next) : next();
+    });
+  }
+  if (appCors || receiptCors || docsCors) {
     app.use("/v1/*", (c, next) => {
+      if (
+        docsCors &&
+        fromDocs(c) &&
+        (PUBLIC_READS.test(c.req.path) || DOCS_CALLS.test(c.req.path))
+      ) {
+        return docsCors(c, next);
+      }
       if (
         receiptCors &&
         c.req.header("origin") === deps.verifyOrigin &&
@@ -343,6 +421,7 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerEvents(app, deps);
   registerMandates(app, deps);
   registerHold(app, deps);
+  registerPayPalWallet(app, deps);
   registerPurchaseHolds(app, deps);
   registerRevoke(app, deps);
   registerConnections(app, deps);
@@ -387,8 +466,6 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerTransactions(app, deps);
   registerRedTeam(app, deps);
   registerJudge(app, deps);
-  app.get("/openapi.json", (c) =>
-    c.json(app.getOpenAPI31Document({ openapi: "3.1.0", info: apiInfo })),
-  );
+  app.get("/openapi.json", (c) => c.json(openApiDocument(app)));
   return app;
 }

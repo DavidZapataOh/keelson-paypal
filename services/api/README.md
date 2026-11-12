@@ -230,6 +230,15 @@ authorization against it (status `CREATED`, amount, currency, `custom_id` and pa
 does not match is voided (`422 hold-mismatch`). An authorization PayPal holds as `PENDING` leaves
 the mandate in `HOLD_PENDING` until it is created.
 
+When the user has saved PayPal (below), `POST /hold` creates the order with
+`payment_source.paypal.vault_id` and `stored_credential {payment_initiator: MERCHANT, usage_pattern:
+UNSCHEDULED_PREPAID}`, so PayPal authorizes it as it creates it, with no PayPal window
+([Create and authorize an order for a PayPal wallet vaulted account holder](https://developer.paypal.com/api/orders/v2/#orders_create)).
+It answers `approved: true` and records the vault id on the mandate. `POST /hold/authorize` then
+reads the order (Show Order) instead of authorizing it, and checks the authorization the same way.
+If PayPal still asks the buyer, `approved` is `false` and the buyer approves the order in PayPal as
+usual. A replacement order is always approved in PayPal.
+
 An authorization is valid for 29 days and its funds are honored for the first 3
 ([Authorization and capture](https://developer.paypal.com/docs/checkout/standard/customize/authorization/)).
 Keelson reauthorizes each hold once, on the first maintenance run after day 3, for what is left
@@ -270,6 +279,41 @@ request includes the round trips to `api-m.sandbox.paypal.com` (authorize makes 
 | `POST /hold` (Create Order)                 | local workstation, 2026-11-08 | 20      | 1,421 ms | 1,705 ms | 1.2 s      |
 | `POST /hold/authorize` (authorize + checks) | local workstation, 2026-11-08 | 20      | 3,167 ms | 3,455 ms | 1.5 s      |
 | `POST /revoke` (void of the parent)         | local workstation, 2026-11-08 | 20      | 2,689 ms | 2,862 ms | 1.2 s      |
+
+### Saved PayPal (Vault)
+
+A user can save PayPal once, so later holds need no PayPal login. PayPal keeps the saved
+PayPal as a [Vault payment token](https://developer.paypal.com/docs/checkout/save-payment-methods/purchase-later/payment-tokens-api/paypal/),
+one per user, in `paypal_wallets`. The vault id never leaves the API.
+
+| Route                                            | PayPal calls                                   | `PayPal-Request-Id`                                             |
+| ------------------------------------------------ | ---------------------------------------------- | --------------------------------------------------------------- |
+| `POST /v1/paypal/wallet/setup-token`             | Create Setup Token                             | `operationRequestId("<user>:<Idempotency-Key>", "setup-token")` |
+| buyer approval (JS SDK v6, save payment session) | none from the API                              | —                                                               |
+| `POST /v1/paypal/wallet`                         | Create Payment Token from the setup token      | `operationRequestId(setupToken, "payment-token")`               |
+| `GET /v1/paypal/wallet`                          | none                                           | —                                                               |
+| `DELETE /v1/paypal/wallet`                       | Delete Payment Token (a 404 counts as deleted) | —                                                               |
+
+The setup token asks for a merchant token of a consumer (`usage_type: MERCHANT`,
+`customer_type: CONSUMER`) billed `UNSCHEDULED_PREPAID`: amounts and dates vary, on the terms of
+the mandates the user signs. PayPal shows the buyer the description "Keelson holds your agent's
+budget, only under mandates you sign", during approval and later on paypal.com, where the
+buyer can also remove it. Only the user who asked for a setup token can save it: the API keeps
+the token's owner for the setup token's 3-day life. Saving PayPal again replaces the saved one
+and deletes the old token at PayPal. Removing it deletes the token at PayPal. Holds already
+authorized stay until they are captured, voided or expire.
+
+`VAULT.PAYMENT-TOKEN.DELETED` (the buyer removed it on paypal.com) is applied like every other
+event, from a re-read: the saved PayPal is forgotten once PayPal answers 404 for the token.
+
+**Where it works.** PayPal saves PayPal for merchants in the United States, Canada, China, Hong
+Kong, Japan, Singapore, Australia and 28 European countries (Austria, Belgium, Bulgaria, Cyprus,
+the Czech Republic, Denmark, Estonia, Finland, France, Germany, Hungary, Ireland, Italy, Latvia,
+Liechtenstein, Lithuania, Luxembourg, Malta, the Netherlands, Norway, Poland, Portugal, Romania,
+Slovakia, Slovenia, Spain, Sweden and the United Kingdom). **Colombia is not one of them**: a
+production Keelson merchant account must be in one of these countries, approved for reference
+transactions, with "Save payment methods" enabled. On the sandbox, the REST app needs **Vault**
+under Advanced options.
 
 ## Per-purchase holds
 
@@ -418,13 +462,23 @@ end `FAILED` with `cover:operator-unavailable` before anything is sent.
 
 ### Latency of a purchase
 
-Each step is a span when tracing is on (`OTEL_TRACES_EXPORTER=console`, or an OTLP endpoint):
-`purchase.COUNTERSIGNED` (or `purchase.DENIED`), `purchase.LOGGED`, `purchase.COVERED` and
-`purchase.CAPTURED`, with `purchase.id` and `countersign.mode`, and the outbound calls (undici)
-and queries (pg) of each step nested under it. `bench/money-path.bench.ts` drives real sandbox
-purchases (`PURCHASES`, `CONCURRENCY` mandates buying at once, `DEGRADED_EVERY`) and prints the
-waterfall from those spans as JSON. Its agent is the demo operator's own OAuth client
-(`KEELSON_CLIENT_ID`, `KEELSON_CLIENT_SECRET`), with access tokens from the deployed API.
+Each step is a span: `purchase.COUNTERSIGNED` (or `purchase.DENIED`), `purchase.LOGGED`,
+`purchase.COVERED` and `purchase.CAPTURED`, with `purchase.id` and `countersign.mode`, and the
+outbound calls (undici) and queries (pg) of each step nested under it.
+
+The purchase's readers get those durations as [`Server-Timing`](https://www.w3.org/TR/server-timing/):
+the answer to the countersign carries the steps done before it, and `GET /v1/purchases/{id}` the
+steps done so far, kept in Valkey for an hour. The metrics are `step.<state>`, `db.<state>` (the
+step's Postgres time), `out.<host>` (its outbound calls) and `int.<name>` (work inside it). Nobody
+else gets the header: not another user, not a 401 or 404. With an OTLP exporter configured
+(`OTEL_EXPORTER_OTLP_ENDPOINT` or `OTEL_TRACES_EXPORTER`) the spans go there instead, and the
+header is not sent.
+
+`bench/money-path.bench.ts` drives real sandbox purchases (`PURCHASES`, `CONCURRENCY` mandates
+buying at once) through the public API and prints the waterfall from those headers as JSON. Its
+agent is the demo operator's own OAuth client (`KEELSON_CLIENT_ID`, `KEELSON_CLIENT_SECRET`), with
+access tokens from the deployed API. Purchases with a leg down are measured by the in-process live
+tests (`tamper.live`, `coverage.live`).
 
 On the warm path a purchase makes these round trips, in this order:
 

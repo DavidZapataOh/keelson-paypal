@@ -31,6 +31,7 @@ jobs:
       rust: ${{ github.event_name != 'pull_request' || steps.filter.outputs.rust == 'true' }}
       contracts: ${{ github.event_name != 'pull_request' || steps.filter.outputs.contracts == 'true' }}
       noir: ${{ github.event_name != 'pull_request' || steps.filter.outputs.noir == 'true' }}
+      docs: ${{ github.event_name != 'pull_request' || steps.filter.outputs.docs == 'true' }}
     steps:
       - uses: actions/checkout@v7
       - id: filter
@@ -94,6 +95,88 @@ jobs:
               - packages/alibi/src/verify/c3-vk.ts
               - packages/alibi/src/verify/c1c3-vk.ts
               - services/api/zk/**
+            docs:
+              - *shared
+              - apps/docs/**
+              - README.md
+              - docs/**
+              - openapi/**
+              - .lychee.toml
+              - apps/verify/src/labels.ts
+              - apps/web/components/judge/tour.tsx
+              - services/log/**
+              - services/api/src/**
+              - services/api/scripts/card-demo.ts
+              - services/mcp/src/**
+              - packages/*/src/**
+              - engine/tee/src/**
+              - engine/tee/measurements.json
+              - engine/policy/**
+              - contracts/src/**
+              - contracts/script/**
+              - internal/**
+              - proofs/**
+
+  docs:
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @keelson/docs exec playwright install --with-deps chromium
+      - name: Build the site (Markdoc validation fails the build)
+        run: pnpm turbo run build --filter=@keelson/docs...
+      - name: Pages, specifications, vectors, hygiene, drift and diagrams
+        run: pnpm --filter @keelson/docs test
+      - name: Layout, tokens, accessibility and the synced code panel
+        run: pnpm --filter @keelson/docs e2e
+      - if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: docs-screens
+          path: apps/docs/test/e2e/__screens__
+          if-no-files-found: ignore
+      - name: Every internal link and anchor of the built site
+        uses: lycheeverse/lychee-action@v2.9.0
+        with:
+          args: --offline --include-fragments=full --index-files index.html --root-dir ${{ github.workspace }}/apps/docs/dist apps/docs/dist
+          fail: true
+      - name: Every link in the sources
+        uses: lycheeverse/lychee-action@v2.9.0
+        with:
+          args: --config .lychee.toml README.md docs apps/docs/src/content
+          fail: true
+
+  docs-live:
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: ./.github/actions/setup-foundry
+        with:
+          version: v1.9.0
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @keelson/docs exec playwright install --with-deps chromium
+      - run: pnpm turbo run build --filter=@keelson/docs...
+      - name: Every documented command, against production
+        run: pnpm --filter @keelson/docs test:live
 
   node:
     needs: changes

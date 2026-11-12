@@ -22,6 +22,7 @@ const Reference = z
 const route = createRoute({
   method: "get",
   path: "/v1/fx/reference/{base}",
+  operationId: "getFxReference",
   tags: ["purchases"],
   summary: "Reference exchange rates",
   description:

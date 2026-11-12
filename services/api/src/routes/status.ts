@@ -20,6 +20,7 @@ const Dependency = z.enum(["up", "down"]);
 const route = createRoute({
   method: "get",
   path: "/status",
+  operationId: "getStatus",
   tags: ["system"],
   summary: "Dependency status",
   responses: {

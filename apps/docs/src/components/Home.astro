@@ -1,0 +1,79 @@
+---
+import { Code } from "astro:components";
+import { builtOn, live } from "../lib/live";
+import { docs, href } from "../lib/docs";
+import { operations } from "../lib/openapi";
+
+const pages = await docs();
+const has = (id: string) => pages.some((d) => d.id === id);
+const link = (title: string, id: string) => (has(id) ? [{ title, href: href(id) }] : []);
+const columns = [
+  {
+    title: "Try it",
+    items: [
+      ...link("Verify an Alibi", "quickstart/verify-an-alibi"),
+      { title: "Judge Mode", href: "https://app.keelson.finance/judge" },
+      ...link("Connect an agent", "quickstart/connect-an-agent"),
+    ],
+  },
+  {
+    title: "Understand it",
+    items: [
+      ...link("How a purchase flows", "concepts/how-it-works"),
+      ...link("Threat model", "security/threat-model"),
+      ...link("Real or sandbox", "security/environments"),
+      ...link("Verify every claim", "security/verify"),
+    ],
+  },
+  {
+    title: "Build on it",
+    items: [
+      { title: "API reference", href: "/reference/api/" },
+      ...link("Specification", "reference/spec"),
+      ...link("PayPal Agent Mandate Extension", "reference/ks1"),
+    ],
+  },
+].filter((c) => c.items.length > 0);
+const command = `ALIBI=https://docs.keelson.finance/samples/01M6ZWZJHWRRHQEYNJAT7NMSV8.alibi
+
+curl -sL "$ALIBI" \\
+| curl -s https://api.keelson.finance/v1/alibis/verify \\
+    -H 'content-type: application/vnd.keelson.alibi.v1+json' \\
+    -H "idempotency-key: docs-$RANDOM$RANDOM" --data-binary @- \\
+| jq -r '"\\(.verdict) \\(.mode)"'`;
+---
+<div class="home">
+  <section class="field">
+    <div class="field-copy">
+      <h1 class="display">Proof before payment.</h1>
+      <p class="field-lede">Keelson checks every purchase an AI agent makes against what the user signed, before PayPal pays. These docs show how, and how to check each step yourself.</p>
+      <a class="field-cta" href="/quickstart/verify-an-alibi/">Verify a real Alibi in one minute</a>
+    </div>
+    <div class="field-card">
+      <p class="field-card-bar"><span>verify.sh</span><span>No account</span></p>
+      <Code code={command} lang="sh" theme="css-variables" />
+      <p class="field-card-out"><span>verified</span> 2of2</p>
+    </div>
+  </section>
+  <section class="live" aria-label="Live system">
+    {live.available ? (
+      <>
+        <p><span class="dot" aria-hidden="true"></span>TEE leg A · Intel TDX · {live.teeA}</p>
+        <p><span class="dot" aria-hidden="true"></span>TEE leg B · AWS Nitro · {live.teeB}</p>
+        <p>Alibi log · {live.log.size.toLocaleString("en-US")} leaves · {live.log.witnesses} witnesses</p>
+        <p>Payments · PayPal {live.paypal}</p>
+        <p class="live-note">Read from production on {builtOn(live.fetchedAt)}, when this site was built. The API reference covers {operations().length} operations.</p>
+      </>
+    ) : (
+      <p class="live-note">Production could not be read when this site was built. <a href="https://app.keelson.finance/status">Current status</a>.</p>
+    )}
+  </section>
+  <section class="cols">
+    {columns.map((c) => (
+      <div>
+        <h2>{c.title}</h2>
+        <ul>{c.items.map((i) => <li><a href={i.href}>{i.title}</a></li>)}</ul>
+      </div>
+    ))}
+  </section>
+</div>

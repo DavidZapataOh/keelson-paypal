@@ -11,6 +11,10 @@ const schema = z
       .url()
       .refine((u) => new URL(u).origin === u, "VERIFY_ORIGIN must be an origin")
       .default("https://verify.keelson.finance"),
+    DOCS_ORIGIN: z
+      .url()
+      .refine((u) => new URL(u).origin === u, "DOCS_ORIGIN must be an origin")
+      .default("https://docs.keelson.finance"),
     PAYPAL_CLIENT_ID: z.string().min(1),
     PAYPAL_CLIENT_SECRET: z.string().min(1),
     PAYPAL_ENV: z.enum(["sandbox", "production"]),
