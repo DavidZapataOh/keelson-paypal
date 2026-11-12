@@ -148,6 +148,12 @@ export function costMicros(
 }
 
 const MAX_TOKENS = 16_000;
+/**
+ * The turn's model request until its stream opens, retries included, before the 30 s handler
+ * timeout; the stream itself runs on after the handler has answered.
+ * @internal
+ */
+export const ASSISTANT_LIMITS = { timeout: 12_000, maxRetries: 1 } as const;
 type Limits = Record<Model, number>;
 const LIMIT: Limits = {
   "claude-opus-5-5": DAILY_BUDGET_MICROS,
@@ -274,7 +280,7 @@ export function registerMerchantAssistant(
           ? {}
           : { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const }),
       },
-      { signal: c.req.raw.signal },
+      { ...ASSISTANT_LIMITS, signal: c.req.raw.signal },
     );
     try {
       // The provider accepted the turn before the stream is handed on: its refusals are problems.
