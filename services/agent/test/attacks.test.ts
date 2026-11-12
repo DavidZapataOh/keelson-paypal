@@ -59,7 +59,7 @@ describe("the checkout-attack corpus against the pay-click gate", () => {
         return;
       }
       const e =
-        byId.get(url.pathname.split("/").at(-1) ?? "") ??
+        byId.get(decodeURIComponent(url.pathname.split("/").at(-1) ?? "")) ??
         byToken.get(url.searchParams.get("token") ?? "");
       res.writeHead(e ? 200 : 404, { "content-type": "text/html; charset=utf-8" });
       res.end(e ? page(e) : "");
