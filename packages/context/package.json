@@ -1,6 +1,6 @@
 {
   "name": "@keelson-finance/context",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "The Keelson Context Plugin: Keelson's SDK docs, operations and schemas for AI coding assistants, over MCP.",
   "license": "Apache-2.0",
   "type": "module",

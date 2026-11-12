@@ -295,6 +295,12 @@ jobs:
           uv run ruff format --check .
           uv run mypy
           uv run pytest -q -s tests --ignore=tests/live | tee -a "$GITHUB_STEP_SUMMARY"
+      # Last: it rewrites the verifier's manifest for publishing, as the release does.
+      - name: The verifier package installs and verifies offline
+        run: |
+          node packages/verify/scripts/bundle.mjs
+          (cd packages/verify && pnpm pack --pack-destination "$RUNNER_TEMP/verifier")
+          packages/verify/scripts/check-package.sh "$RUNNER_TEMP"/verifier/*.tgz
 
   # Both SDKs against the live sandbox: sign-in, mandates, purchases, verification and adapters.
   sdk-live:

@@ -49,6 +49,8 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/npm"
           for p in sdk verify context; do (cd packages/$p && pnpm pack --pack-destination "$RUNNER_TEMP/npm"); done
+          # The verifier as a user installs it: its bundle must run, not only build.
+          packages/verify/scripts/check-package.sh "$RUNNER_TEMP"/npm/keelson-finance-verifier-*.tgz
           for tgz in "$RUNNER_TEMP"/npm/*.tgz; do npm publish "$tgz" --access public --provenance; done
 
   pypi:

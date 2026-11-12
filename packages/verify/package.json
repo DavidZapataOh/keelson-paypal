@@ -1,6 +1,6 @@
 {
   "name": "@keelson-finance/verifier",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Verify a Keelson Alibi offline: the TEE countersignatures, the log inclusion proof and, if you ask, the on-chain anchor.",
   "license": "Apache-2.0",
   "type": "module",
