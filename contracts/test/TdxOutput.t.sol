@@ -95,6 +95,10 @@ contract TdxOutputTest is Test {
         assertEq(td.rtmr2, json.readBytes(".rtmr2"));
         assertEq(td.rtmr3, json.readBytes(".rtmr3"));
         assertEq(td.reportData, json.readBytes(".reportData"));
+        assertEq(td.tdAttributes, bytes8(0x0000001000000000), "SEPT_VE_DISABLE only");
+        assertTrue(td.ownerRegistersZero, "MROWNER and MROWNERCONFIG");
+        assertEq(td.xfam, bytes8(0x0702000000000000));
+        assertEq(uint8(td.mrConfigId[0]), 3, "dstack's instance configuration id");
     }
 
     function test_AdvisoriesAreAppended() public view {
@@ -140,6 +144,82 @@ contract TdxOutputTest is Test {
         RuntimeEvent[] memory events = _events();
         IVerdictVerifier.SignerBinding memory b = _binding();
         vm.expectRevert(IVerdictVerifier.TdDebug.selector);
+        registrar.registerTdx(output, events, b, 0);
+    }
+
+    /// @dev Every TDATTRIBUTES bit but SEPT_VE_DISABLE (bit 28) is refused, and SEPT_VE_DISABLE is required: PKS
+    /// (bit 30), PERFMON (bit 63), KL (bit 31) and a cleared SEPT_VE_DISABLE.
+    function test_RevertWhen_TdAttributesAreNotThePinnedOnes() public {
+        VerdictVerifierTdxHarness registrar = _registrar();
+        RuntimeEvent[] memory events = _events();
+        IVerdictVerifier.SignerBinding memory b = _binding();
+        uint8[4] memory offsets = [uint8(123), 123, 127, 123];
+        uint8[4] memory masks = [uint8(0x40), 0x80, 0x80, 0x10];
+        for (uint256 i; i < offsets.length; ++i) {
+            bytes1 saved = body[offsets[i]];
+            body[offsets[i]] ^= bytes1(masks[i]);
+            bytes memory output = _output(4, 2, 0, "");
+            vm.expectRevert(IVerdictVerifier.TdPolicy.selector);
+            registrar.registerTdx(output, events, b, 0);
+            body[offsets[i]] = saved;
+        }
+    }
+
+    /// @dev A TD launched with an owner (MROWNER) or owner configuration (MROWNERCONFIG) is not the dstack launch.
+    function test_RevertWhen_OwnerRegistersAreSet() public {
+        VerdictVerifierTdxHarness registrar = _registrar();
+        RuntimeEvent[] memory events = _events();
+        IVerdictVerifier.SignerBinding memory b = _binding();
+        uint16[2] memory offsets = [uint16(232), 280 + 47];
+        for (uint256 i; i < offsets.length; ++i) {
+            body[offsets[i]] = 0x01;
+            bytes memory output = _output(4, 2, 0, "");
+            vm.expectRevert(IVerdictVerifier.TdPolicy.selector);
+            registrar.registerTdx(output, events, b, 0);
+            body[offsets[i]] = 0x00;
+        }
+    }
+
+    /// @dev An XFAM other than the leg's (here with AMX tile state, bits 17 and 18), and MRCONFIGID values dstack
+    /// does not set: an unknown version byte, bytes after the hash, and version 1 naming another compose hash.
+    function test_RevertWhen_XfamOrConfigIdAreNotDstacks() public {
+        VerdictVerifierTdxHarness registrar = _registrar();
+        RuntimeEvent[] memory events = _events();
+        IVerdictVerifier.SignerBinding memory b = _binding();
+        uint16[4] memory offsets = [uint16(130), 184, 184 + 33, 184];
+        bytes1[4] memory values = [bytes1(0x06), 0x04, 0x01, 0x01];
+        for (uint256 i; i < offsets.length; ++i) {
+            bytes1 saved = body[offsets[i]];
+            body[offsets[i]] = values[i];
+            bytes memory output = _output(4, 2, 0, "");
+            vm.expectRevert(IVerdictVerifier.TdPolicy.selector);
+            registrar.registerTdx(output, events, b, 0);
+            body[offsets[i]] = saved;
+        }
+    }
+
+    /// @dev Version 1 naming the attested compose hash, and an all-zero MRCONFIGID, pass the policy.
+    function test_ConfigIdNamingTheComposeHashPasses() public {
+        VerdictVerifierTdxHarness registrar = _registrar();
+        RuntimeEvent[] memory events = _events();
+        IVerdictVerifier.SignerBinding memory b = _binding();
+        bytes memory compose;
+        for (uint256 i; i < events.length; ++i) {
+            if (keccak256(bytes(events[i].name)) == keccak256("compose-hash")) compose = events[i].payload;
+        }
+        assertEq(compose.length, 32);
+        body[184] = 0x01;
+        for (uint256 i; i < 32; ++i) {
+            body[185 + i] = compose[i];
+        }
+        bytes memory output = _output(4, 2, 0, "");
+        vm.expectRevert(IVerdictVerifier.BindingMismatch.selector);
+        registrar.registerTdx(output, events, b, 0);
+        for (uint256 i; i < 33; ++i) {
+            body[184 + i] = 0x00;
+        }
+        output = _output(4, 2, 0, "");
+        vm.expectRevert(IVerdictVerifier.BindingMismatch.selector);
         registrar.registerTdx(output, events, b, 0);
     }
 

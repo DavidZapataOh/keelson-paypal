@@ -7,7 +7,7 @@ import {HonkVerifierDeploy} from "./HonkVerifierDeploy.sol";
 import {stdJson} from "forge-std/StdJson.sol";
 
 /// @notice Deploys the C2a `mandate_violation` verifiers and the `MandateViolationCourt` that uses the optimized one,
-/// over the registry's `KeelsonBondVault` and `VerdictVerifier`. The court has no roles to wire.
+/// over the `KeelsonBondVault` and `VerdictVerifier` of the current contracts release. The court has no roles to wire.
 contract DeployMandateViolationCourt is HonkVerifierDeploy {
     using stdJson for string;
 
@@ -17,16 +17,19 @@ contract DeployMandateViolationCourt is HonkVerifierDeploy {
     function run() external returns (MandateViolationCourt court) {
         vm.startBroadcast(_owner());
         _ensureDeployer();
-        (address verifier,) = _deployVerifiers(PREFIX);
-        court = MandateViolationCourt(_deploy(COURT, type(MandateViolationCourt).creationCode, courtArgs(verifier)));
+        // The verifiers are recorded once: their libraries' registry names nest under the reference verifier's.
+        address verifier = predict(_verifier(PREFIX));
+        if (verifier.code.length == 0) (verifier,) = _deployVerifiers(PREFIX);
+        court = MandateViolationCourt(
+            _deploy(versioned(COURT), type(MandateViolationCourt).creationCode, courtArgs(verifier))
+        );
         vm.stopBroadcast();
     }
 
     function courtArgs(address verifier) public view returns (bytes memory) {
-        string memory json = _registry();
         return abi.encode(
-            ICoveredVault(json.readAddress(".contracts.KeelsonBondVault")),
-            IVerdictVerifier(json.readAddress(".contracts.VerdictVerifier")),
+            ICoveredVault(predict(versioned("KeelsonBondVault"))),
+            IVerdictVerifier(predict(versioned("VerdictVerifier"))),
             IMandateViolationVerifier(verifier)
         );
     }

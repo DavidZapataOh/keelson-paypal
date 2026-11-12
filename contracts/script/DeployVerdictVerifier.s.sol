@@ -10,7 +10,7 @@ import {AccessManager} from "@openzeppelin/contracts/access/manager/AccessManage
 import {TimelockController} from "@openzeppelin/contracts/governance/TimelockController.sol";
 import {stdJson} from "forge-std/StdJson.sol";
 
-/// @notice Deploys the `VerdictVerifier` at its CREATE3 address and wires its roles in the AccessManager through the
+/// @notice Deploys the `VerdictVerifier` of the current contracts release at its CREATE3 address and wires its roles in the AccessManager through the
 /// timelock: allowing measurements and setting the issuer take `SIGNERS_ROLE` (timelock, then the signers delay),
 /// revoking a signer takes `GUARDIAN_ROLE` (no delay).
 /// @dev `run()` deploys and schedules the wiring; `wire()` executes it once the timelock delay has passed. Both are
@@ -23,7 +23,9 @@ contract DeployVerdictVerifier is KeelsonDeploy {
     function run() external returns (VerdictVerifier verifier) {
         vm.startBroadcast(_owner());
         _ensureDeployer();
-        verifier = VerdictVerifier(_deploy("VerdictVerifier", type(VerdictVerifier).creationCode, constructorArgs()));
+        verifier = VerdictVerifier(
+            _deploy(versioned("VerdictVerifier"), type(VerdictVerifier).creationCode, constructorArgs())
+        );
         if (!wired(address(verifier))) {
             (address[] memory targets, uint256[] memory values, bytes[] memory payloads) = wiring(address(verifier));
             TimelockController timelock = _timelock();
@@ -36,7 +38,7 @@ contract DeployVerdictVerifier is KeelsonDeploy {
     }
 
     function wire() external {
-        address verifier = predict("VerdictVerifier");
+        address verifier = predict(versioned("VerdictVerifier"));
         if (wired(verifier)) return;
         (address[] memory targets, uint256[] memory values, bytes[] memory payloads) = wiring(verifier);
         vm.broadcast(_owner());
@@ -49,7 +51,7 @@ contract DeployVerdictVerifier is KeelsonDeploy {
         string memory json = _registry();
         return abi.encode(
             json.readAddress(".contracts.AccessManager"),
-            predict("KeelsonBondVault"),
+            predict(versioned("KeelsonBondVault")),
             json.readBytes32(".tee.issuerJwkThumbprint"),
             initialMeasurements(),
             IAutomataDcapAttestation(json.readAddress(".external.automataDcapAttestation")),

@@ -85,6 +85,7 @@ contract KeelsonHandler is BondVaultHandler {
     bytes32[] internal _disputeIds;
     mapping(bytes32 disputeId => Dispute) internal _disputes;
     mapping(bytes32 disputeId => uint256) public ghostSettled;
+    mapping(bytes32 disputeId => uint256) public ghostVetoes;
     bytes32[] internal _invalidIds;
     bytes32[] internal _queued;
     mapping(uint256 withdrawalId => address) internal _requestedTo;
@@ -421,6 +422,9 @@ contract KeelsonHandler is BondVaultHandler {
         uint256[] memory before = _balances();
         vm.prank(guardian);
         vault.vetoSlash(id, "invariant fuzzing");
+        // The veto reopens the dispute: its settlement is undone, and a later one counts anew.
+        --ghostSettled[id];
+        ++ghostVetoes[id];
         _vaultFlows(before);
     }
 

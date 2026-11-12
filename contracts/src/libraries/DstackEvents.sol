@@ -54,6 +54,28 @@ library DstackEvents {
         );
     }
 
+    /// @notice Whether `mrConfigId` is one dstack sets: all zero, or a version byte (1 names the compose hash; 2 and 3
+    /// a hash of the instance's configuration), 32 bytes and 15 zero bytes. Version 1 must name the compose hash the
+    /// event log carries.
+    function configIdHolds(bytes memory mrConfigId, RuntimeEvent[] calldata events) internal pure returns (bool) {
+        bytes32 head;
+        bytes32 body;
+        bytes32 tail;
+        assembly ("memory-safe") {
+            head := mload(add(mrConfigId, 0x20))
+            body := mload(add(mrConfigId, 0x21))
+            tail := mload(add(mrConfigId, 0x30))
+        }
+        // `tail` holds bytes 16..47: everything after byte 32 must be zero.
+        if (mrConfigId.length != 48 || uint256(tail) & type(uint120).max != 0) return false;
+        uint8 version = uint8(head[0]);
+        if (version == 0) return body == 0;
+        if (version > 3) return false;
+        // The compose hash payload is exactly 32 bytes.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        return version != 1 || body == bytes32(_payload(events, "compose-hash", 32));
+    }
+
     function _payload(RuntimeEvent[] calldata events, string memory name, uint256 length)
         private
         pure

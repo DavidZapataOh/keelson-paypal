@@ -49,7 +49,7 @@ abstract contract Properties {
     // ---------------------------------------------------------------- I2
 
     /// @dev I2: a dispute settles at most once across `slash`, `executeSlash` and `payWarranty`, in one contract only,
-    /// and stays settled (a veto does not reopen it).
+    /// and stays settled unless a veto reopened it, which happens at most once.
     function checkSettledUnique() internal view returns (bool, string memory) {
         KeelsonHandler h = handler();
         for (uint256 i; i < h.disputeCount(); ++i) {
@@ -60,6 +60,9 @@ abstract contract Properties {
             if (n > 1) return (false, "I2: dispute settled twice");
             if (inVault && inReserve) return (false, "I2: dispute settled by vault and reserve");
             if (n == 1 && !inVault && !inReserve) return (false, "I2: settlement undone");
+            uint256 vetoes = h.ghostVetoes(id);
+            if (vetoes > 1) return (false, "I2: dispute vetoed twice");
+            if (h.bondVault().vetoed(id) != (vetoes == 1)) return (false, "I2: veto not recorded");
         }
         return (true, "");
     }

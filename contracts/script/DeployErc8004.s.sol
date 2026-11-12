@@ -9,7 +9,8 @@ import {IERC8004Reputation} from "../src/interfaces/IERC8004Reputation.sol";
 import {KeelsonDeploy} from "./KeelsonDeploy.sol";
 import {stdJson} from "forge-std/StdJson.sol";
 
-/// @notice Deploys `KeelsonValidationRegistry` and `KeelsonReputationReporter` at their CREATE3 addresses. Both read
+/// @notice Deploys `KeelsonValidationRegistry` and `KeelsonReputationReporter` of the current contracts release at
+/// their CREATE3 addresses. Both read
 /// the `KeelsonBondVault` at its CREATE3 address and the chain's official ERC-8004 registries. Idempotent. On a chain
 /// where the vault is not deployed yet, both stay inert until it is.
 /// @dev `forge script script/DeployErc8004.s.sol --rpc-url <chain> --account keelson-deployer --broadcast --slow`
@@ -28,18 +29,20 @@ contract DeployErc8004 is KeelsonDeploy {
                     == pinned,
             "ERC-8004 registries are not v2.0.0"
         );
-        address vault = predict("KeelsonBondVault");
+        address vault = predict(versioned("KeelsonBondVault"));
         require(
-            vault.code.length == 0 || address(KeelsonBondVault(vault).verifier()) == predict("VerdictVerifier"),
+            vault.code.length == 0
+                || address(KeelsonBondVault(vault).verifier()) == predict(versioned("VerdictVerifier")),
             "vault bound to another VerdictVerifier"
         );
         vm.startBroadcast(_owner());
         _ensureDeployer();
         validation = KeelsonValidationRegistry(
-            _deploy(VALIDATION, type(KeelsonValidationRegistry).creationCode, validationArgs())
+            _deploy(versioned(VALIDATION), type(KeelsonValidationRegistry).creationCode, validationArgs())
         );
-        reporter =
-            KeelsonReputationReporter(_deploy(REPORTER, type(KeelsonReputationReporter).creationCode, reporterArgs()));
+        reporter = KeelsonReputationReporter(
+            _deploy(versioned(REPORTER), type(KeelsonReputationReporter).creationCode, reporterArgs())
+        );
         vm.stopBroadcast();
     }
 
@@ -48,13 +51,14 @@ contract DeployErc8004 is KeelsonDeploy {
     function validationArgs() public view returns (bytes memory) {
         return abi.encode(
             _registry().readAddress(".external.erc8004Identity"),
-            predict("VerdictVerifier"),
-            predict("KeelsonBondVault")
+            predict(versioned("VerdictVerifier")),
+            predict(versioned("KeelsonBondVault"))
         );
     }
 
     /// @notice `(vault, reputation)`: the `KeelsonBondVault` and the official Reputation registry.
     function reporterArgs() public view returns (bytes memory) {
-        return abi.encode(predict("KeelsonBondVault"), _registry().readAddress(".external.erc8004Reputation"));
+        return
+            abi.encode(predict(versioned("KeelsonBondVault")), _registry().readAddress(".external.erc8004Reputation"));
     }
 }

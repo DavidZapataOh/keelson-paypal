@@ -8,7 +8,7 @@ import {AccessManager} from "@openzeppelin/contracts/access/manager/AccessManage
 import {TimelockController} from "@openzeppelin/contracts/governance/TimelockController.sol";
 import {stdJson} from "forge-std/StdJson.sol";
 
-/// @notice Deploys the `KeelsonReserve` at its CREATE3 address, the one the vault has sent premiums to from its first
+/// @notice Deploys the `KeelsonReserve` of the current contracts release at its CREATE3 address, the one the vault has sent premiums to from its first
 /// coverage, and wires `setCooldown` and `setRateLimit` to `PARAMETERS_ROLE` through the timelock.
 /// @dev `run()` deploys and schedules the wiring; `wire()` executes it once the timelock delay has passed. Both are
 /// idempotent.
@@ -20,7 +20,7 @@ contract DeployReserve is KeelsonDeploy {
     function run() external returns (KeelsonReserve reserve) {
         vm.startBroadcast(_owner());
         _ensureDeployer();
-        reserve = KeelsonReserve(_deploy(NAME, type(KeelsonReserve).creationCode, constructorArgs()));
+        reserve = KeelsonReserve(_deploy(versioned(NAME), type(KeelsonReserve).creationCode, constructorArgs()));
         if (!wired()) {
             TimelockController timelock = _timelock();
             bytes memory payload = _wiring();
@@ -45,9 +45,9 @@ contract DeployReserve is KeelsonDeploy {
         string memory json = _registry();
         return abi.encode(
             json.readAddress(".external.pyusd"),
-            predict("VerdictVerifier"),
-            predict("CheckpointAnchor"),
-            predict("KeelsonBondVault"),
+            predict(versioned("VerdictVerifier")),
+            predict(versioned("CheckpointAnchor")),
+            predict(versioned("KeelsonBondVault")),
             keccak256(bytes(json.readString(".params.logOrigin"))),
             json.readAddress(".contracts.AccessManager"),
             uint40(json.readUint(".params.reserveCooldown")),
@@ -59,9 +59,9 @@ contract DeployReserve is KeelsonDeploy {
 
     function wired() public view returns (bool) {
         AccessManager manager = _manager();
-        return manager.getTargetFunctionRole(predict(NAME), KeelsonReserve.setCooldown.selector)
+        return manager.getTargetFunctionRole(predict(versioned(NAME)), KeelsonReserve.setCooldown.selector)
                 == KeelsonRoles.PARAMETERS_ROLE
-            && manager.getTargetFunctionRole(predict(NAME), KeelsonReserve.setRateLimit.selector)
+            && manager.getTargetFunctionRole(predict(versioned(NAME)), KeelsonReserve.setRateLimit.selector)
                 == KeelsonRoles.PARAMETERS_ROLE;
     }
 
@@ -69,10 +69,9 @@ contract DeployReserve is KeelsonDeploy {
         bytes4[] memory parameters = new bytes4[](2);
         parameters[0] = KeelsonReserve.setCooldown.selector;
         parameters[1] = KeelsonReserve.setRateLimit.selector;
-        return
-            abi.encodeCall(
-                AccessManager.setTargetFunctionRole, (predict(NAME), parameters, KeelsonRoles.PARAMETERS_ROLE)
-            );
+        return abi.encodeCall(
+            AccessManager.setTargetFunctionRole, (predict(versioned(NAME)), parameters, KeelsonRoles.PARAMETERS_ROLE)
+        );
     }
 
     function _wiringSalt() internal pure returns (bytes32) {

@@ -69,8 +69,15 @@ contract KeelsonBondVault is IKeelsonBondVault, AccessManaged, EIP712, Nonces, R
     uint256 public withdrawalCount;
     /// @inheritdoc IKeelsonBondVault
     mapping(address merchant => address) public payoutAddress;
-    /// @inheritdoc IKeelsonBondVault
-    mapping(bytes32 disputeId => bool) public settled;
+
+    /// @dev Whether each dispute is settled here and whether a veto reopened it, in one slot: the slash that settles a
+    /// dispute reads both.
+    struct Dispute {
+        bool settled;
+        bool vetoed;
+    }
+
+    mapping(bytes32 disputeId => Dispute) internal _disputes;
     /// @inheritdoc IKeelsonBondVault
     mapping(address account => uint256) public claimable;
     mapping(bytes32 disputeId => QueuedSlash) internal _queuedSlashes;
@@ -174,10 +181,8 @@ contract KeelsonBondVault is IKeelsonBondVault, AccessManaged, EIP712, Nonces, R
             revert InvalidOperatorSignature();
         }
         bytes32 digest = verifier.hashTypedData(KeelsonTypes.hash(cs));
-        bool degraded = countersigs.length == SIGNATURE_LENGTH;
-        if (!(countersigs.length == 2 * SIGNATURE_LENGTH
-                    ? verifier.verify2of2(digest, countersigs)
-                    : degraded && verifier.verifyDegraded(digest, countersigs))) revert InvalidCountersignature();
+        (bool valid, bool degraded) = _teeSigned(digest, countersigs);
+        if (!valid) revert InvalidCountersignature();
 
         Bond storage bond = _bonds[c.agentId];
         uint256 debit = uint256(c.amount) + c.premium;
@@ -402,13 +407,27 @@ contract KeelsonBondVault is IKeelsonBondVault, AccessManaged, EIP712, Nonces, R
     }
 
     /// @inheritdoc IKeelsonBondVault
+    /// @dev A veto is the Guardian's brake on a compromised verdict, never a denial of the payout: the dispute reopens
+    /// for whatever route can still prove it, and it can be used once per dispute.
     function vetoSlash(bytes32 disputeId, string calldata reason) external restricted {
         QueuedSlash storage q = _queuedSlashes[disputeId];
         if (q.status != SlashStatus.Queued) revert NotQueued();
         if (block.timestamp >= q.readyAt) revert VetoClosed();
+        if (_disputes[disputeId].vetoed) revert AlreadyVetoed();
         q.status = SlashStatus.Vetoed;
+        _disputes[disputeId] = Dispute({settled: false, vetoed: true});
         slashed[q.coverageId] -= q.amount;
-        if (q.batchId != 0) batchSlashed[q.batchId] -= q.amount;
+        // A timestamp plus a `uint40` window fits 40 bits for the next 30,000 years.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint40 reopenedUntil = uint40(block.timestamp + _params.disputeWindow);
+        if (q.batchId != 0) {
+            batchSlashed[q.batchId] -= q.amount;
+            BatchState storage batch = _batches[q.batchId];
+            if (batch.releaseAfter < reopenedUntil) batch.releaseAfter = reopenedUntil;
+        } else {
+            CoverageState storage cov = _coverages[q.coverageId];
+            if (cov.releaseAfter < reopenedUntil) cov.releaseAfter = reopenedUntil;
+        }
         _unqueue(q);
         // forge-lint: disable-next-line(reentrancy-events)
         emit SlashVetoed(disputeId, reason);
@@ -453,6 +472,16 @@ contract KeelsonBondVault is IKeelsonBondVault, AccessManaged, EIP712, Nonces, R
 
     function unpause() external restricted {
         _unpause();
+    }
+
+    /// @inheritdoc IKeelsonBondVault
+    function settled(bytes32 disputeId) external view returns (bool) {
+        return _disputes[disputeId].settled;
+    }
+
+    /// @inheritdoc IKeelsonBondVault
+    function vetoed(bytes32 disputeId) external view returns (bool) {
+        return _disputes[disputeId].vetoed;
     }
 
     /// @inheritdoc IKeelsonBondVault
@@ -523,27 +552,30 @@ contract KeelsonBondVault is IKeelsonBondVault, AccessManaged, EIP712, Nonces, R
         returns (bytes32 digest, bool degraded)
     {
         digest = verifier.hashTypedData(KeelsonTypes.hash(v));
-        degraded = sigs.length == SIGNATURE_LENGTH;
-        if (!(sigs.length == 2 * SIGNATURE_LENGTH
-                    ? verifier.verify2of2(digest, sigs)
-                    : degraded && verifier.verifyDegraded(digest, sigs))) revert InvalidVerdictSignature();
+        bool valid;
+        (valid, degraded) = _teeSigned(digest, sigs);
+        if (!valid) revert InvalidVerdictSignature();
         if (v.liable != LIABLE_OPERATOR) revert NotOperatorLiable();
         if (v.amount == 0 || v.payee == address(0)) revert ZeroAmount();
-        if (settled[v.disputeId] || IKeelsonReserve(reserve).settled(v.disputeId)) revert AlreadySettled();
+        if (_disputes[v.disputeId].settled || IKeelsonReserve(reserve).settled(v.disputeId)) revert AlreadySettled();
         if (block.timestamp > v.deadline) revert Expired();
         if (v.checkpointRoot == 0 || anchor.rootAt(logOrigin, treeSize) != v.checkpointRoot) revert NotAnchored();
     }
 
     /// @dev Settles the dispute against the coverage the caller checked, then pays at once or queues the slash behind
-    /// the veto window: when degraded (72 h), above `instantSlashCap`, or beyond the rate limit. Returns whether it
-    /// queued.
+    /// the veto window: when degraded (72 h), when a veto reopened the dispute, above `instantSlashCap`, or beyond the
+    /// rate limit. Returns whether it queued.
     function _slash(KeelsonTypes.Verdict calldata v, bytes32 digest, bool degraded, bytes32 batchId)
         internal
         returns (bool queued)
     {
-        settled[v.disputeId] = true;
+        Dispute storage d = _disputes[v.disputeId];
+        d.settled = true;
         slashed[v.coverageId] += v.amount;
-        if (!degraded && v.amount <= _params.instantSlashCap && _slashLimit.tryConsume(bytes32(0), v.amount)) {
+        if (
+            !degraded && !d.vetoed && v.amount <= _params.instantSlashCap
+                && _slashLimit.tryConsume(bytes32(0), v.amount)
+        ) {
             _pay(v.disputeId, v.agentId, v.payee, v.amount);
             // forge-lint: disable-start(reentrancy-events)
             emit Slashed(v.disputeId, v.coverageId, v.agentId, v.payee, v.amount, v.fieldId, v.evidenceHash, digest);
@@ -567,6 +599,14 @@ contract KeelsonBondVault is IKeelsonBondVault, AccessManaged, EIP712, Nonces, R
         // forge-lint: disable-next-line(reentrancy-events)
         emit SlashQueued(v.disputeId, v.coverageId, v.agentId, v.amount, readyAt, degraded, digest);
         return true;
+    }
+
+    /// @dev Whether both legs signed `digest` (`sigs` is TDX ‖ Nitro), or the TDX leg alone, which is `degraded`.
+    function _teeSigned(bytes32 digest, bytes calldata sigs) internal view returns (bool valid, bool degraded) {
+        degraded = sigs.length == SIGNATURE_LENGTH;
+        valid = sigs.length == 2 * SIGNATURE_LENGTH
+            ? verifier.verify2of2(digest, sigs)
+            : degraded && verifier.verifyDegraded(digest, sigs);
     }
 
     function _unqueue(QueuedSlash storage q) internal {

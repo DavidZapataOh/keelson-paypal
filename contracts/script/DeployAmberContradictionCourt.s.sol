@@ -9,8 +9,8 @@ import {TimelockController} from "@openzeppelin/contracts/governance/TimelockCon
 import {stdJson} from "forge-std/StdJson.sol";
 
 /// @notice Deploys the C2b `amber_contradiction` verifiers and the `AmberContradictionCourt` that uses the optimized one,
-/// over the registry's `KeelsonBondVault` and `VerdictVerifier`, and, through the timelock (the pool's admin), lists it
-/// in the `ViolationBondPool` and delists the court it replaces.
+/// over the `KeelsonBondVault` and `VerdictVerifier` of the current contracts release, and, through the timelock (the
+/// pool's admin), lists it in that release's `ViolationBondPool` and delists the court it replaces.
 /// @dev `run()` deploys and schedules the batch; `list()` executes it once the timelock delay has passed. Both are
 /// idempotent. The court is recorded as `AmberContradictionCourt` at the CREATE3 address of `VERSION`; the earlier
 /// court keeps the address of `PREVIOUS`, and the pool keeps paying the convictions it recorded before its delisting.
@@ -30,7 +30,9 @@ contract DeployAmberContradictionCourt is HonkVerifierDeploy {
         address verifier = predict(_verifier(PREFIX));
         if (verifier.code.length == 0) (verifier,) = _deployVerifiers(PREFIX);
         court = AmberContradictionCourt(
-            _deployVersion(COURT, VERSION, type(AmberContradictionCourt).creationCode, courtArgs(verifier))
+            _deployVersion(
+                versioned(COURT), versioned(VERSION), type(AmberContradictionCourt).creationCode, courtArgs(verifier)
+            )
         );
         if (!_pool().isCourt(address(court))) {
             (address[] memory targets, uint256[] memory values, bytes[] memory payloads) = listing(address(court));
@@ -44,7 +46,7 @@ contract DeployAmberContradictionCourt is HonkVerifierDeploy {
     }
 
     function list() external {
-        address court = predict(VERSION);
+        address court = predict(versioned(VERSION));
         if (_pool().isCourt(court)) return;
         (address[] memory targets, uint256[] memory values, bytes[] memory payloads) = listing(court);
         vm.broadcast(_owner());
@@ -52,10 +54,9 @@ contract DeployAmberContradictionCourt is HonkVerifierDeploy {
     }
 
     function courtArgs(address verifier) public view returns (bytes memory) {
-        string memory json = _registry();
         return abi.encode(
-            IAmberVault(json.readAddress(".contracts.KeelsonBondVault")),
-            IVerdictVerifier(json.readAddress(".contracts.VerdictVerifier")),
+            IAmberVault(predict(versioned("KeelsonBondVault"))),
+            IVerdictVerifier(predict(versioned("VerdictVerifier"))),
             IAmberContradictionVerifier(verifier)
         );
     }
@@ -80,14 +81,14 @@ contract DeployAmberContradictionCourt is HonkVerifierDeploy {
     }
 
     function _pool() internal view returns (ViolationBondPool) {
-        return ViolationBondPool(_registry().readAddress(".contracts.ViolationBondPool"));
+        return ViolationBondPool(predict(versioned("ViolationBondPool")));
     }
 
     function _timelock() internal view returns (TimelockController) {
         return TimelockController(payable(_registry().readAddress(".contracts.TimelockController")));
     }
 
-    function _listingSalt() internal pure returns (bytes32) {
-        return keccak256(abi.encodePacked(RELEASE, "/", VERSION, "/listing"));
+    function _listingSalt() internal view returns (bytes32) {
+        return keccak256(abi.encodePacked(RELEASE, "/", versioned(VERSION), "/listing"));
     }
 }

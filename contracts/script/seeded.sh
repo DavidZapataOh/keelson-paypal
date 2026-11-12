@@ -2,11 +2,11 @@
 # Deletes one real guard from src/ (certora/seeded/<bug>.patch), runs the check that guard protects and prints its
 # counterexample, then restores the source. Exits 0 when the check catches the bug, 1 when it does not.
 #
-#   script/seeded.sh <double-settle|any-liable|degraded-instant|anchor-rewrite|reentrancy> <halmos|certora|forge>
+#   script/seeded.sh <double-settle|any-liable|degraded-instant|anchor-rewrite|reentrancy|veto-final> <halmos|certora|forge>
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-usage="usage: script/seeded.sh <double-settle|any-liable|degraded-instant|anchor-rewrite|reentrancy> <halmos|certora|forge>"
+usage="usage: script/seeded.sh <double-settle|any-liable|degraded-instant|anchor-rewrite|reentrancy|veto-final> <halmos|certora|forge>"
 bug=${1:?$usage}
 tool=${2:?$usage}
 
@@ -17,6 +17,8 @@ case "$bug" in
   degraded-instant) check=check_degradedQueued conf=BondVault rule=degradedNeverInstant test=test/BondVaultVeto.fork.t.sol:test_slash_degradedVerdictQueues72h ;;
   # Halmos 0.3.3 cannot execute the SHA-256 precompile the consistency proof hashes with.
   anchor-rewrite) check= conf=CheckpointAnchor rule=anchorChecksConsistency test=test/CheckpointAnchor.t.sol:test_rewrittenRootReverts ;;
+  # A veto that leaves the dispute settled denies the payout for good.
+  veto-final) check= conf=BondVault rule=vetoReopens test=test/BondVaultVeto.fork.t.sol:test_veto ;;
   # Static analyzers do not see the token call SafeERC20 makes in assembly; the Prover's CALL hook does.
   reentrancy) check= conf=BondVault rule=externalCallsHoldLock test= ;;
   *) echo "$usage" >&2; exit 2 ;;

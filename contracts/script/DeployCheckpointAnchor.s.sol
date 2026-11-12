@@ -9,12 +9,14 @@ contract DeployCheckpointAnchor is KeelsonDeploy {
     function run() external returns (CheckpointAnchor anchor) {
         vm.startBroadcast(_owner());
         _ensureDeployer();
-        anchor = CheckpointAnchor(_deploy("CheckpointAnchor", type(CheckpointAnchor).creationCode, constructorArgs()));
+        anchor = CheckpointAnchor(
+            _deploy(versioned("CheckpointAnchor"), type(CheckpointAnchor).creationCode, constructorArgs())
+        );
         vm.stopBroadcast();
     }
 
-    /// @notice `(verifier)`: the `VerdictVerifier`'s CREATE3 address.
+    /// @notice `(verifier)`: the CREATE3 address of the release's `VerdictVerifier`.
     function constructorArgs() public view returns (bytes memory) {
-        return abi.encode(predict("VerdictVerifier"));
+        return abi.encode(predict(versioned("VerdictVerifier")));
     }
 }
