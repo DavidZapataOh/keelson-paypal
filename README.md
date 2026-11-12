@@ -17,9 +17,11 @@ party at fault pay.
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
 > [!IMPORTANT]
-> Payments run on the PayPal sandbox and the contracts on Arbitrum Sepolia, so no real money moves.
-> The two TEEs, the public log and its witnesses, the monitor and the AI run in production. Every
-> dependency and how to check it: [Real or sandbox](https://docs.keelson.finance/security/environments/).
+> Automated flows and Judge Mode run on the PayPal sandbox, and the contracts on Arbitrum Sepolia.
+> Live purchases at real stores use real PayPal accounts; the first one, an agent buying sheet music
+> for USD 2.95 with a Colombian PayPal account, is public at https://app.keelson.finance/live. The
+> TEEs, the log and its witnesses, the monitor and the AI run in production. Every dependency and
+> how to check it: [Real or sandbox](https://docs.keelson.finance/security/environments/).
 
 ## Who pays when an agent gets it wrong?
 
