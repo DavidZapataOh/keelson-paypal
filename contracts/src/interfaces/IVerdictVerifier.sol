@@ -35,7 +35,8 @@ interface IVerdictVerifier {
     error AttestationFailed(string reason);
     error QuoteNotTdx();
     error TdDebug();
-    /// @notice The TD was launched with attributes other than SEPT_VE_DISABLE alone, or with an owner.
+    /// @notice The TD was launched with attributes other than SEPT_VE_DISABLE alone, another XFAM, an owner, or an
+    /// MRCONFIGID dstack does not set.
     error TdPolicy();
     error Rtmr3Mismatch();
     error NitroDocumentStale();

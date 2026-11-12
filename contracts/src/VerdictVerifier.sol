@@ -42,6 +42,8 @@ contract VerdictVerifier is IVerdictVerifier, EIP712, AccessManaged {
     /// @dev `TDATTRIBUTES` (little-endian) with only SEPT_VE_DISABLE (bit 28) set: no DEBUG, PKS, KL or PERFMON. MRTD
     /// does not cover the attributes, so the host could otherwise launch the same image with them.
     bytes8 internal constant TD_ATTRIBUTES = 0x0000001000000000;
+    /// @dev `XFAM` (little-endian) of the TDX leg's TD: x87, SSE, AVX and PKRU state. MRTD does not cover it either.
+    bytes8 internal constant XFAM = 0x0702000000000000;
     bytes32 internal constant BINDING_TAG = keccak256("KEELSON_TEE_SIGNER_V1");
     IArbSys internal constant ARB_SYS = IArbSys(address(0x64));
     /// @notice EIP-2935 block hash history. On Arbitrum it is keyed by L2 block number and keeps 393,168 blocks.
@@ -169,7 +171,10 @@ contract VerdictVerifier is IVerdictVerifier, EIP712, AccessManaged {
             revert TcbStatusNotAccepted(td.tcbStatus);
         }
         if (td.debug) revert TdDebug();
-        if (td.tdAttributes != TD_ATTRIBUTES || !td.ownerRegistersZero) revert TdPolicy();
+        if (
+            td.tdAttributes != TD_ATTRIBUTES || td.xfam != XFAM || !td.ownerRegistersZero
+                || !DstackEvents.configIdHolds(td.mrConfigId, events)
+        ) revert TdPolicy();
         if (keccak256(DstackEvents.replay(events)) != keccak256(td.rtmr3)) revert Rtmr3Mismatch();
         _checkBinding(binding, td.reportData, blockNumber);
         _admit(binding.signer, TDX, DstackEvents.tdxMeasurement(td.mrtd, td.rtmr0, td.rtmr1, td.rtmr2, events));

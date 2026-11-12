@@ -14,8 +14,12 @@ library TdxOutput {
         bool debug;
         /// @dev `TDATTRIBUTES` as the report stores it (little-endian).
         bytes8 tdAttributes;
+        /// @dev `XFAM` as the report stores it (little-endian).
+        bytes8 xfam;
         /// @dev Whether `MROWNER` and `MROWNERCONFIG`, which the host sets at launch and MRTD does not cover, are zero.
         bool ownerRegistersZero;
+        /// @dev `MRCONFIGID`, which the host also sets at launch.
+        bytes mrConfigId;
         bytes mrtd;
         bytes rtmr0;
         bytes rtmr1;
@@ -42,6 +46,9 @@ library TdxOutput {
         // The slice is exactly 8 bytes.
         // forge-lint: disable-next-line(unsafe-typecast)
         td.tdAttributes = bytes8(_slice(output, BODY + 120, 8));
+        // forge-lint: disable-next-line(unsafe-typecast)
+        td.xfam = bytes8(_slice(output, BODY + 128, 8));
+        td.mrConfigId = _slice(output, BODY + 184, 48);
         td.ownerRegistersZero = keccak256(_slice(output, BODY + 232, 96)) == keccak256(new bytes(96));
         td.mrtd = _slice(output, BODY + 136, 48);
         td.rtmr0 = _slice(output, BODY + 328, 48);

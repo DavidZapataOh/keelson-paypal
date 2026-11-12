@@ -3,7 +3,6 @@ export type AttestCode =
   | "cert_chain"
   | "signature"
   | "debug_mode"
-  | "td_policy"
   | "collateral_expired"
   | "tcb_status"
   | "rtmr3_mismatch"

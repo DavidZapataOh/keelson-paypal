@@ -4,7 +4,7 @@ import { describe, expect, test } from "vitest";
 import { AttestError } from "../src/errors.ts";
 import { type DstackEvent, replayRtmr3 } from "../src/eventlog.ts";
 import { getCollateral } from "../src/server/collateral.ts";
-import { acceptTcbStatus, acceptTdPolicy, verifyTdx } from "../src/tdx.ts";
+import { acceptTcbStatus, verifyTdx } from "../src/tdx.ts";
 import { tdxEvidence } from "./evidence.ts";
 
 const att = tdxEvidence.attestation;
@@ -120,38 +120,5 @@ describe.skipIf(!process.env.KEELSON_LIVE)("live leg A", () => {
     );
     expect(result.tcbStatus).toMatch(/^(UpToDate|SWHardeningNeeded)$/);
     expect(result.composeHash).toBe(`0x${body.compose_hash}`);
-  });
-});
-
-describe("acceptTdPolicy", () => {
-  const td = () => ({
-    tdAttributes: Uint8Array.from([0, 0, 0, 0x10, 0, 0, 0, 0]),
-    mrOwner: new Uint8Array(48),
-    mrOwnerConfig: new Uint8Array(48),
-  });
-
-  test("accepts SEPT_VE_DISABLE alone and no owner", () => {
-    expect(() => acceptTdPolicy(td())).not.toThrow();
-  });
-
-  test.each([
-    ["DEBUG", 0, 0x01],
-    ["PKS", 3, 0x40],
-    ["KL", 3, 0x80],
-    ["PERFMON", 7, 0x80],
-    ["no SEPT_VE_DISABLE", 3, 0x10],
-  ])("refuses %s", (_name, byte, mask) => {
-    const t = td();
-    t.tdAttributes[byte] = (t.tdAttributes[byte] ?? 0) ^ mask;
-    expect(() => acceptTdPolicy(t)).toThrow(expect.objectContaining({ code: "td_policy" }));
-  });
-
-  test("refuses an owner or owner configuration", () => {
-    const owner = td();
-    owner.mrOwner[0] = 1;
-    expect(() => acceptTdPolicy(owner)).toThrow(expect.objectContaining({ code: "td_policy" }));
-    const config = td();
-    config.mrOwnerConfig[47] = 1;
-    expect(() => acceptTdPolicy(config)).toThrow(expect.objectContaining({ code: "td_policy" }));
   });
 });
