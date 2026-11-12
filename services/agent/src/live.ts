@@ -504,7 +504,7 @@ const SKEW_MS = 120_000;
 /** How many of the newest activity entries are opened. */
 const NEWEST = 10;
 
-/** The fields read from an entry's details in the buyer's PayPal activity. */
+/** The fields read from an entry's details in the buyer's PayPal activity. @internal */
 export interface ActivityEntry {
   transactionId: string;
   transactionTypeEnum: string;
@@ -513,7 +513,7 @@ export interface ActivityEntry {
 }
 
 /** What the payment just made charged, and when its pay click was let through, at the latest. */
-export interface PaidOrder {
+interface PaidOrder {
   currency: string;
   /** The order's total, a decimal string (`2.95`). */
   value: string;
@@ -526,6 +526,8 @@ const sameDecimal = (a: string, b: string) =>
 /**
  * The id of the one activity entry that is a payment or authorization of exactly the order's
  * gross since its pay click; undefined when none is, or more than one.
+ *
+ * @internal
  */
 export function activityMatch(entries: readonly unknown[], order: PaidOrder): string | undefined {
   const ids = entries.flatMap((e) => {
