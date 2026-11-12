@@ -2,7 +2,9 @@
 
 The engine's canonicalizer and Cedar evaluation, run again in the [SP1](https://docs.succinct.xyz/docs/sp1/introduction) zkVM for disputes. The program reads a countersign's stored inputs (`keelson_policy::CountersignInput`: the registered mandate, the cart, the PayPal unit, the evidence sources, leg A's clock and budget, and the signed fields the evaluation does not decide), calls `keelson_policy::recompute`, the same code the TEE legs sign with, and commits `abi.encode(evalHash, countersignDigest)`.
 
-A Groth16 proof of it is verified on chain by `EngineProofVerifier` through Succinct's SP1 verifier gateway. When it verifies, the engine build the trace names, run over those inputs, gives the `evalHash` both legs signed, independently of the TEEs. A PayPal deny is decided before the evaluation and has no proof.
+A Groth16 proof of it is verified on chain by `EngineProofVerifier` with Succinct's immutable SP1 v6.1.0 Groth16 verifier, never the gateway whose owner can change its routes. When it verifies, the engine build the trace names, run over those inputs, gives the `evalHash` both legs signed, independently of the TEEs. A PayPal deny is decided before the evaluation and has no proof.
+
+The proof is the operator's defense in a dispute. An ALLOW passes every mandate field, so a slash whose verdict blames the operator for a field the proven evaluation passed (rules R60, R61 and R62, on any field but the amount and the variant, which an independent observation also decides) is vetoed by `EngineProofCourt` during its veto window: the court reads the coverage's countersign from `KeelsonValidationRegistry`, checks that `EngineProofVerifier` holds its proof, and calls `vetoSlash` with `VETO_ROLE`, the only role it holds. The API contests such a slash as soon as the chain-events follower sees it queued. Rules that rest on anything the evaluation did not see (the log inclusion, the attestation, the capture, the delivery) are never contested.
 
 ```sh
 sp1up -v v6.10.0
