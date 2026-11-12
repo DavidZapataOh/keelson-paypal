@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { verifyTimestamp } from "@keelson/timestamp";
@@ -91,7 +91,10 @@ describe("the signed Alibi PDF (PAdES B-T)", () => {
     expect(ms).toBeLessThan(5_000);
 
     const out = process.env.ALIBI_PDF_OUT;
-    if (out) writeFileSync(join(out, `signed-${fixture.id}.pdf`), signed);
+    if (out) {
+      mkdirSync(out, { recursive: true });
+      writeFileSync(join(out, `signed-${fixture.id}.pdf`), signed);
+    }
     if (has("pdfsig")) {
       const dir = mkdtempSync(join(tmpdir(), "signed-"));
       const file = join(dir, "alibi.pdf");
