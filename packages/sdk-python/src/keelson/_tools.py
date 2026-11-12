@@ -306,6 +306,31 @@ def tools(client: AsyncKeelson, *, agent_id: str | None = None) -> list[KeelsonT
             "verifyUrl": url,
         }
 
+    async def export(i: dict[str, Any]) -> Envelope:
+        fmt = i["format"]
+        try:
+            artifact = await client.alibis.export(i["purchaseId"], fmt)
+        except APIError as err:
+            if err.status not in (409, 503):
+                raise
+            return {
+                "status": "blocked",
+                "next": {"action": "tell_user", "say": f"Tell the user this export is not available: {err}"},
+                "message": str(err),
+                "reason": str(err.problem.get("reason", "unavailable")),
+            }
+        say = (
+            "Close the open mandates with your own agent key before presenting them."
+            if "pending_close" in artifact
+            else f"Hand the {fmt} export to whoever asked for it."
+        )
+        return {
+            "status": "success",
+            "next": {"action": "tell_user", "say": say},
+            "message": f"The purchase as {fmt}, signed by Keelson's attested enclave.",
+            "artifact": artifact,
+        }
+
     async def grade(i: dict[str, Any]) -> Envelope:
         g = await client.operators.grade(i["agentId"])
         return {
@@ -325,6 +350,7 @@ def tools(client: AsyncKeelson, *, agent_id: str | None = None) -> list[KeelsonT
         "keelson_request_countersign": countersign,
         "keelson_get_purchase": get_purchase,
         "keelson_verify_alibi": verify,
+        "keelson_export_alibi": export,
         "keelson_get_trust_grade": grade,
     }
     return [KeelsonTool(s["name"], s["description"], s["inputSchema"], s["readOnly"], runs[s["name"]]) for s in _SPECS]

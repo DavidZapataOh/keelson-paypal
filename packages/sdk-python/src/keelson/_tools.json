@@ -276,6 +276,36 @@
     }
   },
   {
+    "name": "keelson_export_alibi",
+    "description": "The purchase in an agentic-commerce standard: AP2 mandates and receipts (ap2), a Mastercard Verifiable Intent chain (vi), a UCP checkout (ucp), an ACP allowance (acp), a signed Visa TAP request (tap) or the Visa evidence pack for a chargeback (visa). Each carries the purchase's SCITT transparent statement and is signed by Keelson's attested enclave.",
+    "readOnly": true,
+    "inputSchema": {
+      "type": "object",
+      "properties": {
+        "purchaseId": {
+          "type": "string",
+          "pattern": "^[0-7][0-9A-HJKMNP-TV-Z]{25}$"
+        },
+        "format": {
+          "type": "string",
+          "enum": [
+            "ap2",
+            "vi",
+            "ucp",
+            "acp",
+            "tap",
+            "visa"
+          ]
+        }
+      },
+      "required": [
+        "purchaseId",
+        "format"
+      ],
+      "additionalProperties": false
+    }
+  },
+  {
     "name": "keelson_get_trust_grade",
     "description": "An operator's trust grade (A to F), the premium each new coverage pays and the bond it should hold, from its coverages and verdicts.",
     "readOnly": true,

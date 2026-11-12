@@ -33,6 +33,7 @@ export {
 } from "./errors.ts";
 export { LOGIN_SCOPES, type LoginOptions, login } from "./login.ts";
 export { type Amount, minorOf, type Until } from "./money.ts";
+export type { ExportFormat } from "./resources/alibis.ts";
 export type { ServerEvent } from "./resources/events.ts";
 export type { Mandate, MandateRequest } from "./resources/mandates.ts";
 export type { CountersignResult } from "./resources/purchases.ts";

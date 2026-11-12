@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from typing import Any, Literal
 from urllib.parse import quote
 
 from .._models import AlibiReceipt, AlibiReport
 from ._base import Resource
+
+ExportFormat = Literal["ap2", "vi", "ucp", "acp", "tap", "visa"]
 
 
 class Alibis(Resource):
@@ -25,6 +28,15 @@ class Alibis(Resource):
         """The Alibi as a PDF/A-3 with the bundle attached."""
         r = await self._call("GET", f"/v1/alibis/{quote(purchase_id, safe='')}.pdf", as_="bytes", auth="optional")
         data: bytes = r.data
+        return data
+
+    async def export(self, purchase_id: str, format: ExportFormat) -> dict[str, Any]:
+        """The purchase in an agentic-commerce standard, signed by Keelson's attested enclave.
+
+        AP2, Verifiable Intent, UCP, ACP, a Visa TAP request or the Visa evidence pack.
+        """
+        r = await self._call("GET", f"/v1/alibis/{quote(purchase_id, safe='')}/exports/{format}", auth="optional")
+        data: dict[str, Any] = r.data
         return data
 
     async def verify_remote(self, alibi: bytes) -> AlibiReport:
