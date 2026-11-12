@@ -620,6 +620,10 @@ jobs:
           echo "$HOME/.local/tinygo/tinygo/bin" >> "$GITHUB_PATH"
           echo "$HOME/.local/tinygo/binaryen-version_133/bin" >> "$GITHUB_PATH"
       - run: tinygo version && wasm-opt --version
+      - uses: ./.github/actions/select-rpc
+        with:
+          alchemy-api-key: ${{ secrets.ALCHEMY_API_KEY }}
+          drpc-arbitrum-sepolia-url: ${{ secrets.DRPC_ARBITRUM_SEPOLIA_URL }}
       - run: pnpm install --frozen-lockfile --filter @keelson/monitor
       - run: pnpm --filter @keelson/monitor exec playwright install chromium
       - run: pnpm --filter @keelson/monitor test

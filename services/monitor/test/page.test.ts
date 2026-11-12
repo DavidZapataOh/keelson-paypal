@@ -175,7 +175,7 @@ describe("the monitor page", () => {
     const sandbox = page.locator('[data-origin="log.keelson.finance/alibi/2026-1"]');
     const live = page.locator('[data-origin="log.keelson.finance/alibi-live/2026-1"]');
     await expect
-      .poll(async () => sandbox.locator('[data-field="anchor"]').textContent(), { timeout: 60_000 })
+      .poll(async () => sandbox.locator('[data-field="anchor"]').textContent(), { timeout: 90_000 })
       .toMatch(/^size \d+, consistent · Arbitrum Sepolia/);
     expect(await live.locator('[data-field="anchor"]').textContent()).toBe(
       "not deployed on Arbitrum One",
@@ -199,8 +199,7 @@ describe("the monitor page", () => {
       `${r.signers.leavesChecked} leaves checked against VerdictVerifier on Arbitrum Sepolia`,
     );
     await context.close();
-  });
-
+  }, 120_000);
   test("renders at 360 px without horizontal scroll", async () => {
     const context = await browser.newContext({ viewport: { width: 360, height: 800 } });
     const page = await open(context);
