@@ -35,8 +35,8 @@ const run = promisify(execFile);
  * @internal
  */
 export const ENGINE_PROVER = {
-  url: "https://github.com/DavidZapataOh/keelson-paypal/releases/download/engine-proof-b01871d/keelson-engine-proof-linux-x64",
-  sha256: "912e89e8a27a341cee7327ceaac416669c573036a4ac8f965aabcc3c677b6155",
+  url: "https://github.com/DavidZapataOh/keelson-paypal/releases/download/engine-proof-995b512/keelson-engine-proof-linux-x64",
+  sha256: "5e29c2038169a5b40ecf38bad662144a650653d487cedfff7d77df75ec777d35",
   vkey: "0x002ab0f01d0475c5b9e0cbe7204773c7cae6f47c2574d0ddf61dec3face719ed" as Hex,
 } as const;
 
