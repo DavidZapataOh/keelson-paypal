@@ -3,7 +3,7 @@
     "artifact": "mandate_predicate",
     "vk": "../engine/tee/zk/mandate_predicate.vk",
     "witness": "mandate_predicate",
-    "gates": 4000,
+    "gates": 4587,
     "acir_opcodes": 183,
     "prove_ms": { "ci": 400 }
   },
@@ -13,7 +13,7 @@
     "witness": "amount",
     "gates": 5042,
     "acir_opcodes": 435,
-    "prove_ms": { "ci": 100 }
+    "prove_ms": { "ci": 1500 }
   },
   "c2b": {
     "artifact": "amber_contradiction",
