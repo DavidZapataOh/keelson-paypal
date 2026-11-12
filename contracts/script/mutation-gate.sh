@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Fails when the mutation score is below the budget, or when a surviving mutant is not explained in
-# verification/survivors.md (one line per survivor: `file:line:column original -> mutant: reason`).
+# Fails when the mutation score is below the budget, or when a surviving mutant is not proven equivalent in
+# verification/survivors.md (one line per survivor: - `file:line:column original -> mutant`: proof).
 #
 #   script/mutation-gate.sh mutation.json [budget]
 set -euo pipefail
@@ -16,11 +16,11 @@ jq -e --argjson budget "$budget" '.summary.mutation_score >= $budget' "$report" 
 
 unexplained=$(jq -r '.survived_mutants | to_entries[] | .key as $f | .value[]
   | "\($f):\(.line):\(.column) \(.original) -> \(.mutant)"' "$report" | while IFS= read -r mutant; do
-  grep -qF -- "\`$mutant\`" "$survivors" || echo "$mutant"
+  grep -F -- "- \`$mutant\`: " "$survivors" | grep -qE '`: [^[:space:]]' || echo "$mutant"
 done)
 
 if [[ -n "$unexplained" ]]; then
-  echo "Surviving mutants not explained in $survivors:" >&2
+  echo "Surviving mutants without an equivalence proof in $survivors:" >&2
   echo "$unexplained" >&2
   exit 1
 fi
