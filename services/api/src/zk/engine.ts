@@ -31,6 +31,8 @@ const run = promisify(execFile);
 /**
  * The engine's SP1 prover, built by the `engine-proof` workflow from the program whose verifying
  * key `EngineProofVerifier` holds. A new program needs a new verifier and a new pin.
+ *
+ * @internal
  */
 export const ENGINE_PROVER = {
   url: "https://github.com/DavidZapataOh/keelson-paypal/releases/download/engine-proof-b01871d/keelson-engine-proof-linux-x64",
