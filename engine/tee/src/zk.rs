@@ -122,10 +122,16 @@ const BB_DEADLINE: Duration = Duration::from_secs(5);
 type Api = BarretenbergApi<PipeBackend>;
 type Job = Box<dyn FnOnce(&mut Api) + Send>;
 
+/// The threads each of the two `bb` processes proves with: half the cores. On a 4-vCPU runner two
+/// processes of 2 threads prove a statement in 285 ms (p50), two of 4 in 364 ms.
+fn threads() -> usize {
+    std::thread::available_parallelism().map_or(1, |n| (n.get() / 2).max(1))
+}
+
 /// Starts `bb msgpack run` on a thread of its own that runs each job it is sent in turn. Dropping
 /// the sender ends the thread, and dropping the backend kills `bb`.
 fn start(bb: &Path) -> Result<mpsc::Sender<Job>, ProverError> {
-    let mut api = BarretenbergApi::new(PipeBackend::new(bb, None).map_err(bb_error)?);
+    let mut api = BarretenbergApi::new(PipeBackend::new(bb, Some(threads())).map_err(bb_error)?);
     let (tx, rx) = mpsc::channel::<Job>();
     std::thread::spawn(move || {
         for job in rx {
@@ -232,38 +238,6 @@ impl Prover {
                 .collect::<Result<_, _>>()
                 .map_err(|_| ProverError::Backend("a public input is not 32 bytes".into()))?,
         })
-    }
-
-    #[doc(hidden)]
-    pub fn prove_sequential(
-        &self,
-        statement: &Statement,
-        opening: &MandateOpening,
-        merchant: &MembershipProof,
-    ) -> Result<(), ProverError> {
-        let witness = self.solve(witness_inputs(statement, opening, merchant))?;
-        let stack = WitnessStack::from(witness)
-            .serialize()
-            .map_err(|e| ProverError::Backend(e.to_string()))?;
-        let mut witness = Vec::new();
-        GzDecoder::new(stack.as_slice())
-            .read_to_end(&mut witness)
-            .map_err(|e| ProverError::Backend(e.to_string()))?;
-        let circuit = |vk: &[u8]| CircuitInput {
-            name: "mandate_predicate".into(),
-            bytecode: self.bytecode.clone(),
-            verification_key: vk.to_vec(),
-        };
-        let (a, b) = (
-            circuit(VERIFICATION_KEY),
-            circuit(RECURSIVE_VERIFICATION_KEY),
-        );
-        let w2 = witness.clone();
-        self.call(&self.evm, move |api| api.circuit_prove(a, &witness, evm()))?;
-        self.call(&self.evm, move |api| {
-            api.circuit_prove(b, &w2, noir_recursive())
-        })?;
-        Ok(())
     }
 
     /// Verifies `proof` against the embedded verification key with the same `bb`.
