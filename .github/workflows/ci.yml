@@ -629,6 +629,10 @@ jobs:
           echo "$HOME/.local/tinygo/tinygo/bin" >> "$GITHUB_PATH"
           echo "$HOME/.local/tinygo/binaryen-version_133/bin" >> "$GITHUB_PATH"
       - run: tinygo version && wasm-opt --version
+      - uses: ./.github/actions/select-rpc
+        with:
+          alchemy-api-key: ${{ secrets.ALCHEMY_API_KEY }}
+          drpc-arbitrum-sepolia-url: ${{ secrets.DRPC_ARBITRUM_SEPOLIA_URL }}
       - run: pnpm install --frozen-lockfile --filter @keelson/monitor
       - run: pnpm --filter @keelson/monitor exec playwright install chromium
       - run: pnpm --filter @keelson/monitor test
@@ -642,6 +646,29 @@ jobs:
             echo "| gzip -9 | $(gzip -9 -c verifier.wasm | wc -c) |"
           } >> "$GITHUB_STEP_SUMMARY"
           test "$(gzip -9 -c verifier.wasm | wc -c)" -lt 1000000
+
+  monitor-fork:
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: ./.github/actions/select-rpc
+        with:
+          alchemy-api-key: ${{ secrets.ALCHEMY_API_KEY }}
+          drpc-arbitrum-sepolia-url: ${{ secrets.DRPC_ARBITRUM_SEPOLIA_URL }}
+      - uses: ./.github/actions/setup-foundry
+        with:
+          version: v1.9.0
+      - name: Monitor against an Arbitrum Sepolia fork
+        run: set -o pipefail; go test -race -tags fork -run 'TestAnchor|TestLiveOriginNotDeployed|TestPinnedAddresses|TestRealLeaves|TestSigner|TestUnknownSigner|TestMeasurementMismatch|TestEquivocated|TestIndexResumes' -v ./services/monitor/ 2>&1 | tee fork.log
+      - name: Chain check timings
+        if: always()
+        run: grep -E 'anchor check|signers:' fork.log >> "$GITHUB_STEP_SUMMARY" || true
 
   monitor-selfhost:
     needs: changes
@@ -657,7 +684,9 @@ jobs:
           docker run -d --name monitor -p 8080:8080 -v keelson-monitor:/data keelson-monitor
           for _ in $(seq 60); do
             if curl -fsS http://localhost:8080/report |
-              jq -e '[.origins[] | select((.cosigners | length) >= 2 and .error == null and .leavesAudited == .size)] | length == 2'; then
+              jq -e '[.origins[] | select((.cosigners | length) >= 2 and .error == null and .leavesAudited == .size
+                and (.anchor.status == "consistent" or .anchor.status == "not-deployed")
+                and (.signers.status == "checked" or .signers.status == "not-deployed"))] | length == 2'; then
               echo "Both origins verified $(( $(date +%s) - start )) s after docker run" | tee -a "$GITHUB_STEP_SUMMARY"
               exit 0
             fi

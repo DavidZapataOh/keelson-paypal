@@ -19,7 +19,7 @@ Keelson runs in production on real infrastructure, but money only moves in its p
 | Alibi log (`log.keelson.finance`) | Production | A public C2SP tlog-tiles log. The sandbox origin holds every Alibi; the live origin is reserved for Arbitrum One. | [The log's checkpoint](/security/verify/#log-checkpoint) |
 | Witnesses (`witness-1..3.keelson.finance`) | Production | Three witnesses Keelson operates on three providers. They are not independent of Keelson. | [Witnesses](/security/verify/#witnesses) |
 | Sigsum (seasalp log and its witnesses) | Production | Every checkpoint is co-logged in a public log Keelson does not run. | [Sigsum](/security/verify/#sigsum) |
-| Monitor | Production | A public monitor Keelson operates on a separate provider. Anyone can run the same binary. | [The public monitor](/security/verify/#monitor) |
+| Monitor | Production | A public monitor Keelson operates on a separate provider. It also checks the sandbox origin's anchor and every leaf's TEE signers against Arbitrum Sepolia. Anyone can run the same binary. | [The public monitor](/security/verify/#monitor) |
 | Contracts (bond vault, reserve, verifiers, courts, anchor, log bond) | Arbitrum Sepolia testnet, test PYUSD | Deployed and source-verified. Arbitrum One has a registry entry and fork tests and is not deployed. | [Contracts](/security/verify/#contracts) |
 | On-chain anchor | Arbitrum Sepolia testnet | Witnessed checkpoints are anchored with both TEE legs' signatures. | [On-chain anchor](/security/verify/#anchor) |
 | ERC-8004 registries | Arbitrum Sepolia, official v2.0.0 registries | Bonds are keyed by the agent's id in the official Identity registry. | [packages/erc8004](https://github.com/DavidZapataOh/keelson-paypal/tree/main/packages/erc8004#readme) |
@@ -67,4 +67,3 @@ curl -s https://api.keelson.finance/v1/live-purchases | jq '.purchases | length'
 These are not live:
 
 - **Arbitrum One.** The contracts have no Arbitrum One deployment, so the live log origin is not anchored there.
-- **The monitor's checks of TEE signatures and on-chain anchors.** Its report states both as `not-enabled`.
