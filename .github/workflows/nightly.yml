@@ -112,6 +112,7 @@ jobs:
     # Real sandbox purchases: only on the schedule or by hand, not on every push.
     if: github.event_name != 'push'
     runs-on: ubuntu-24.04
+    environment: operations
     timeout-minutes: 60
     steps:
       - name: Ten purchases from a one-off job of keelson-api in Oregon, against the deployed system
@@ -147,6 +148,7 @@ jobs:
     # Recalibrates the risk model on the deployed workflows: on the schedule or by hand.
     if: github.event_name != 'push'
     runs-on: ubuntu-24.04
+    environment: operations
     timeout-minutes: 15
     steps:
       - name: Run refreshTrustGrades on keelson-workflows and wait for it
@@ -173,6 +175,7 @@ jobs:
     # Closes stale Judge Mode tenants on the deployed workflows: on the schedule or by hand.
     if: github.event_name != 'push'
     runs-on: ubuntu-24.04
+    environment: operations
     timeout-minutes: 10
     steps:
       - name: Run resetJudgeMode on keelson-workflows and wait for it
@@ -201,6 +204,7 @@ jobs:
     # deployed store, verified from its ledger: on the schedule or by hand.
     if: github.event_name != 'push'
     runs-on: ubuntu-24.04
+    environment: operations
     timeout-minutes: 45
     env:
       ATTACK_RESULTS: /tmp/attacks.jsonl

@@ -19,6 +19,7 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-24.04
+    environment: phala
     timeout-minutes: 30
     outputs:
       app_id: ${{ steps.deploy.outputs.app_id }}

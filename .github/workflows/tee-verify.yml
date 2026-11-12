@@ -17,8 +17,9 @@ on:
         type: string
         required: false
     secrets:
+      # The phala environment's secrets take precedence over the caller's.
       PHALA_CLOUD_API_KEY:
-        required: true
+        required: false
       KEELSON_TEE_TOKEN:
         required: false
 
@@ -31,6 +32,7 @@ env:
 jobs:
   verify:
     runs-on: ubuntu-24.04
+    environment: phala
     timeout-minutes: 30
     services:
       # dstack-verifier 0.6.3; it downloads the OS image the quote names.
