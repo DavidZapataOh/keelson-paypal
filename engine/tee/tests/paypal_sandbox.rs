@@ -438,3 +438,40 @@ async fn write_reauthorized_mandate_hold_vector() {
     )
     .await;
 }
+
+/// A client that terminates TLS itself, as leg B does over its vsock proxy, here over TCP.
+fn stream_client() -> Option<PayPalClient> {
+    Some(PayPalClient::over_stream(
+        false,
+        keelson_tee::paypal::Connect::Tcp("api-m.sandbox.paypal.com:443".into()),
+        &var("PAYPAL_CLIENT_ID")?,
+        zeroize::Zeroizing::new(var("PAYPAL_CLIENT_SECRET")?),
+    ))
+}
+
+#[tokio::test]
+async fn leg_b_reading_equals_leg_a() {
+    let (Some((a, id)), Some(b)) = (
+        sandbox("PAYPAL_AUTHORIZATION_PARTIALLY_CAPTURED"),
+        stream_client(),
+    ) else {
+        return;
+    };
+    let (x, y) = tokio::try_join!(observe(&a, &id), observe(&b, &id)).unwrap();
+    assert!(keelson_tee::paypal::same_reading(&x, &y));
+}
+
+#[tokio::test]
+async fn a_root_other_than_paypals_is_refused() {
+    let Some(id) = var("PAYPAL_AUTHORIZATION_CREATED") else {
+        return;
+    };
+    // A host that serves a valid certificate under another root: the pinned client refuses it.
+    let other = PayPalClient::over_stream(
+        false,
+        keelson_tee::paypal::Connect::Tcp("www.amazon.com:443".into()),
+        "id",
+        zeroize::Zeroizing::new("secret".into()),
+    );
+    assert!(observe(&other, &id).await.is_err());
+}

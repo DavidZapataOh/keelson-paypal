@@ -156,6 +156,8 @@ pub enum EngineError {
     Log(SignError),
     /// The status list refused: `status_not_extending`, `status_stale` or `mandate_revoked`.
     Status(&'static str),
+    /// Leg B's own PayPal reading differs from the one leg A observed.
+    PayPalDisagree,
 }
 
 impl EngineError {
@@ -178,6 +180,7 @@ impl EngineError {
             Self::Checkpoint(e) => e.code().into(),
             Self::Log(e) => e.code().into(),
             Self::Status(code) => (*code).into(),
+            Self::PayPalDisagree => "paypal_disagree".into(),
         }
     }
 }
@@ -1266,6 +1269,23 @@ impl Engine {
         Ok(wire::StatementSigned {
             statement: Base64(statement(protected, payload, sig)),
         })
+    }
+
+    /// On leg B: requires its own reading of the request's PayPal authorization to say what leg
+    /// A's observation says, field for field. The countersign then judges the reading both
+    /// legs agree on.
+    pub fn confirm_paypal(
+        &self,
+        r: &CountersignRequest,
+        own: &PayPalObservation,
+    ) -> Result<(), EngineError> {
+        let observed = r.observation.as_ref().ok_or(bad("observation"))?;
+        if r.authorization_id.as_deref() != Some(own.authorization_id.as_str())
+            || !crate::paypal::same_reading(&observed.paypal, own)
+        {
+            return Err(EngineError::PayPalDisagree);
+        }
+        Ok(())
     }
 
     /// Signs the status list token over `r.lst` with the credential issuer key, on leg A only,

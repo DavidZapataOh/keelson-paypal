@@ -129,10 +129,24 @@ fn hold_kind(custom_id: &str, mid: &str, request_id: &str, live: bool) -> Option
     }
 }
 
-#[cfg(feature = "tdx")]
+/// Whether two readings of the same authorization agree on everything PayPal said: every field
+/// but the raw response bodies and the time each was read.
+pub fn same_reading(a: &PayPalObservation, b: &PayPalObservation) -> bool {
+    let strip = |o: &PayPalObservation| PayPalObservation {
+        raw_authorization: crate::wire::Base64(Vec::new()),
+        raw_order: crate::wire::Base64(Vec::new()),
+        read_at_ms: 0,
+        ..o.clone()
+    };
+    strip(a) == strip(b)
+}
+
+#[cfg(any(feature = "tdx", feature = "nitro"))]
+pub use crate::tls_client::Connect;
+#[cfg(any(feature = "tdx", feature = "nitro"))]
 pub use client::{PayPalClient, PayPalError, observe, parse};
 
-#[cfg(feature = "tdx")]
+#[cfg(any(feature = "tdx", feature = "nitro"))]
 mod client {
     use std::collections::{BTreeMap, HashMap};
     use std::fmt;
@@ -143,11 +157,16 @@ mod client {
     use time::OffsetDateTime;
     use ulid::Ulid;
 
+    use crate::engine::unix_ms;
+    use crate::tls_client::{Connect, Exchange, send};
     use crate::wire::{Base64, PayPalObservation};
-    use crate::{chain, engine::unix_ms};
 
     const SANDBOX: &str = "https://api-m.sandbox.paypal.com";
     const LIVE: &str = "https://api-m.paypal.com";
+    /// The root PayPal's API certificates chain to (DigiCert Global Root G2, SHA-256
+    /// cb3ccbb76031e5e0138f8dd39a23f9de47ffc35e43c1144cea27d46a5ab1cb5f): the only one a client
+    /// that terminates TLS itself accepts.
+    const PAYPAL_ROOT: &[u8] = include_bytes!("roots/digicert-global-root-g2.der");
     /// The longest any one PayPal call may take; a countersign never retries.
     const TIMEOUT: Duration = Duration::from_secs(5);
     /// A cached token is dropped this long before PayPal says it expires.
@@ -157,7 +176,8 @@ mod client {
     /// Why a PayPal read failed.
     #[derive(Debug)]
     pub enum PayPalError {
-        Http(reqwest::Error),
+        /// The request did not complete: connection, TLS or timeout.
+        Transport(String),
         Status(u16),
         Malformed(&'static str),
     }
@@ -165,8 +185,7 @@ mod client {
     impl fmt::Display for PayPalError {
         fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
             match self {
-                Self::Http(e) if e.is_timeout() => f.write_str("paypal request timed out"),
-                Self::Http(_) => f.write_str("paypal request failed"),
+                Self::Transport(e) => write!(f, "paypal request failed: {e}"),
                 Self::Status(code) => write!(f, "paypal answered {code}"),
                 Self::Malformed(what) => write!(f, "paypal sent a malformed {what}"),
             }
@@ -175,10 +194,32 @@ mod client {
 
     impl std::error::Error for PayPalError {}
 
+    #[cfg(feature = "tdx")]
     impl From<reqwest::Error> for PayPalError {
         fn from(e: reqwest::Error) -> Self {
-            Self::Http(e)
+            Self::Transport(if e.is_timeout() {
+                "timed out".into()
+            } else {
+                e.to_string()
+            })
         }
+    }
+
+    /// How requests reach PayPal.
+    enum Transport {
+        /// The host network, through `reqwest`.
+        #[cfg(feature = "tdx")]
+        Direct(reqwest::Client),
+        /// A raw stream, with TLS terminated here against [`PAYPAL_ROOT`] alone.
+        Stream { connect: Connect, host: String },
+    }
+
+    /// A request: its method, path and body, with basic or bearer authorization.
+    struct Call<'a> {
+        post: bool,
+        path: &'a str,
+        authorization: String,
+        form: Option<&'static str>,
     }
 
     struct Token {
@@ -190,8 +231,8 @@ mod client {
     pub struct PayPalClient {
         base: String,
         client_id: String,
-        client_secret: String,
-        http: reqwest::Client,
+        client_secret: zeroize::Zeroizing<String>,
+        transport: Transport,
         token: Mutex<Option<Token>>,
         /// The order each authorization belongs to, which never changes once PayPal has said it.
         orders: Mutex<HashMap<String, String>>,
@@ -204,12 +245,35 @@ mod client {
         }
 
         /// A client for the REST API at `base` (no trailing slash).
+        #[cfg(feature = "tdx")]
         pub fn new(base: &str, client_id: &str, client_secret: &str) -> Self {
             Self {
                 base: base.trim_end_matches('/').to_owned(),
                 client_id: client_id.to_owned(),
-                client_secret: client_secret.to_owned(),
-                http: chain::http_client(),
+                client_secret: client_secret.to_owned().into(),
+                transport: Transport::Direct(crate::chain::http_client()),
+                token: Mutex::new(None),
+                orders: Mutex::new(HashMap::new()),
+            }
+        }
+
+        /// A client of the sandbox, or of the live API when `live`, that opens its connections
+        /// with `connect` and terminates TLS itself, accepting only PayPal's pinned root.
+        pub fn over_stream(
+            live: bool,
+            connect: Connect,
+            client_id: &str,
+            client_secret: zeroize::Zeroizing<String>,
+        ) -> Self {
+            let base = if live { LIVE } else { SANDBOX };
+            Self {
+                base: base.to_owned(),
+                client_id: client_id.to_owned(),
+                client_secret,
+                transport: Transport::Stream {
+                    connect,
+                    host: base.trim_start_matches("https://").to_owned(),
+                },
                 token: Mutex::new(None),
                 orders: Mutex::new(HashMap::new()),
             }
@@ -217,6 +281,7 @@ mod client {
 
         /// The client for `PAYPAL_CLIENT_ID` and `PAYPAL_CLIENT_SECRET` on the sandbox, or on the
         /// live API when `PAYPAL_ENV` is `live`.
+        #[cfg(feature = "tdx")]
         pub fn from_env() -> Result<Self, String> {
             let var = |name: &str| std::env::var(name).map_err(|_| format!("{name} is not set"));
             let base = match std::env::var("PAYPAL_ENV").as_deref() {
@@ -243,27 +308,30 @@ mod client {
             if let Some(token) = self.cached() {
                 return Ok(token);
             }
+            use base64::Engine as _;
             #[derive(Deserialize)]
             struct Granted {
                 access_token: String,
                 expires_in: u64,
             }
-            let response = self
-                .http
-                .post(format!("{}/v1/oauth2/token", self.base))
-                .timeout(TIMEOUT)
-                .basic_auth(&self.client_id, Some(&self.client_secret))
-                .form(&[("grant_type", "client_credentials")])
-                .send()
+            let basic = base64::engine::general_purpose::STANDARD.encode(format!(
+                "{}:{}",
+                self.client_id,
+                self.client_secret.as_str()
+            ));
+            let (status, body) = self
+                .send(Call {
+                    post: true,
+                    path: "/v1/oauth2/token",
+                    authorization: format!("Basic {basic}"),
+                    form: Some("grant_type=client_credentials"),
+                })
                 .await?;
-            let status = response.status();
-            if !status.is_success() {
-                return Err(PayPalError::Status(status.as_u16()));
+            if !(200..300).contains(&status) {
+                return Err(PayPalError::Status(status));
             }
-            let granted: Granted = response
-                .json()
-                .await
-                .map_err(|_| PayPalError::Malformed("token"))?;
+            let granted: Granted =
+                serde_json::from_slice(&body).map_err(|_| PayPalError::Malformed("token"))?;
             let valid_until = Instant::now()
                 + Duration::from_secs(granted.expires_in).saturating_sub(TOKEN_MARGIN);
             *self.token.lock().unwrap_or_else(|e| e.into_inner()) = Some(Token {
@@ -274,25 +342,78 @@ mod client {
         }
 
         async fn get(&self, path: &str) -> Result<Vec<u8>, PayPalError> {
-            let response = self
-                .http
-                .get(format!("{}{path}", self.base))
-                .timeout(TIMEOUT)
-                .bearer_auth(self.bearer().await?)
-                .send()
+            let (status, body) = self
+                .send(Call {
+                    post: false,
+                    path,
+                    authorization: format!("Bearer {}", self.bearer().await?),
+                    form: None,
+                })
                 .await?;
-            let status = response.status();
-            if status == reqwest::StatusCode::UNAUTHORIZED {
+            if status == 401 {
                 *self.token.lock().unwrap_or_else(|e| e.into_inner()) = None;
             }
-            if !status.is_success() {
-                return Err(PayPalError::Status(status.as_u16()));
+            if !(200..300).contains(&status) {
+                return Err(PayPalError::Status(status));
             }
-            let body = response.bytes().await?;
-            if body.len() > MAX_BODY {
-                return Err(PayPalError::Malformed("response"));
+            Ok(body)
+        }
+
+        /// Sends `call` and returns the status and a body of at most [`MAX_BODY`] bytes, within
+        /// [`TIMEOUT`] and with no retry.
+        async fn send(&self, call: Call<'_>) -> Result<(u16, Vec<u8>), PayPalError> {
+            match &self.transport {
+                #[cfg(feature = "tdx")]
+                Transport::Direct(http) => {
+                    let url = format!("{}{}", self.base, call.path);
+                    let mut request = if call.post {
+                        http.post(url)
+                    } else {
+                        http.get(url)
+                    }
+                    .timeout(TIMEOUT)
+                    .header(reqwest::header::AUTHORIZATION, call.authorization);
+                    if let Some(form) = call.form {
+                        request = request
+                            .header(
+                                reqwest::header::CONTENT_TYPE,
+                                "application/x-www-form-urlencoded",
+                            )
+                            .body(form);
+                    }
+                    let response = request.send().await?;
+                    let status = response.status().as_u16();
+                    let body = response.bytes().await?;
+                    if body.len() > MAX_BODY {
+                        return Err(PayPalError::Malformed("response"));
+                    }
+                    Ok((status, body.to_vec()))
+                }
+                Transport::Stream { connect, host } => {
+                    let mut headers = vec![
+                        ("authorization", call.authorization),
+                        ("accept", "application/json".to_owned()),
+                    ];
+                    if call.form.is_some() {
+                        headers.push(("content-type", "application/x-www-form-urlencoded".into()));
+                    }
+                    let exchange = Exchange {
+                        post: call.post,
+                        path: call.path,
+                        headers,
+                        body: hyper::body::Bytes::from_static(
+                            call.form.unwrap_or_default().as_bytes(),
+                        ),
+                    };
+                    tokio::time::timeout(
+                        TIMEOUT,
+                        send(connect, host, PAYPAL_ROOT, exchange, MAX_BODY),
+                    )
+                    .await
+                    .map_err(|_| PayPalError::Transport("timed out".into()))?
+                    .map_err(PayPalError::Transport)
+                }
             }
-            Ok(body.to_vec())
         }
     }
 

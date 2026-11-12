@@ -19,6 +19,8 @@ export interface Capabilities {
   decoys: boolean;
   /** It checks a mandate's status list entry, and leg A signs the list. */
   status_list: boolean;
+  /** Leg B reads PayPal itself and confirms leg A's observation. */
+  paypal_reads: boolean;
   /** Leg A's clock: `verified` when set from authenticated time at boot; absent on older engines. */
   clock?: "verified" | "unverified";
 }
@@ -30,6 +32,7 @@ export function capabilitiesOf(health: unknown): Capabilities {
     statements: h.statements === 1,
     decoys: h.decoys === 1,
     status_list: h.status_list === 1,
+    paypal_reads: h.paypal_reads === 1,
     ...(h.clock === "verified" || h.clock === "unverified" ? { clock: h.clock } : {}),
   };
 }
@@ -39,6 +42,7 @@ export const NO_CAPABILITIES: Capabilities = {
   statements: false,
   decoys: false,
   status_list: false,
+  paypal_reads: false,
 };
 
 /**

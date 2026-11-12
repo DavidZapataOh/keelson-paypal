@@ -346,7 +346,7 @@ export async function latestOfCart(
   return latest?.id;
 }
 /** Failures that say nothing about the request, so the same request id may be driven again. */
-const RETRYABLE = new Set(["tee-unavailable", "paypal-unavailable", "stale"]);
+const RETRYABLE = new Set(["tee-unavailable", "paypal-unavailable", "paypal-disagree", "stale"]);
 
 const b64json = (segment: string | undefined): unknown => {
   if (!segment) throw new Error("empty segment");

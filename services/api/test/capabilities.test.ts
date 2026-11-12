@@ -15,6 +15,7 @@ describe("engine capabilities", () => {
       statements: false,
       decoys: false,
       status_list: false,
+      paypal_reads: false,
     });
   });
 
@@ -23,12 +24,18 @@ describe("engine capabilities", () => {
       statements: false,
       decoys: true,
       status_list: false,
+      paypal_reads: false,
     });
     expect(capabilitiesOf({ ...deployedLegB, statements: 1, status_list: 1 })).toEqual({
       statements: true,
       decoys: false,
       status_list: true,
+      paypal_reads: false,
     });
+  });
+
+  test("leg B says when it reads PayPal itself", () => {
+    expect(capabilitiesOf({ ...deployedLegB, paypal_reads: 1 }).paypal_reads).toBe(true);
   });
 
   test("leg A's clock is read when it reports one, and absent on an older engine", () => {
