@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { describe, expect, test } from "vitest";
+import { ACCEPTED_ADVISORIES } from "../src/advisories.ts";
 import { AttestError } from "../src/errors.ts";
 import { type DstackEvent, replayRtmr3 } from "../src/eventlog.ts";
 import { getCollateral } from "../src/server/collateral.ts";
@@ -94,11 +95,26 @@ describe("verifyTdx", () => {
 });
 
 describe("acceptTcbStatus", () => {
-  test("accepts UpToDate, and SWHardeningNeeded only with advisory ids", () => {
+  test("accepts UpToDate and rejects every other status without advisories", () => {
     expect(() => acceptTcbStatus("UpToDate", [])).not.toThrow();
-    expect(() => acceptTcbStatus("SWHardeningNeeded", ["INTEL-SA-00837"])).not.toThrow();
     for (const status of ["SWHardeningNeeded", "OutOfDate", "ConfigurationNeeded", "Revoked"]) {
       expect(() => acceptTcbStatus(status, [])).toThrow(AttestError);
+    }
+  });
+
+  test("accepts SWHardeningNeeded only when every advisory was reviewed", () => {
+    const code = (ids: string[]) => {
+      try {
+        acceptTcbStatus("SWHardeningNeeded", ids);
+        return "ok";
+      } catch (error) {
+        return (error as AttestError).code;
+      }
+    };
+    expect(code(["INTEL-SA-99999"])).toBe("advisory_not_allowed");
+    for (const id of Object.keys(ACCEPTED_ADVISORIES)) {
+      expect(code([id])).toBe("ok");
+      expect(code([id, "INTEL-SA-99999"])).toBe("advisory_not_allowed");
     }
   });
 });
