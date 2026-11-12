@@ -9,16 +9,27 @@ import { parseServerTiming } from "../src/server-timing.ts";
 import { EvidenceUploader } from "../test/evidence.ts";
 import { cartOf, demoOperator } from "../test/pipeline-live.ts";
 import { SoftwarePasskey, signedMandate } from "../test/tee-live.ts";
-import { type Hold, openHold, purchaseEnded, remaining, remote, signIn } from "./public-client.ts";
+import {
+  type Hold,
+  openHold,
+  remaining,
+  remote,
+  revokeMandate,
+  signIn,
+  waitC3Published,
+  watchPurchase,
+} from "./public-client.ts";
 import { stats, waterfall } from "./waterfall.ts";
 
 // PURCHASES purchases of the demo cart at PRICE_MINOR cents (100) spread over CONCURRENCY fresh
 // mandates of the bench account, through Keelson's public API only: the account signs in with its
 // passkey (BENCH_PASSKEY) and each mandate is held with its saved PayPal, with no PayPal window.
 // The agent is the demo operator's own OAuth client (KEELSON_CLIENT_ID, KEELSON_CLIENT_SECRET).
-// Each purchase is timed from POST /v1/countersign until the agent's event stream says it ended;
-// its steps come from the purchase's Server-Timing. Prints the waterfall as JSON and exits 1 if
-// a purchase is not captured or the end-to-end p95 is over budget.
+// Each purchase is timed from POST /v1/countersign until it ended, by its event or its state; its
+// steps come from the purchase's Server-Timing. Two numbers: the steady money path, on mandates
+// whose C3 proof is published, against the budget; and the first purchase on a mandate signed
+// just before it, which also waits for that proof, reported apart. Prints both as JSON and exits 1
+// if a purchase is not captured or the steady end-to-end p95 is over budget.
 const PURCHASES = Number(process.env.PURCHASES ?? 40);
 const CONCURRENCY = Number(process.env.CONCURRENCY ?? 1);
 const BUDGET_P95_MS = 8_000;
@@ -67,7 +78,7 @@ async function purchase(h: Hold, evidenceRoot: string): Promise<Result> {
     { kind: "client", subject: CLIENT_ID as string },
     `purchase:${requestId}`,
   );
-  const watch = purchaseEnded(agent, channel, TERMINAL_WAIT_MS);
+  const watch = watchPurchase(agent, channel, requestId, TERMINAL_WAIT_MS);
   await watch.ready;
   const repeatOf = last.get(h.mid);
   const body = {
@@ -116,37 +127,60 @@ async function purchase(h: Hold, evidenceRoot: string): Promise<Result> {
 }
 
 const user = await signIn(API, passkey, APP);
+/** A mandate of the bench account covering `count` purchases, and when it was signed. */
+const open = async (count: number) => {
+  const signedAt = Date.now();
+  const hold = await openHold(
+    user,
+    (sub, edit) => signedMandate(passkey, sub, demoOperator, edit),
+    (m) => {
+      const max = count * PRICE_MINOR;
+      m.payment.constraints = m.payment.constraints.map((c) =>
+        c.type === "payment.budget" || c.type === "payment.amount_range" ? { ...c, max } : c,
+      );
+    },
+  );
+  holds.push(hold);
+  return { hold, signedAt };
+};
+const cart = cartOf(PRICE_MINOR).cart;
 try {
+  // Steady state: these mandates are signed first, and bought on once their C3 is published.
   const perHold = Math.ceil(PURCHASES / CONCURRENCY);
-  for (let i = 0; i < CONCURRENCY; i++) {
-    holds.push(
-      await openHold(
-        user,
-        (sub, edit) => signedMandate(passkey, sub, demoOperator, edit),
-        (m) => {
-          const max = perHold * PRICE_MINOR;
-          m.payment.constraints = m.payment.constraints.map((c) =>
-            c.type === "payment.budget" || c.type === "payment.amount_range" ? { ...c, max } : c,
-          );
-        },
-      ),
-    );
-  }
+  const steady: { hold: Hold; signedAt: number }[] = [];
+  for (let i = 0; i < CONCURRENCY; i++) steady.push(await open(perHold));
+
+  // The first purchase on a mandate signed just now: it waits for that mandate's C3 proof.
+  const fresh = await open(1);
+  const freshRoot = await evidence.upload(agent, fresh.hold.mid, cart, {});
+  const first = await purchase(fresh.hold, freshRoot);
+  console.error(
+    `first on a fresh mandate ${first.id} ${first.status} ${first.state} ${first.ms} ms`,
+  );
+
+  // From signing to C3 published, for each steady mandate.
+  const c3PublishedMs = await Promise.all(
+    steady.map((s) => waitC3Published(user, s.hold.mid, s.signedAt, 180_000)),
+  );
+
   // The evidence of every purchase is captured first, one browser page at a time, so the
   // concurrent purchases are not also running a browser page each.
   const roots: string[] = [];
-  const cart = cartOf(PRICE_MINOR).cart;
   for (let i = 0; i < PURCHASES; i++) {
-    const hold = holds[i % CONCURRENCY] as Hold;
-    roots.push(await evidence.upload(agent, hold.mid, cart, {}));
+    roots.push(
+      await evidence.upload(agent, (steady[i % CONCURRENCY] as { hold: Hold }).hold.mid, cart, {}),
+    );
   }
   await evidence.close();
 
   const until = DURATION_S > 0 ? Date.now() + DURATION_S * 1000 : Number.POSITIVE_INFINITY;
-  // Worker w buys on holds[w] alone: purchases w, w + CONCURRENCY, ...
+  // Worker w buys on steady[w] alone: purchases w, w + CONCURRENCY, ...
   const worker = async (w: number) => {
     for (let i = w; i < PURCHASES && Date.now() < until; i += CONCURRENCY) {
-      const r = await purchase(holds[i % CONCURRENCY] as Hold, roots[i] as string);
+      const r = await purchase(
+        (steady[i % CONCURRENCY] as { hold: Hold }).hold,
+        roots[i] as string,
+      );
       results.push(r);
       console.error(`${results.length}/${PURCHASES} ${r.id} ${r.status} ${r.state} ${r.ms} ms`);
     }
@@ -155,7 +189,7 @@ try {
 
   const captured = results.filter((r) => r.state === "CAPTURED");
   const failures: Record<string, number> = {};
-  for (const r of results.filter((r) => r.state !== "CAPTURED")) {
+  for (const r of [...results, first].filter((r) => r.state !== "CAPTURED")) {
     const k = `${r.status} ${r.state} ${r.failure ?? ""}`.trim();
     failures[k] = (failures[k] ?? 0) + 1;
   }
@@ -168,12 +202,20 @@ try {
       api: API,
       commit: process.env.RENDER_GIT_COMMIT,
     },
-    endToEnd: stats(captured.map((r) => r.ms)),
-    ...waterfall(captured.map((r) => r.timings)),
-    // The first purchase pays what a fresh mandate has not opened or loaded yet.
-    first: results[0] && waterfall([results[0].timings]),
-    purchases: results.length,
-    captured: captured.length,
+    steady: {
+      budgetP95Ms: BUDGET_P95_MS,
+      endToEnd: stats(captured.map((r) => r.ms)),
+      ...waterfall(captured.map((r) => r.timings)),
+    },
+    firstOnFreshMandate: {
+      id: first.id,
+      state: first.state,
+      ms: first.ms,
+      ...waterfall([first.timings]),
+    },
+    c3PublishedMs: stats(c3PublishedMs),
+    purchases: results.length + 1,
+    captured: captured.length + (first.state === "CAPTURED" ? 1 : 0),
     failures,
     remaining: await Promise.all(holds.map((h) => remaining(user, h.mid))),
     authorizations: holds.map((h) => h.authorizationId),
@@ -188,18 +230,14 @@ try {
   if (
     captured.length === 0 ||
     captured.length < results.length ||
-    summary.endToEnd.p95 >= BUDGET_P95_MS
+    first.state !== "CAPTURED" ||
+    summary.steady.endToEnd.p95 >= BUDGET_P95_MS
   ) {
     process.exitCode = 1;
   }
 } finally {
   for (const h of holds) {
-    const revoked = await user.post(`/v1/mandates/${h.mid}/revoke`).catch((err: unknown) => err);
-    if (revoked instanceof Error || (revoked as { status: number }).status >= 300) {
-      console.error(
-        `mandate ${h.mid} not revoked: ${String(revoked instanceof Error ? revoked : JSON.stringify(revoked))}`,
-      );
-    }
+    await revokeMandate(user, h.mid).catch((err: unknown) => console.error(String(err)));
   }
   await evidence.close().catch(() => {});
 }

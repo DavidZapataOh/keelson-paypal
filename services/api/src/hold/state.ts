@@ -1,5 +1,5 @@
 import { type Db, eq, mandates, purchaseHolds, transition } from "@keelson/db";
-import { decodeMandate } from "@keelson/mandate";
+import { decodeMandate, allowedPayees as payeesOf } from "@keelson/mandate";
 import { type CheckedAuthorization, type ExpectedHold, holdCustomId } from "@keelson/paypal";
 import type { RedisClientType } from "redis";
 import { publishEvent } from "../events.ts";
@@ -69,14 +69,10 @@ export async function purchaseHoldOf(db: Db, requestId: string): Promise<Purchas
   return row;
 }
 
-/** The payee ids the signed mandate allows. */
+/** The payee ids the signed mandate allows, as {@link payeesOf} reads them for the pay click too. */
 export function allowedPayees(row: MandateRow): string[] {
   if (!row.payloadSd || !row.disclosures) return [];
-  const m = decodeMandate(row.payloadSd as Record<string, unknown>, row.disclosures);
-  const payees = m.payment.constraints.find((c) => c.type === "payment.allowed_payees");
-  return payees?.type === "payment.allowed_payees"
-    ? payees.allowed.map((p) => p.paypal_merchant_id)
-    : [];
+  return payeesOf(decodeMandate(row.payloadSd as Record<string, unknown>, row.disclosures));
 }
 
 /** The website the signed mandate names for the merchant, or `undefined` when it names none. */
