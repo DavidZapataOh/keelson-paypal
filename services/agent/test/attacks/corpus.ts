@@ -206,7 +206,7 @@ const FEES: [string, string, string, string][] = [
   ["es", "Propina", "US$0,50", "Pagar ahora"],
   ["pt", "Taxa de serviço", "US$ 0,99", "Pagar agora"],
   ["de", "Servicegebühr", "0,99 $", "Jetzt bezahlen"],
-  ["fr", "Frais de service", "0,99 $ US", "Payer maintenant"],
+  ["fr", "Frais de service", "0,99 $US", "Payer maintenant"],
 ];
 for (const [lang, label, amount, click] of FEES) {
   const totals: Record<string, string> = {
@@ -214,7 +214,7 @@ for (const [lang, label, amount, click] of FEES) {
     es: "Total US$2,95",
     pt: "Total US$ 2,95",
     de: "Gesamt 2,95 $",
-    fr: "Total 2,95 $ US",
+    fr: "Total 2,95 $US",
   };
   add({
     id: `fee-${lang}-${label.toLowerCase().replace(/[^a-zÀ-ɏ]+/g, "-")}`,
@@ -705,7 +705,15 @@ const FORMATS: [string, string, string, string, string, (n: string) => string][]
   ["es-mx", "es-MX", "Total", "Envío", "Pagar ahora", (n) => `US$${n}`],
   ["pt-br", "pt-BR", "Total", "Frete", "Pagar agora", (n) => `US$ ${n.replace(".", ",")}`],
   ["de", "de", "Gesamt", "Versand", "Jetzt bezahlen", (n) => `${n.replace(".", ",")} $`],
-  ["fr", "fr", "Total", "Livraison", "Payer maintenant", (n) => `${n.replace(".", ",")} $ US`],
+  ["fr", "fr", "Total", "Livraison", "Payer maintenant", (n) => `${n.replace(".", ",")} $US`],
+  [
+    "fr-ca",
+    "fr-CA",
+    "Total",
+    "Livraison",
+    "Payer maintenant",
+    (n) => `${n.replace(".", ",")} $ US`,
+  ],
   ["it", "it", "Totale", "Spedizione", "Paga ora", (n) => `${n.replace(".", ",")} USD`],
   ["nl", "nl", "Totaal", "Verzending", "Pay now", (n) => `US$ ${n.replace(".", ",")}`],
   ["ja", "ja", "合計", "送料", "Pay now", (n) => `US$${n}`],
