@@ -33,3 +33,15 @@ describe("links into the repository", () => {
     });
   }
 });
+
+// The section names are the top bar's link texts; Lighthouse's link-text audit fails on generic
+// ones such as "Start" or "More".
+test("every section name says where its link goes", () => {
+  const config = readFileSync(join(REPO, "apps/docs/src/content.config.ts"), "utf8");
+  const SECTIONS = [
+    ...(/SECTIONS = \[([^\]]+)\]/.exec(config)?.[1] ?? "").matchAll(/"([^"]+)"/g),
+  ].map((m) => m[1] as string);
+  expect(SECTIONS.length).toBeGreaterThan(0);
+  const generic = ["start", "here", "more", "click here", "go", "read more", "learn more", "next"];
+  expect(SECTIONS.filter((s) => generic.includes(s.toLowerCase()))).toEqual([]);
+});
