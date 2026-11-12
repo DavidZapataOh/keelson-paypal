@@ -3,7 +3,7 @@
 # verifies a committed Alibi with its CLI and its library. Usage: check-package.sh <tarball>
 set -e
 tgz=$(cd "$(dirname "$1")" && pwd)/$(basename "$1")
-sample=$(cd "$(dirname "$0")/../../.." && pwd)/apps/docs/public/samples/01M6ZWZJHWRRHQEYNJAT7NMSV8.alibi
+sample=$(cd "$(dirname "$0")/../../.." && pwd)/packages/alibi/test/fixtures/01M6ZWZJHWRRHQEYNJAT7NMSV8.alibi
 dir=$(mktemp -d)
 cd "$dir"
 npm init -y > /dev/null
