@@ -207,7 +207,8 @@ jobs:
         run: |
           curl -fsSL https://github.com/anweiss/cddl/releases/download/v0.10.7/cddl-linux-amd64.tar.gz -o /tmp/cddl.tar.gz
           echo "08a68f7aae25d5781c82e64f8926ca4cad491bd5d2d2f47c72a848d3ff858b8a  /tmp/cddl.tar.gz" | sha256sum -c -
-          sudo tar -xzf /tmp/cddl.tar.gz -C /usr/local/bin cddl
+          tar -xzf /tmp/cddl.tar.gz -C /tmp cddl-linux-amd64
+          sudo install -m 0755 /tmp/cddl-linux-amd64 /usr/local/bin/cddl
       - env:
           KEELSON_REQUIRE_CDDL: "1"
         run: pnpm turbo run typecheck test build --filter='!./packages/db' --filter='!./packages/attest' --filter='!./packages/evidence' --filter='!./services/api' --filter='!./apps/store' --filter='!./services/monitor' --filter='!./packages/relayer' --filter='!./apps/landing' --concurrency=100% --cache-dir=.turbo
