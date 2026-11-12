@@ -151,3 +151,72 @@ export function fundingOptions(o: { from: string; to: string; currency: string; 
     },
   };
 }
+
+/**
+ * A signed-in Colombian buyer's review page for a USD 2.95 order, in Spanish, as PayPal lays it
+ * out when the buyer pays with a card: the card's last digits right before the converted amount,
+ * the amount in pesos under the sign COP shares with USD, and PayPal's rate written from the
+ * buyer's currency, `1 COP = 0,00029 USD`. The order line in USD is not shown.
+ */
+export const ES_CO_CARD_REVIEW: readonly string[] = [
+  "Pagar con",
+  "Visa Cargo ▪ ••4821 $ 10.236 COP",
+  "$ 10.236",
+  "Tipo de cambio de PayPal: 1 COP = 0,00029 USD",
+  "Si continúas, autorizas a PayPal a cobrar el importe de $ 10.236 en tu tarjeta.",
+];
+
+/** PayPal's conversion of that order, as the review page's funding options state it. */
+export const ES_CO_CARD_CONVERSION = { usd: "2.95", cop: "10236", rate: "3469.83" } as const;
+
+/**
+ * A funding options answer for one conversion. `inverse` states it from the buyer's currency to
+ * the order's, the way PayPal's page writes its rate (`1 COP = 0,00029 USD`).
+ */
+export function fundingConversion(o: {
+  order: string;
+  buyer: string;
+  currency: string;
+  rate: string;
+  inverse?: boolean;
+}) {
+  const order = { currencyValue: o.order, currencyCode: "USD" };
+  const buyer = { currencyValue: o.buyer, currencyCode: o.currency };
+  return {
+    data: {
+      checkoutSession: {
+        fundingOptions: [
+          {
+            id: "card",
+            currencyConversion: o.inverse
+              ? { rate: o.rate, type: "PAYPAL", from: buyer, to: order }
+              : { rate: o.rate, type: "PAYPAL", from: order, to: buyer },
+          },
+        ],
+      },
+    },
+  };
+}
+
+/**
+ * A funding options answer that states PayPal's rate per unit, not the order converted: two
+ * options, each `1 COP = 0.000290145 USD`, as a signed-in Colombian buyer's review page answers.
+ */
+export function fundingUnitRate(o: { currency: string; rate: string; options?: number }) {
+  const option = {
+    id: "card",
+    currencyConversion: {
+      rate: o.rate,
+      type: "PAYPAL",
+      from: { currencyValue: "1", currencyCode: o.currency },
+      to: { currencyValue: o.rate, currencyCode: "USD" },
+    },
+  };
+  return {
+    data: {
+      checkoutSession: {
+        fundingOptions: Array.from({ length: o.options ?? 2 }, () => structuredClone(option)),
+      },
+    },
+  };
+}

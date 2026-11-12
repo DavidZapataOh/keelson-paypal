@@ -34,6 +34,14 @@ Rules:
 - [Agent skill](https://keelson.finance/skill.md): the full guide for agents: connecting, every tool with its inputs, the envelope, a purchase step by step, and "A purchase that went wrong", the checklist to run before reporting a purchase
 - [Connect an agent](https://app.keelson.finance/connect/): the user's page, with steps for Claude, ChatGPT, Cursor and Claude Code
 
+## SDKs
+
+- [TypeScript SDK](https://github.com/DavidZapataOh/keelson-paypal/blob/main/packages/sdk/README.md): `@keelson/sdk`, sign in with `npx keelson login`, mandates, evidence, countersign, Alibis, agent-framework adapters
+- [Python SDK](https://github.com/DavidZapataOh/keelson-paypal/blob/main/packages/sdk-python/README.md): `keelson-finance`, the same client, blocking and asyncio
+- [Offline verifier](https://github.com/DavidZapataOh/keelson-paypal/blob/main/packages/verify/README.md): `@keelson/verifier` and `keelson-verify`
+- [Developer OpenAPI](https://github.com/DavidZapataOh/keelson-paypal/blob/main/openapi/keelson.public.json): the 22 operations an app or an operator's agent calls
+- [Context Plugin](https://api.keelson.finance/context/mcp): Keelson's SDK docs, operations and schemas over MCP, no sign-in
+
 ## API
 
 - [OpenAPI document](https://api.keelson.finance/openapi.json): Keelson's HTTP API, which the MCP tools call

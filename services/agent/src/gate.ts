@@ -10,16 +10,21 @@ import {
 import type { Locator, Page } from "playwright";
 import {
   decimalText,
+  inverseOf,
   judge,
+  judgeQuoted,
   type Money,
   minorDigits,
   type PageReading,
   pageLocales,
+  type Quote,
   readPage,
   type ShownConversion,
+  showsQuote,
 } from "./amounts.ts";
 import { rows, type Seen, sanitize } from "./capture.ts";
 import {
+  agrees,
   chargeProblem,
   type KnownConversion,
   orderToken,
@@ -75,7 +80,9 @@ export type PayAction =
  * names one. The page's text is then a cross-check: it must show no larger charge. When it shows
  * the total converted to the buyer's currency, the converted total must be the countersigned one
  * at the one rate the page writes, and that rate within the mandate's spread of the reference
- * rate Keelson fetched when it countersigned.
+ * rate Keelson fetched when it countersigned. Where PayPal states only its rate per unit and the
+ * page alone shows the converted total, that total for the order must be within the mandate's
+ * spread of PayPal's rate, up to the digits PayPal shows of it.
  */
 export class PayGate {
   readonly #checkoutHosts: readonly string[];
@@ -107,6 +114,10 @@ export class PayGate {
     unsure?: string;
     cart?: string;
     requote?: string;
+    /** The conversions PayPal stated for the order's funding options, when it was held for them. */
+    conversions?: string[];
+    /** The rates per unit PayPal stated for them. */
+    quotes?: string[];
     seen: Seen[];
   }[] = [];
 
@@ -242,14 +253,20 @@ export class PayGate {
     const cartOk =
       !this.#cart ||
       (cart?.currency === total.currency && cart.minor === total.items - total.discount);
-    let paypal: { charge: PayPalCharge; known?: KnownConversion } | undefined;
+    let paypal: { charge: PayPalCharge; known?: KnownConversion; quote?: Quote } | undefined;
     if (converts) {
       paypal = await this.#order(page, total, show, read);
       // Without PayPal's own conversion, the page's text is read in English, where PayPal writes
       // each amount with its ISO code; once per order, through the page's own locale parameter.
       const token = orderToken(page.url()) as string;
       const shows = Object.keys(read.rates).length > 0 || read.conversions.length > 0;
-      if (!paypal.known && shows && !/^en\b/.test(read.locale) && !this.#english.has(token)) {
+      if (
+        !paypal.known &&
+        !paypal.quote &&
+        shows &&
+        !/^en\b/.test(read.locale) &&
+        !this.#english.has(token)
+      ) {
         this.#english.add(token);
         const url = new URL(page.url());
         url.searchParams.set("locale.x", "en_US");
@@ -260,14 +277,18 @@ export class PayGate {
       }
     }
     const known = paypal?.known;
-    const judged = judge(
-      read,
-      total.minor,
-      total.currency,
-      converts,
-      !converts,
-      known && { currency: known.currency, rate: known.rate },
-    );
+    // PayPal's rate per unit, with the converted total only on the page: within the mandate's
+    // spread of PayPal's rate.
+    const judged = paypal?.quote
+      ? judgeQuoted(read, total.minor, total.currency, paypal.quote, this.#maxSpreadBps)
+      : judge(
+          read,
+          total.minor,
+          total.currency,
+          converts,
+          !converts,
+          known && { currency: known.currency, rate: known.rate },
+        );
     // PayPal's own conversion when it states one; else the one the page writes.
     const shown = known
       ? {
@@ -332,7 +353,7 @@ export class PayGate {
     total: CheckoutTotal,
     show: (m: number) => string,
     read: PageReading,
-  ): Promise<{ charge: PayPalCharge; known?: KnownConversion }> {
+  ): Promise<{ charge: PayPalCharge; known?: KnownConversion; quote?: Quote }> {
     const answer = await readCharge(page);
     const fail = async (reason: string): Promise<never> => {
       this.held.push({
@@ -341,12 +362,29 @@ export class PayGate {
         totals: read.totals.map(show),
         unsure: reason,
         ...(this.#requote ? { requote: show(this.#requote.minor) } : {}),
+        ...(answer?.conversions.length
+          ? {
+              conversions: answer.conversions.map(
+                (c) =>
+                  `${c.from.currency} ${c.from.value} = ${c.currency} ${c.buyer} at ${c.inverse ? `1/${c.inverse}` : c.rate}`,
+              ),
+            }
+          : {}),
+        ...(answer?.quotes.length
+          ? {
+              quotes: answer.quotes.map((q) =>
+                q.inverse
+                  ? `${q.currency} 1 = ${total.currency} ${q.rate}`
+                  : `${total.currency} 1 = ${q.currency} ${q.rate}`,
+              ),
+            }
+          : {}),
         seen: sanitize(await rows(page), read.locale || "en", total.currency),
       });
       this.#refuse(reason);
     };
     if (!answer) return fail("PayPal's order for this page could not be read. Paying waits.");
-    const { charge, conversions } = answer;
+    const { charge, conversions, quotes } = answer;
     const problem = chargeProblem(charge, total);
     if (problem) {
       const next = requoteOf(charge, total);
@@ -373,7 +411,14 @@ export class PayGate {
     if (options.some((c) => c.from.currency !== charge.currency || c.from.value !== charge.value)) {
       await fail("PayPal converts another amount than its order's total. Paying waits.");
     }
-    if (options.some((c) => !convertsTo(charge.value, c.rate, c.buyer))) {
+    // Stated from the buyer's currency, PayPal's own rate must give its two amounts.
+    if (
+      options.some((c) =>
+        c.inverse !== undefined
+          ? !agrees(c.buyer, c.inverse, charge.value)
+          : !convertsTo(charge.value, c.rate, c.buyer),
+      )
+    ) {
       await fail("PayPal's conversion of the order does not add up. Paying waits.");
     }
     // Whichever funding option the buyer pays with, its conversion is within the mandate's spread.
@@ -381,10 +426,34 @@ export class PayGate {
       this.#conversion(total, { ...c, locale: read.locale || "en" });
     }
     const [only, ...more] = options;
-    if (!only) return { charge };
+    if (!only) {
+      const rates = [
+        ...new Map(quotes.map((q) => [`${q.currency}|${Number(q.rate)}|${q.inverse}`, q])).values(),
+      ];
+      const [one, ...others] = rates;
+      if (!one) return { charge };
+      if (others.length === 0) return { charge, quote: one };
+      // Several: the page must show which one the buyer pays with, by its rate line.
+      const lined = rates.filter(
+        (q) =>
+          (read.rates[q.currency] !== undefined || read.inverse[q.currency] !== undefined) &&
+          showsQuote(read, q),
+      );
+      if (lined.length !== 1) {
+        await fail(
+          "PayPal states several rates and the page does not show which one it charges. Paying waits.",
+        );
+      }
+      return { charge, quote: lined[0] as Quote };
+    }
     if (more.length === 0) return { charge, known: only };
     // Several: the page must show which one the buyer pays with, by its rate.
-    const shown = options.filter((c) => Number(read.rates[c.currency]) === Number(c.rate));
+    const shown = options.filter(
+      (c) =>
+        Number(read.rates[c.currency]) === Number(c.rate) ||
+        (read.inverse[c.currency] !== undefined &&
+          inverseOf(c.rate, read.inverse[c.currency] as string)),
+    );
     if (shown.length !== 1) {
       await fail(
         "PayPal states several conversions and the page does not show which one it charges. Paying waits.",

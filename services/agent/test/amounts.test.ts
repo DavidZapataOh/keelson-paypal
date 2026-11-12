@@ -1,6 +1,18 @@
 import fc from "fast-check";
 import { describe, expect, test } from "vitest";
-import { charges, minorDigits, pageLocale, readAmounts, readPage, values } from "../src/amounts.ts";
+import {
+  charges,
+  judge,
+  judgeQuoted,
+  minorDigits,
+  pageLocale,
+  readAmounts,
+  readPage,
+  scan,
+  values,
+  withinQuote,
+} from "../src/amounts.ts";
+import { ES_CO_CARD_CONVERSION, ES_CO_CARD_REVIEW } from "./fixtures/paypal-pages.ts";
 
 /** Every language ICU formats numbers for, with the regions and numbering systems that change how. */
 function locales(): string[] {
@@ -256,8 +268,10 @@ describe("a page is paid only where it charges the countersigned total and nothi
       totals: [295],
       offers: [],
       loose: [],
+      shared: [],
       conversions: [],
       rates: {},
+      inverse: {},
     });
     expect(pays("Total ¥1,500", ["ja"], 1500, "JPY")).toBe(true);
     expect(pays("Total ￥1,500", ["ja"], 1500, "JPY")).toBe(true);
@@ -558,5 +572,156 @@ describe("pages a final review found paid more than the countersigned total", ()
     expect(
       charges(readPage("Visa •••• 4242 USD $10.00\nTotal USD $10.00", ["en"], "USD"), 1000, "USD"),
     ).toBe(true);
+  });
+});
+
+describe("a card's or an account's last digits are never an amount", () => {
+  /** How checkouts write the last digits of a funding source, in the languages they offer. */
+  const MASKS: readonly ((d: string) => string)[] = [
+    (d) => `••${d}`,
+    (d) => `•••• ${d}`,
+    (d) => `▪ ••${d}`,
+    (d) => `**** **** **** ${d}`,
+    (d) => `*${d}`,
+    (d) => `xxxx${d}`,
+    (d) => `XXXX-${d}`,
+    (d) => `...${d}`,
+    (d) => `ending in ${d}`,
+    (d) => `ending with ${d}`,
+    (d) => `terminada en ${d}`,
+    (d) => `que termina en ${d}`,
+    (d) => `se termine par ${d}`,
+    (d) => `se terminant par ${d}`,
+    (d) => `endet auf ${d}`,
+    (d) => `terminado em ${d}`,
+    (d) => `com final ${d}`,
+    (d) => `eindigend op ${d}`,
+    (d) => `che termina con ${d}`,
+    (d) => `末尾${d}`,
+    (d) => `尾号${d}`,
+  ];
+  const SOURCES = ["Visa", "Visa Cargo", "Mastercard", "Amex", "Bancolombia", "Banco", "Tarjeta"];
+  const PAGE_LOCALES = [
+    "en-US",
+    "es-CO",
+    "es-MX",
+    "fr-FR",
+    "de-DE",
+    "pt-BR",
+    "it-IT",
+    "nl-NL",
+    "ja-JP",
+    "zh-CN",
+  ];
+
+  test("the es-CO page that held a real purchase reads only PayPal's amounts", () => {
+    const text = ES_CO_CARD_REVIEW.join("\n");
+    expect(scan(text, "es", "USD").find((t) => t.number === "4821")?.kind).toBe("plain");
+    const read = readPage(text, ["es"], "USD");
+    expect(read.unsure).toBeUndefined();
+    expect(read.minor).toEqual([]);
+    const known = { currency: "COP", rate: ES_CO_CARD_CONVERSION.rate };
+    expect(judge(read, 295, "USD", true, false, known)).toEqual({ ok: true });
+    // With nothing from PayPal itself, the pesos under the sign USD shares may be dollars.
+    expect(judge(read, 295, "USD", true, false).ok).toBe(false);
+    // A larger amount in pesos, or a rate line off PayPal's, still holds.
+    const more = readPage(`${text}\nComisión $ 30.000`, ["es"], "USD");
+    expect(judge(more, 295, "USD", true, false, known)).toEqual({
+      ok: false,
+      reason: "a larger amount in the buyer's currency",
+    });
+    const off = readPage(text.replace("0,00029", "0,00031"), ["es"], "USD");
+    expect(judge(off, 295, "USD", true, false, known)).toEqual({
+      ok: false,
+      reason: "a rate line that is not PayPal's rate",
+    });
+  });
+
+  test.each([
+    ["Visa •••• 4821 $2.95 USD", "en"],
+    ["Visa ending in 4821\n$2.95 USD", "en"],
+    ["Mastercard ****4821 US$ 2,95", "es"],
+    ["Visa terminada en 4821 US$ 2,95", "es"],
+    ["Tarjeta que termina en 4821 2,95 US$", "es"],
+    ["Carte Visa se terminant par 4821 2,95 $US", "fr"],
+    ["Visa endet auf 4821 2,95 $", "de"],
+    ["Cartão com final 4821 US$ 2,95", "pt-BR"],
+    ["Amex XXXX-4821 $2.95 USD", "en"],
+  ])("%s reads one amount, 2.95", (text, locale) => {
+    expect(scan(text, locale, "USD").find((t) => t.number === "4821")?.kind).toBe("plain");
+    expect(readPage(text, [locale], "USD")).toMatchObject({ minor: [295], loose: [] });
+  });
+
+  test("whatever the source, mask and locale, the digits after a mask are no amount", () => {
+    fc.assert(
+      fc.property(
+        fc.constantFrom(...SOURCES),
+        fc.constantFrom(...MASKS),
+        fc.stringMatching(/^\d{2,4}$/),
+        fc.constantFrom(...PAGE_LOCALES),
+        fc.integer({ min: 1, max: 99_999_999 }),
+        fc.constantFrom(" ", "\n", " · "),
+        (source, mask, digits, locale, minor, gap) => {
+          const amount = new Intl.NumberFormat(locale, {
+            style: "currency",
+            currency: "USD",
+          }).format(minor / 100);
+          const text = `${source} ${mask(digits)}${gap}${amount}`;
+          const masked = scan(text, locale, "USD").filter((t) => t.number === digits);
+          expect(masked.every((t) => t.kind === "plain")).toBe(true);
+          const read = readPage(text, [locale], "USD");
+          expect(read).toMatchObject({ minor: [minor], loose: [] });
+          expect(read.unsure).toBeUndefined();
+        },
+      ),
+      { numRuns: 2_000 },
+    );
+  });
+});
+
+describe("PayPal's rate stated per unit", () => {
+  const cop = { currency: "COP", rate: "0.000290145", inverse: true };
+
+  test("bounds a converted total by the mandate's spread and the digits PayPal shows, exactly", () => {
+    // 10236 × 0.000290145 / 2.95 = 1.0067540…: 67.54 basis points over PayPal's rate.
+    expect(withinQuote("2.95", "10236", cop, 68)).toBe(true);
+    expect(withinQuote("2.95", "10236", cop, 67)).toBe(false);
+    // The rate's last digit rounds: 1 / 0.0002901455 to 1 / 0.0002901445 is 3446.547… to 3446.559….
+    expect(withinQuote("1", "3446.55", cop, 0)).toBe(true);
+    expect(withinQuote("1", "3446.56", cop, 0)).toBe(false);
+    // The same quote stated the other way round.
+    expect(
+      withinQuote("2.95", "10236", { currency: "COP", rate: "3446.55", inverse: false }, 68),
+    ).toBe(true);
+    expect(
+      withinQuote("2.95", "10236", { currency: "COP", rate: "3446.55", inverse: false }, 67),
+    ).toBe(false);
+  });
+
+  test("reads the es-CO page's converted total and holds what it cannot tie to PayPal's rate", () => {
+    const page = (text: string) => readPage(text, ["es"], "USD");
+    const text = ES_CO_CARD_REVIEW.join("\n");
+    expect(judgeQuoted(page(text), 295, "USD", cop, 750)).toEqual({
+      ok: true,
+      conversion: { currency: "COP", rate: "3469.830508", buyer: "10236", locale: "es" },
+    });
+    const reason = (t: string, capBps = 750) => {
+      const j = judgeQuoted(page(t), 295, "USD", cop, capBps);
+      return j.ok ? undefined : j.reason;
+    };
+    expect(reason(text, 67)).toBe(
+      "a converted total off PayPal's rate by more than the mandate's spread",
+    );
+    expect(reason(text.replace("0,00029", "0,00031"))).toBe(
+      "a rate line that is not PayPal's rate",
+    );
+    expect(reason(`${text}\nComisión $ 30.000`)).toBe("converted totals that disagree");
+    expect(reason(`${text}\nTotal $2.95 USD\nEnvío $5.00 USD`)).toBe(
+      "a larger amount that may be charged",
+    );
+    expect(reason("Tipo de cambio de PayPal: 1 COP = 0,00029 USD")).toBe(
+      "no converted total shown",
+    );
+    expect(reason(`${text}\nR$ 17,18 BRL`)).toBe("an amount in a third currency");
   });
 });

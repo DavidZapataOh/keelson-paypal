@@ -1,0 +1,11 @@
+{
+  "name": "keelson",
+  "owner": { "name": "Keelson" },
+  "plugins": [
+    {
+      "name": "keelson",
+      "source": "./packages/context",
+      "description": "Keelson's SDK docs, API operations and schemas, and a skill for integrating Keelson."
+    }
+  ]
+}

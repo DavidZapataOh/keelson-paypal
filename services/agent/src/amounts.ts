@@ -1,4 +1,4 @@
-import { convertsTo, exceedsConversion } from "@keelson/core";
+import { convertsTo, decimalParts, exceedsConversion } from "@keelson/core";
 import { partEnd, wordEnd } from "./requote.ts";
 
 /** An amount in minor units of an ISO 4217 currency: cents of USD, yen of JPY, fils of KWD. */
@@ -144,6 +144,72 @@ const WORDS: ReadonlySet<string> = new Set([
   "NIO",
   "AED",
 ]);
+
+/** A run of mask characters: `••••`, `****`, `XXXX`, `...`. */
+const MASK_RUN = "(?:(?<![\\p{L}\\d])[xX]{2,}|[•●◦∙·⋅▪■*✱#]{2,}|(?<![\\p{L}\\d.])\\.{3})";
+/**
+ * The words checkouts announce a card's or an account's last digits with, in the languages PayPal
+ * and Shopify offer checkout in.
+ */
+const LAST_DIGITS = [
+  "ending in",
+  "ending with",
+  "ends in",
+  "ending",
+  "terminada en",
+  "terminado en",
+  "termina en",
+  "finalizada en",
+  "terminación",
+  "terminado em",
+  "terminada em",
+  "termina em",
+  "com final",
+  "final do cartão",
+  "se terminant par",
+  "se termine par",
+  "finissant par",
+  "endet auf",
+  "endet mit",
+  "endend auf",
+  "endend mit",
+  "eindigend op",
+  "eindigt op",
+  "che termina con",
+  "che termina in",
+  "terminante in",
+  "末尾",
+  "下4桁",
+  "尾号",
+  "尾號",
+  "끝자리",
+];
+/**
+ * The last digits of a card or an account, after the mask or the words that write them as such
+ * (`••4821`, `**** 4821`, `XXXX-4821`, `ending in 4821`, `se termine par 4821`): 2 to 5 digits
+ * with no separator, and what follows them is not part of their number.
+ */
+const MASKED = new RegExp(
+  `(?:${MASK_RUN}(?:[ -]?${MASK_RUN})*[ -]?|[•●◦∙▪■*✱]|(?<!\\p{L})(?:${LAST_DIGITS.map(escapeRegex).join("|")}):? ?(?:${MASK_RUN}[ -]?)?)(\\d{2,5})(?![.,'\u2019\u066b\u066c]\\d|\\d)`,
+  "giu",
+);
+
+/**
+ * Where `t` writes a card's or an account's last digits, each as its start, with the space after
+ * them that would join them to the next number made a line break, so they read as no amount.
+ */
+function unmasked(t: string): { text: string; masked: Set<number> } {
+  const masked = new Set<number>();
+  let text = t;
+  for (const m of t.matchAll(MASKED)) {
+    const end = m.index + m[0].length;
+    masked.add(end - (m[1] as string).length);
+    if (t[end] === " " && /\d/.test(t[end + 1] ?? "")) {
+      text = `${text.slice(0, end)}\n${text.slice(end + 1)}`;
+    }
+  }
+  return { text, masked };
+}
 
 /** Every decimal digit Unicode has (Arabic-Indic, Devanagari, Thai, …), as its value 0 to 9. */
 const DIGITS: ReadonlyMap<string, string> = new Map(
@@ -421,7 +487,8 @@ function generic(
  * Every number in `t` with the currency marks next to it, and what it is for an amount of
  * `currency` read in `locale`.
  */
-function scanPlain(t: string, locale: string, currency: string): Token[] {
+function scanPlain(text: string, locale: string, currency: string): Token[] {
+  const { text: t, masked } = unmasked(text);
   const s = shape(locale, currency);
   const marks = [...new Set(s.marks.map((m) => m.normalize("NFKC")))].sort(
     (a, b) => b.length - a.length,
@@ -455,6 +522,20 @@ function scanPlain(t: string, locale: string, currency: string): Token[] {
   for (const run of t.matchAll(RUN)) {
     let from = run.index;
     let to = from + run[0].length;
+    if (masked.has(from)) {
+      tokens.push({
+        from,
+        to,
+        text: run[0],
+        number: run[0],
+        marks: [],
+        kind: "plain",
+        values: [],
+        label: t.slice(end, from).trim(),
+        context: previous,
+      });
+      continue;
+    }
     const before = markBefore(t, from, own) ?? generic(t, from, to, "before");
     // A code after a number with no mark before it, and before another amount ("Visa 4242 USD
     // $2.95"), is that amount's.
@@ -490,14 +571,7 @@ function scanPlain(t: string, locale: string, currency: string): Token[] {
     };
     let kind: Token["kind"];
     // A number that gave its code to the next amount may still be one ("490 USD $0.00").
-    // A masked card's last digits ("•••• 4242", "ending in 4242") are no amount.
-    const gave =
-      lone &&
-      after === undefined &&
-      /^ ?\p{Lu}{3} \p{Sc}/u.test(t.slice(to, to + 6)) &&
-      !/(?:[•*·]{2,}|ending(?: in)?|termina(?:da)? en) ?$/iu.test(
-        t.slice(Math.max(0, from - 16), from),
-      );
+    const gave = lone && after === undefined && /^ ?\p{Lu}{3} \p{Sc}/u.test(t.slice(to, to + 6));
     if (found.length === 0) {
       // "490 dollars", "500 yen", "Rs. 490": a currency the reader does not name may be this one.
       const named =
@@ -563,6 +637,11 @@ export interface PageReading {
    */
   loose: number[];
   /**
+   * The numbers of `loose` that may be the currency only through a sign another currency on the
+   * page also writes (`$ 10.236` where COP and USD both write `$`), as written, with their marks.
+   */
+  shared: { value: number; number: string; marks: string[] }[];
+  /**
    * Amounts in another currency, in that currency's whole units, and whether the page labels each
    * its total or charge (a conversion of the total, "Pagarás $10.231 COP") or money it is not
    * charged (a balance). `currency` is undefined when only a sign names it.
@@ -573,6 +652,11 @@ export interface PageReading {
    * strings with the digits the page shows (`3468.14`).
    */
   rates: Record<string, string>;
+  /**
+   * The rates the page writes to the currency from another (`1 COP = 0,00029 USD`), by currency,
+   * as decimal strings with the digits the page shows (`0.00029`).
+   */
+  inverse: Record<string, string>;
   /** Why the page cannot be read for sure; undefined when it can. */
   unsure?: string;
 }
@@ -661,11 +745,17 @@ function read(text: string, locale: string, currency: string): Omit<PageReading,
   const offers: number[] = [];
   const totals: number[] = [];
   const loose: number[] = [];
+  const shared: PageReading["shared"] = [];
   const conversions: PageReading["conversions"] = [];
   const rates: Record<string, string> = {};
+  const inverse: Record<string, string> = {};
   const rated = new Set<Token>();
   let unsure: string | undefined;
   for (const [i, token] of tokens.entries()) {
+    // The number of a rate ("1 USD = 3.468,14 COP", "1 COP = 0,00029 USD") is no amount.
+    if (rated.has(token)) continue;
+    const next = tokens.slice(i + 1).find((n) => n.kind !== "plain");
+    const unit = next !== undefined && /^ ?= ?$/.test(t.slice(token.to, next.from));
     if (token.kind === "target") {
       const [value, ...more] = token.values;
       if (value === undefined || more.length > 0) {
@@ -673,13 +763,7 @@ function read(text: string, locale: string, currency: string): Omit<PageReading,
         continue;
       }
       // "1 USD = 3.468,14 COP": the unit of a rate, not money.
-      const next = tokens.slice(i + 1).find((n) => n.kind !== "plain");
-      if (
-        value === 10 ** fraction &&
-        /^ ?= ?$/.test(t.slice(token.to, next?.from ?? token.to)) &&
-        next?.kind === "other" &&
-        next.currency
-      ) {
+      if (value === 10 ** fraction && unit && next?.kind === "other" && next.currency) {
         const rate = rateOf(next.number);
         const known = rates[next.currency];
         if (rate === undefined) unsure ??= "a rate not read for sure";
@@ -694,15 +778,30 @@ function read(text: string, locale: string, currency: string): Omit<PageReading,
       if (offer(token, minor.length > 1 && offers.at(-1) === minor.at(-2))) offers.push(value);
       if (token.context === "total") totals.push(value);
     } else if (token.kind === "loose") {
-      if (token.values.length > 0) loose.push(Math.max(...token.values));
+      if (token.values.length > 0) {
+        const value = Math.max(...token.values);
+        loose.push(value);
+        if (token.marks.length > 0 && token.marks.every((m) => /\p{Sc}/u.test(m))) {
+          shared.push({ value, number: token.number, marks: token.marks });
+        }
+      }
       // A number with a separator no locale writes so may still be an amount: count it whole.
       else if (/[.,\u066b]|\d \d\d$/u.test(token.number)) {
         loose.push(ceiling(token.number, fraction));
       }
     } else if (token.kind === "other") {
-      // The number of a rate ("1 USD = 3.468,14 COP") is no amount.
-      if (rated.has(token)) continue;
       const value = units(token.number, token.currency, locale);
+      // "1 COP = 0,00029 USD": PayPal's rate written from the buyer's currency.
+      if (value === "1" && unit && next?.kind === "target" && token.currency) {
+        const rate = rateOf(next.number);
+        const known = inverse[token.currency];
+        if (rate === undefined || Number(rate) === 0) unsure ??= "a rate not read for sure";
+        else if (known !== undefined && Number(known) !== Number(rate)) {
+          unsure ??= "rates that disagree";
+        } else inverse[token.currency] = known ?? rate;
+        rated.add(next);
+        continue;
+      }
       if (value === undefined) {
         unsure ??= "an amount in another currency not read whole";
         continue;
@@ -722,8 +821,10 @@ function read(text: string, locale: string, currency: string): Omit<PageReading,
     offers,
     totals,
     loose,
+    shared,
     conversions,
     rates,
+    inverse,
     ...(unsure ? { unsure } : {}),
   };
 }
@@ -756,8 +857,10 @@ export function readPage(text: string, locales: readonly string[], currency: str
       totals: [],
       offers: [],
       loose: [],
+      shared: [],
       conversions: [],
       rates: {},
+      inverse: {},
       unsure: "no locale",
     };
   }
@@ -770,8 +873,8 @@ export function readPage(text: string, locales: readonly string[], currency: str
     r.totals.join() === reading.totals.join() &&
     r.offers.join() === reading.offers.join() &&
     r.loose.join() === reading.loose.join() &&
-    JSON.stringify([r.conversions, r.rates]) ===
-      JSON.stringify([reading.conversions, reading.rates]);
+    JSON.stringify([r.shared, r.conversions, r.rates, r.inverse]) ===
+      JSON.stringify([reading.shared, reading.conversions, reading.rates, reading.inverse]);
   if (!readings.every(same)) {
     return { locale: first, ...reading, unsure: "its locales read it differently" };
   }
@@ -805,6 +908,9 @@ function wholeOf(minor: number, currency: string): string {
  * shows a conversion and no rate line, rates that disagree, a rate or an amount in a third
  * currency, or another total, is held. The buyer's own balance does not count. Where PayPal's
  * order states the total, the page need not label it in its own currency (`labeled` false).
+ * Where PayPal states its own conversion (`known`), it decides: a rate line the page writes either
+ * way (`1 USD = 3.468,14 COP`, `1 COP = 0,00029 USD`) must agree with it, and an amount under a
+ * sign both currencies write (`$ 10.236`) is read in the buyer's currency, no more than PayPal's.
  */
 export function judge(
   page: PageReading,
@@ -818,19 +924,44 @@ export function judge(
 ): Judgment {
   const no = (reason: string): Judgment => ({ ok: false, reason });
   if (page.unsure !== undefined) return no(page.unsure);
+  const whole = wholeOf(minor, currency);
+  // Where PayPal states its conversion, a sign the buyer's currency shares with this one ($ for COP
+  // and USD) writes the buyer's currency: such an amount is no more than PayPal's conversion.
+  const theirs: number[] = [];
+  if (known) {
+    for (const a of page.shared) {
+      if (!a.marks.every((m) => writes(page.locale, known.currency, m))) continue;
+      const value = units(a.number, known.currency, page.locale);
+      if (value === undefined) return no("an amount in another currency not read whole");
+      if (exceedsConversion(whole, known.rate, value)) {
+        return no("a larger amount in the buyer's currency");
+      }
+      theirs.push(a.value);
+    }
+  }
+  const loose = without(page.loose, theirs);
   // Where PayPal's order states the charge, the page's balances and credit offers are no charge.
   const payable = labeled ? page.minor : without(page.minor, page.offers);
-  if (Math.max(...payable, ...page.loose) > minor) return no("a larger amount that may be charged");
+  if (Math.max(...payable, ...loose) > minor) return no("a larger amount that may be charged");
   if (page.totals.some((t) => t !== minor)) return no("another total");
   if (known && page.rates[known.currency] !== undefined) {
     if (Number(page.rates[known.currency]) !== Number(known.rate)) {
       return no("a rate line that is not PayPal's rate");
     }
   }
+  if (known && page.inverse[known.currency] !== undefined) {
+    if (!inverseOf(known.rate, page.inverse[known.currency] as string)) {
+      return no("a rate line that is not PayPal's rate");
+    }
+  }
   const rates = known ? { [known.currency]: known.rate, ...page.rates } : page.rates;
-  const codes = Object.keys(rates);
+  const codes = [...new Set([...Object.keys(rates), ...Object.keys(page.inverse)])];
   const charged = page.conversions.filter((c) => !c.aside);
-  if (Object.keys(page.rates).length === 0 && page.conversions.length === 0) {
+  if (
+    Object.keys(page.rates).length === 0 &&
+    Object.keys(page.inverse).length === 0 &&
+    page.conversions.length === 0
+  ) {
     return page.totals.includes(minor) || !labeled ? { ok: true } : no("no total labeled");
   }
   if (!converts) return no("another currency on a store's checkout");
@@ -840,8 +971,9 @@ export function judge(
   if (code === undefined) return no("an amount in another currency with no rate line");
   if (more.length > 0) return no("rates to more than one currency");
   if (charged.some((c) => c.currency !== code)) return no("an amount in a third currency");
-  const rate = rates[code] as string;
-  const whole = wholeOf(minor, currency);
+  const rate = rates[code];
+  // A rate written from the buyer's currency shows too few digits to check a conversion by.
+  if (rate === undefined) return no("an amount in another currency with no rate line");
   const totals = charged.filter((c) => c.total);
   if (totals.length === 0) {
     // PayPal's own conversion needs no label on the page; one the page alone writes does.
@@ -861,6 +993,174 @@ export function judge(
     return no("converted totals that disagree");
   }
   return { ok: true, conversion: { currency: code, rate, buyer, locale: page.locale } };
+}
+
+/**
+ * PayPal's rate for a funding option, stated per unit: 1 unit of the order's currency in the
+ * buyer's (`1 USD = 3446.55 COP`), or with `inverse`, 1 unit of the buyer's in the order's
+ * (`1 COP = 0.000290145 USD`).
+ */
+export interface Quote {
+  currency: string;
+  rate: string;
+  inverse: boolean;
+}
+
+/** A positive fraction `n / d`. */
+type Fraction = readonly [n: bigint, d: bigint];
+/** The values from `lo` to `hi`. */
+type Range = readonly [lo: Fraction, hi: Fraction];
+
+const atMost = (a: Fraction, b: Fraction) => a[0] * b[1] <= b[0] * a[1];
+const times = (a: Fraction, b: Fraction): Fraction => [a[0] * b[0], a[1] * b[1]];
+
+/** Every value a decimal shown with its digits rounds from: `0.00029` is 0.000285 to 0.000295. */
+function shown(decimal: string): Range {
+  const { int, scale } = decimalParts(decimal);
+  const d = 2n * 10n ** BigInt(scale);
+  return [
+    [int === 0n ? 0n : 2n * int - 1n, d],
+    [2n * int + 1n, d],
+  ];
+}
+
+/** `1 / x` for every `x` of a range above zero. */
+const invert = ([lo, hi]: Range): Range => [
+  [hi[1], hi[0]],
+  [lo[1], lo[0]],
+];
+
+const overlap = (a: Range, b: Range) => atMost(a[0], b[1]) && atMost(b[0], a[1]);
+
+/** The units of the buyer's currency per unit of the order's that PayPal's quote may stand for. */
+function quoted(q: Quote): Range | undefined {
+  if (decimalParts(q.rate).int === 0n) return undefined;
+  return q.inverse ? invert(shown(q.rate)) : shown(q.rate);
+}
+
+/**
+ * Whether `buyer` for `merchant` is within `capBps` of a rate PayPal's quote may stand for, up to
+ * the digits it shows: `R·(1 − cap) ≤ buyer / merchant ≤ R·(1 + cap)` for some `R` it rounds from.
+ *
+ * @internal
+ */
+export function withinQuote(merchant: string, buyer: string, q: Quote, capBps: number): boolean {
+  const range = quoted(q);
+  const m = decimalParts(merchant);
+  const b = decimalParts(buyer);
+  if (!range || m.int === 0n) return false;
+  const rate: Fraction = [b.int * 10n ** BigInt(m.scale), m.int * 10n ** BigInt(b.scale)];
+  const cap = BigInt(capBps);
+  return (
+    atMost(times(range[0], [10_000n - cap, 10_000n]), rate) &&
+    atMost(rate, times(range[1], [10_000n + cap, 10_000n]))
+  );
+}
+
+/**
+ * `buyer / merchant` with 10 significant digits, rounded half up: the rate two amounts give.
+ */
+export function rateBetween(merchant: string, buyer: string): string {
+  const m = decimalParts(merchant);
+  const b = decimalParts(buyer);
+  if (m.int === 0n) return "0";
+  const den = m.int * 10n ** BigInt(b.scale);
+  const at = (decimals: number) => b.int * 10n ** BigInt(m.scale + decimals);
+  const digits = (at(20) / den).toString().length;
+  const decimals = Math.min(20, Math.max(0, 30 - digits));
+  const q = ((2n * at(decimals) + den) / (2n * den)).toString().padStart(decimals + 1, "0");
+  const text = decimals ? `${q.slice(0, -decimals)}.${q.slice(-decimals)}` : q;
+  return text.includes(".") ? text.replace(/\.?0+$/, "") : text;
+}
+
+/** Whether a rate line the page writes for `currency`, either way, is PayPal's quote rounded. */
+export function showsQuote(page: PageReading, q: Quote): boolean {
+  const range = quoted(q);
+  if (!range) return false;
+  const forward = page.rates[q.currency];
+  const inverse = page.inverse[q.currency];
+  return (
+    (forward === undefined || overlap(shown(forward), range)) &&
+    (inverse === undefined ||
+      (decimalParts(inverse).int > 0n && overlap(invert(shown(inverse)), range)))
+  );
+}
+
+/**
+ * Whether a PayPal page charges the order's `minor` of `currency`, where PayPal states only its
+ * rate per unit (`q`) and the page alone shows the total converted to the buyer's currency. The
+ * page must show no larger amount that may be charged and no other total; its amounts in the
+ * buyer's currency, under its code or a sign both currencies write (`$ 10.236`), are the converted
+ * total, one value; its rate lines are PayPal's quote rounded; and that total for the order is
+ * within the mandate's spread (`capBps`) of PayPal's quote, as {@link withinQuote} bounds it. The
+ * conversion is recorded at the rate the two amounts give.
+ */
+export function judgeQuoted(
+  page: PageReading,
+  minor: number,
+  currency: string,
+  q: Quote,
+  capBps: number,
+): Judgment {
+  const no = (reason: string): Judgment => ({ ok: false, reason });
+  if (page.unsure !== undefined) return no(page.unsure);
+  if (minor < 10 ** minorDigits(currency)) return no("a total under one unit next to a rate");
+  const paid: string[] = [];
+  const theirs: number[] = [];
+  for (const a of page.shared) {
+    if (!a.marks.every((m) => writes(page.locale, q.currency, m))) continue;
+    const value = units(a.number, q.currency, page.locale);
+    if (value === undefined) return no("an amount in another currency not read whole");
+    paid.push(value);
+    theirs.push(a.value);
+  }
+  const payable = without(page.minor, page.offers);
+  if (Math.max(...payable, ...without(page.loose, theirs)) > minor) {
+    return no("a larger amount that may be charged");
+  }
+  if (page.totals.some((t) => t !== minor)) return no("another total");
+  const charged = page.conversions.filter((c) => !c.aside);
+  if (charged.some((c) => c.currency !== q.currency)) return no("an amount in a third currency");
+  if ([...Object.keys(page.rates), ...Object.keys(page.inverse)].some((c) => c !== q.currency)) {
+    return no("rates to more than one currency");
+  }
+  if (!showsQuote(page, q)) return no("a rate line that is not PayPal's rate");
+  paid.push(...charged.map((c) => c.units));
+  const [buyer, ...rest] = paid;
+  if (buyer === undefined) return no("no converted total shown");
+  if (rest.some((v) => Number(v) !== Number(buyer))) return no("converted totals that disagree");
+  const merchant = wholeOf(minor, currency);
+  if (!withinQuote(merchant, buyer, q, capBps)) {
+    return no("a converted total off PayPal's rate by more than the mandate's spread");
+  }
+  return {
+    ok: true,
+    conversion: {
+      currency: q.currency,
+      rate: rateBetween(merchant, buyer),
+      buyer,
+      locale: page.locale,
+    },
+  };
+}
+
+/** Whether `locale` writes `currency` with the sign `mark`. */
+function writes(locale: string, currency: string, mark: string): boolean {
+  const s = shape(locale, currency);
+  return s.narrow === mark || s.marks.includes(mark) || s.signs.includes(mark);
+}
+
+/**
+ * Whether `inverse`, a rate from the buyer's currency as a page shows it (`0.00029`), is `1 / rate`
+ * up to its last digit and the 0.5 in 1,000 a rate's rounding is allowed:
+ * `|1 − rate × inverse| ≤ rate × 10^−s / 2 + 1 / 2000`, `s` the decimals the page shows.
+ */
+export function inverseOf(rate: string, inverse: string): boolean {
+  const r = decimalParts(rate);
+  const x = decimalParts(inverse);
+  const one = 10n ** BigInt(r.scale + x.scale);
+  const gap = one - r.int * x.int;
+  return 2000n * (gap < 0n ? -gap : gap) <= 1000n * r.int + one;
 }
 
 /** `all` less one of each of `some`. */
