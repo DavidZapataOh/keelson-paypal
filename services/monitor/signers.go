@@ -233,9 +233,16 @@ func (f *follower) checkSigners(ctx context.Context, cur OriginState) (SignerChe
 			if alibilog.IsStop(leaf) {
 				continue
 			}
-			l, err := alibilog.Parse(leaf)
+			l, err := alibilog.ParseAny(leaf)
 			if err != nil {
 				// Already a leaf.format finding.
+				continue
+			}
+			if l.Version == 2 && (l.ChainID != f.o.Chain.ChainID || l.VerifyingContract != f.o.Chain.VerdictVerifier) {
+				if len(findings) < maxFindings {
+					findings = append(findings, Finding{Kind: "leaf.tee_signer", Index: &index,
+						Detail: fmt.Sprintf("signed for verifier %x on chain %d", l.VerifyingContract, l.ChainID)})
+				}
 				continue
 			}
 			if l.IssuedAt.Before(f.o.Chain.FromTime) {
