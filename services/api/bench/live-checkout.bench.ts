@@ -26,7 +26,7 @@ import { startRecorder } from "@keelson/evidence/capture";
 import { maxSpreadBps, parseMandate } from "@keelson/mandate";
 import { demoOperator } from "../test/pipeline-live.ts";
 import { SoftwarePasskey, signedMandate } from "../test/tee-live.ts";
-import { type Hold, openHold, signIn } from "./public-client.ts";
+import { type Hold, openHold, revokeMandate, signIn } from "./public-client.ts";
 
 // The shopping agent at a real store, with real money, under a fresh mandate for one digital
 // copy of the live item from Alfred Music (at most $5). The buyer's PayPal session is the KERNEL
@@ -348,7 +348,6 @@ try {
 } finally {
   // As every run does: the mandate's sandbox hold is released.
   if (held) {
-    const revoked = await user.post(`/v1/mandates/${held.mid}/revoke`);
-    if (revoked.status >= 300) console.error(`mandate ${held.mid} not revoked: ${revoked.status}`);
+    await revokeMandate(user, held.mid).catch((err: unknown) => console.error(String(err)));
   }
 }
