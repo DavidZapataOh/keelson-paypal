@@ -17,6 +17,8 @@ const BATCH = 100;
 /**
  * Whether the engine proof is complete evidence against a verdict, as `EngineProofCourt.covers`
  * decides: a field rule naming a field only the evaluation decides.
+ *
+ * @internal
  */
 export function contestable(v: { ruleId: number; fieldId: number }): boolean {
   return FIELD_RULES.has(v.ruleId) && !OBSERVED_FIELDS.has(v.fieldId);
