@@ -440,7 +440,7 @@ describe("signing and going live", () => {
         ? { ...(await viewIn(id, revoked ? "REVOKED" : "ACTIVE")), status: { ...status, revoked } }
         : undefined,
     );
-    await page.getByText("Active", { exact: true }).waitFor();
+    await page.locator('[data-status-list="valid"]').getByText("Active").waitFor();
     revoked = true;
     await page.reload();
     await page.getByText("Revoked · listed publicly").waitFor();
