@@ -34,6 +34,9 @@ export class ExportRefused extends Error {
     | "no_merchant_origin"
     | "no_http_key"
     | "no_agent_key"
+    | "no_payee"
+    | "unsupported_currency"
+    | "not_a_purchase"
     | "signer_unavailable";
 
   constructor(reason: ExportRefused["reason"]) {

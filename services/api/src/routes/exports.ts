@@ -4,6 +4,7 @@ import {
   type AlibiBundle,
   type AlibiBundleV2,
   encodeAny,
+  registeredOf,
 } from "@keelson/alibi";
 import {
   BindingError,
@@ -19,6 +20,7 @@ import {
   refOf,
 } from "@keelson/interop";
 import { renderEvidencePackPdf } from "@keelson/interop/visa-pdf";
+import { parseStatementLeaf } from "@keelson/log";
 import type { Context } from "hono";
 import { calculateJwkThumbprint, type JWK } from "jose";
 import { loadAlibi, publicCopy } from "../alibi/issue.ts";
@@ -63,6 +65,15 @@ const exportRoute = createRoute({
 
 const isV2 = (b: AlibiBundle | AlibiBundleV2): b is AlibiBundleV2 => b.type === ALIBI_MEDIA_TYPE_V2;
 
+/** Whether a v2 Alibi's statement is a purchase's, the only kind an export states. */
+function isPurchase(b: AlibiBundleV2): boolean {
+  try {
+    return parseStatementLeaf(registeredOf(b)).kind === "purchase";
+  } catch {
+    return false;
+  }
+}
+
 /** Serves Alibi exports and the keys that verify them. */
 export function registerExports(app: OpenAPIHono, deps: Deps): void {
   const refused = (c: Context, reason: string, status: 409 | 503 = 409) =>
@@ -79,6 +90,7 @@ export function registerExports(app: OpenAPIHono, deps: Deps): void {
     const { id, format } = c.req.param() as { id: string; format: (typeof FORMATS)[number] };
     if (!FORMATS.includes(format)) return problem(c, 404, "not-found", "Not found");
     const stored = await loadAlibi(deps.db, id);
+    if (stored && isV2(stored) && !isPurchase(stored)) return refused(c, "not_a_purchase");
     const level = stored && (await access(deps, c.get("principal"), stored));
     if (!stored || !level)
       return problem(c, 404, "alibi-not-found", "Not found", "No alibi with this id.");
@@ -88,10 +100,10 @@ export function registerExports(app: OpenAPIHono, deps: Deps): void {
     const issuer = await issuerOf(deps);
     if (!issuer) return refused(c, "signer_unavailable", 503);
     const served = level === "full" ? stored : publicCopy(stored);
-    const f = purchaseFacts(served);
-    const keys = exportKeysFor(level, deps, issuer, f);
     const base = format === "visa.pdf" ? "visa" : format;
     try {
+      const f = purchaseFacts(served);
+      const keys = exportKeysFor(level, deps, issuer, f);
       const x = await exportOne(base as Format, f, refOf(v2), keys, {
         now: Math.floor(Date.now() / 1000),
         bundle: served,

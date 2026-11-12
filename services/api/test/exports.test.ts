@@ -9,6 +9,8 @@ import { ulid } from "ulid";
 import { beforeAll, describe, expect, test } from "vitest";
 import { fixtures } from "../../../packages/alibi/test/fixtures.ts";
 import { receiptKeys, v2Bundle } from "../../../packages/alibi/test/v2.ts";
+import { ALLOW_PAYPAL } from "../../../packages/interop/test/fixtures.ts";
+import { v2Of } from "../../../packages/interop/test/v2.ts";
 import { createApp } from "../src/app.ts";
 import { channel3Mandate } from "./channel3.ts";
 import { testDb, testKv } from "./setup.ts";
@@ -99,6 +101,20 @@ describe("Alibi exports", () => {
     const res = await app.request(`/v1/alibis/${v1Id}/exports/ap2`, { headers: owner });
     expect(res.status).toBe(409);
     expect(await res.json()).toMatchObject({ reason: "v1_alibi" });
+  });
+
+  test("an Alibi whose statement is not a purchase is refused with its reason", async () => {
+    const cardAuth = v2Of(ALLOW_PAYPAL, "card-auth-approve");
+    const oddId = ulid();
+    const owner = await purchase(oddId);
+    await testDb.insert(alibis).values({
+      purchaseId: oddId,
+      leafHash: randomBytes(32),
+      bundle: { ...cardAuth, alibi_id: oddId },
+    });
+    const res = await app.request(`/v1/alibis/${oddId}/exports/ap2`, { headers: owner });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toMatchObject({ reason: "not_a_purchase" });
   });
 
   test("without the enclave issuer nothing is signed", async () => {

@@ -37,6 +37,10 @@ export async function exportOne(
   k: ExportKeys,
   o: { now: number; bundle: { cart?: unknown; mandate?: unknown }; shipping?: string },
 ): Promise<unknown> {
+  // These formats name who is paid; an unknown payee is never stated as an empty one.
+  if (!f.payee && (format === "ap2" || format === "vi" || format === "ucp" || format === "acp")) {
+    throw new ExportRefused("no_payee");
+  }
   switch (format) {
     case "ap2":
       return exportAp2(f, ref, k, o);

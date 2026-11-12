@@ -2,6 +2,7 @@ import { exportJWK, generateKeyPair, SignJWT } from "jose";
 import { describe, expect, test } from "vitest";
 import { type AcpExport, exportAcp, verifyAcp } from "../src/acp.ts";
 import { type Ap2Export, closeAp2, exportAp2, verifyAp2 } from "../src/ap2.ts";
+import { exportOne } from "../src/export.ts";
 import { purchaseFacts, statementFacts } from "../src/facts.ts";
 import { jwtPayload, sdHash } from "../src/jose.ts";
 import { ed25519Signer, exportTap, signAgentRequest, type TapExport } from "../src/tap.ts";
@@ -19,7 +20,7 @@ import {
   testAgent,
   testIssuer,
 } from "./fixtures.ts";
-import { RECEIPT_KEYS, v2Ref } from "./v2.ts";
+import { RECEIPT_KEYS, v2Of, v2Ref } from "./v2.ts";
 
 const ref = v2Ref("allow-2of2");
 const failedOf = (r: { checks: { id: string; ok: boolean }[] }) =>
@@ -221,4 +222,38 @@ test("a malformed export is a failed report, not a crash", async () => {
     { now: NOW, issuerKeys: [], receiptKeys: RECEIPT_KEYS },
   );
   expect(r.ok).toBe(false);
+});
+
+describe("purchases a format cannot state are refused with a reason", () => {
+  test("an unknown currency", () => {
+    const b = alibi(ALLOW_PAYPAL);
+    const odd = { ...b, tee: { ...b.tee, countersign: { ...b.tee.countersign, currency: "999" } } };
+    expect(() => purchaseFacts(odd)).toThrow(
+      expect.objectContaining({ reason: "unsupported_currency" }),
+    );
+  });
+
+  test("a v2 Alibi whose statement is not a purchase", () => {
+    expect(() => purchaseFacts(v2Of(ALLOW_PAYPAL, "card-auth-approve"))).toThrow(
+      expect.objectContaining({ reason: "not_a_purchase" }),
+    );
+  });
+
+  test.each(["ap2", "vi", "ucp", "acp"] as const)("%s without a known payee", async (format) => {
+    const f = { ...purchaseFacts(alibi(ALLOW_CARD)), payee: "" };
+    const agent = await testAgent();
+    const issuer = await testIssuer(ALLOW_CARD);
+    await expect(
+      exportOne(
+        format,
+        { ...f, mandate: factsFor(ALLOW_CARD, agent).mandate },
+        refFor(ALLOW_CARD),
+        { issuer, agent },
+        {
+          now: NOW,
+          bundle: alibi(ALLOW_CARD),
+        },
+      ),
+    ).rejects.toMatchObject({ reason: "no_payee" });
+  });
 });

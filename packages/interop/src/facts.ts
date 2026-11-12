@@ -7,6 +7,7 @@ import {
 import { type Cart, CURRENCIES, type CurrencyCode, fromPayPalAmount } from "@keelson/core";
 import { parseStatementLeaf, ulidOfRequestId } from "@keelson/log";
 import { type Disclosed, decodeDisclosed, type Mandate, type UserAuth } from "@keelson/mandate";
+import { ExportRefused } from "./signer.ts";
 
 /** One purchased line, in minor units of the purchase currency. */
 export interface Line {
@@ -102,7 +103,7 @@ function alphaOf(numeric: string): string {
   const code = (Object.keys(CURRENCIES) as CurrencyCode[]).find(
     (c) => String(CURRENCIES[c].numeric) === numeric,
   );
-  if (!code) throw new RangeError(`unknown ISO 4217 numeric currency ${numeric}`);
+  if (!code) throw new ExportRefused("unsupported_currency");
   return code;
 }
 
@@ -143,7 +144,7 @@ function countersignOf(b: AlibiBundle | AlibiBundleV2) {
     return { cs: v1.tee.countersign, chainId: v1.tee.domain.chain_id, version: 1 as const };
   }
   const parsed = parseStatementLeaf(registeredOf(b as AlibiBundleV2));
-  if (parsed.kind !== "purchase") throw new RangeError("not a purchase statement");
+  if (parsed.kind !== "purchase") throw new ExportRefused("not_a_purchase");
   const c = parsed.claims.countersign;
   const cs = Object.fromEntries(
     Object.entries(c).map(([k, v]) => [k, typeof v === "string" ? v.toLowerCase() : String(v)]),
@@ -234,7 +235,7 @@ export function purchaseFacts(b: AlibiBundle | AlibiBundleV2): PurchaseFacts {
 /** The facts the issuer binds an export to. */
 export function statementFacts(f: PurchaseFacts): StatementFacts {
   const numeric = CURRENCIES[f.currency as CurrencyCode]?.numeric;
-  if (numeric === undefined) throw new RangeError(`unsupported currency ${f.currency}`);
+  if (numeric === undefined) throw new ExportRefused("unsupported_currency");
   return {
     request_id: ulidOfRequestId(f.requestId),
     mandate_hash: f.mandateHash,
