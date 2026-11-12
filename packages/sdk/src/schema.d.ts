@@ -271,7 +271,7 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * An alibi as a PDF/A-3b
+     * An Alibi as a PDF/A-3b
      * @description A one-page PDF/A-3b summary of the Alibi with a QR to its verify page and the bundle embedded as `<id>.alibi`. Same readers, and the same public copy, as the bundle.
      */
     get: operations["getAlibiPdf"];
@@ -291,7 +291,7 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * An alibi bundle
+     * An Alibi bundle
      * @description The purchase's Alibi: its RFC 8785 bundle, readable by the mandate's user or, with `alibis:read`, by the client that uploaded the purchase's evidence; the Alibi of a live purchase, once its PayPal transaction is recorded, by anyone. Anyone else gets its public copy, whose mandate withholds the user's login id and risk data: their salted digests stay in the signed payload, so the copy verifies the same. It grows as timestamps, the capture and the on-chain anchor arrive; earlier sections never change.
      */
     get: operations["getAlibi"];
@@ -313,7 +313,7 @@ export interface paths {
     get?: never;
     put?: never;
     /**
-     * Verify an alibi
+     * Verify an Alibi
      * @description Runs the browser verifier's algorithm on an Alibi bundle against the pinned trust roots and a public Arbitrum RPC. No authentication; the bundle is not stored.
      */
     post: operations["verifyAlibi"];
@@ -331,7 +331,7 @@ export interface paths {
       cookie?: never;
     };
     /**
-     * The public receipt of an alibi
+     * The public receipt of an Alibi
      * @description What the public log already publishes about an Alibi: its leaf, inclusion proof, anchor and timestamps. No authentication.
      */
     get: operations["getAlibiReceipt"];
@@ -1945,7 +1945,7 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @description The alibi id: the purchase's ULID. */
+        /** @description The Alibi id: the purchase's ULID. */
         id: string;
       };
       cookie?: never;
@@ -1968,7 +1968,7 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description No alibi with this id that the caller may read */
+      /** @description No Alibi with this id that the caller may read */
       404: {
         headers: {
           [name: string]: unknown;
@@ -1984,7 +1984,7 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @description The alibi id: the purchase's ULID. */
+        /** @description The Alibi id: the purchase's ULID. */
         id: string;
       };
       cookie?: never;
@@ -2007,7 +2007,7 @@ export interface operations {
         };
         content?: never;
       };
-      /** @description No alibi with this id that the caller may read */
+      /** @description No Alibi with this id that the caller may read */
       404: {
         headers: {
           [name: string]: unknown;
@@ -2074,7 +2074,7 @@ export interface operations {
       query?: never;
       header?: never;
       path: {
-        /** @description The alibi id: the purchase's ULID. */
+        /** @description The Alibi id: the purchase's ULID. */
         id: string;
       };
       cookie?: never;
@@ -2090,7 +2090,7 @@ export interface operations {
           "application/json": components["schemas"]["AlibiReceipt"];
         };
       };
-      /** @description No alibi with this id that the caller may read */
+      /** @description No Alibi with this id that the caller may read */
       404: {
         headers: {
           [name: string]: unknown;

@@ -152,7 +152,7 @@ is a subjective wish only the user can judge. Keelson is not insurance; the rule
 
 The clients are written by hand; their types are generated from
 [`openapi/keelson.public.json`](openapi/keelson.public.json), the developer subset of the API, and
-CI fails if they drift. https://app.keelson.finance/developers walks from install to a verified
+CI fails if they drift. `app.keelson.finance/developers` walks from install to a verified
 purchase and ticks each step as your code runs. From this repository:
 
 ```sh

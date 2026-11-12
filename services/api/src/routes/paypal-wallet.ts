@@ -51,6 +51,7 @@ const common = {
 const setup = createRoute({
   method: "post",
   path: "/v1/paypal/wallet/setup-token",
+  operationId: "createPayPalWalletSetupToken",
   tags: ["paypal"],
   summary: "Start saving PayPal",
   description:
@@ -70,6 +71,7 @@ const setup = createRoute({
 const save = createRoute({
   method: "post",
   path: "/v1/paypal/wallet",
+  operationId: "savePayPalWallet",
   tags: ["paypal"],
   summary: "Save PayPal",
   description:
@@ -90,6 +92,7 @@ const save = createRoute({
 const read = createRoute({
   method: "get",
   path: "/v1/paypal/wallet",
+  operationId: "getPayPalWallet",
   tags: ["paypal"],
   summary: "The saved PayPal",
   middleware: [requireSession()],
@@ -103,6 +106,7 @@ const read = createRoute({
 const remove = createRoute({
   method: "delete",
   path: "/v1/paypal/wallet",
+  operationId: "deletePayPalWallet",
   tags: ["paypal"],
   summary: "Remove the saved PayPal",
   description:

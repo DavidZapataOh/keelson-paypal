@@ -527,9 +527,9 @@
       "name": "alibis",
       "item": [
         {
-          "name": "An alibi as a PDF/A-3b",
+          "name": "An Alibi as a PDF/A-3b",
           "request": {
-            "name": "An alibi as a PDF/A-3b",
+            "name": "An Alibi as a PDF/A-3b",
             "description": {
               "content": "A one-page PDF/A-3b summary of the Alibi with a QR to its verify page and the bundle embedded as `<id>.alibi`. Same readers, and the same public copy, as the bundle.",
               "type": "text/plain"
@@ -557,9 +557,9 @@
           "response": []
         },
         {
-          "name": "An alibi bundle",
+          "name": "An Alibi bundle",
           "request": {
-            "name": "An alibi bundle",
+            "name": "An Alibi bundle",
             "description": {
               "content": "The purchase's Alibi: its RFC 8785 bundle, readable by the mandate's user or, with `alibis:read`, by the client that uploaded the purchase's evidence; the Alibi of a live purchase, once its PayPal transaction is recorded, by anyone. Anyone else gets its public copy, whose mandate withholds the user's login id and risk data: their salted digests stay in the signed payload, so the copy verifies the same. It grows as timestamps, the capture and the on-chain anchor arrive; earlier sections never change.",
               "type": "text/plain"
@@ -587,9 +587,9 @@
           "response": []
         },
         {
-          "name": "Verify an alibi",
+          "name": "Verify an Alibi",
           "request": {
-            "name": "Verify an alibi",
+            "name": "Verify an Alibi",
             "description": {
               "content": "Runs the browser verifier's algorithm on an Alibi bundle against the pinned trust roots and a public Arbitrum RPC. No authentication; the bundle is not stored.",
               "type": "text/plain"
@@ -630,9 +630,9 @@
           "response": []
         },
         {
-          "name": "The public receipt of an alibi",
+          "name": "The public receipt of an Alibi",
           "request": {
-            "name": "The public receipt of an alibi",
+            "name": "The public receipt of an Alibi",
             "description": {
               "content": "What the public log already publishes about an Alibi: its leaf, inclusion proof, anchor and timestamps. No authentication.",
               "type": "text/plain"
