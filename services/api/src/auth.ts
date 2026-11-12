@@ -16,6 +16,7 @@ import type { PayPalProfile } from "better-auth/social-providers";
 import { type Hex, verifyMessage } from "viem";
 import { generateSiweNonce } from "viem/siwe";
 import { SETTLEMENT } from "./merchants.ts";
+import { rarExtension } from "./oauth/rar.ts";
 import { ownsLinkedOperator } from "./operators/owners.ts";
 
 /** RFC 8707 resource identifier of this API; the `aud` of every access token it accepts. */
@@ -280,6 +281,7 @@ export function createAuth(
         clientRegistrationDefaultResources: [apiAudience],
         resources: [apiAudience],
         clientPrivileges: ({ user }) => user?.role === "admin",
+        extensions: [rarExtension(db)],
       }),
       // The server fetches a client's metadata document itself, resolving its host once and
       // pinning the address, so the host a consent page shows is proven, not claimed.

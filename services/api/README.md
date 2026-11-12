@@ -546,6 +546,12 @@ that operator's private `cnf` key, `KEELSON_AGENT_KEY`, over the request id and 
 cart in the same request, the cart the TEE legs then countersign. That key signs nothing else, and
 only once every check of the countersign has passed. Without it those countersigns answer `503`.
 
+**Spending in the token (RFC 9396).** The authorization server advertises
+`authorization_details_types_supported: ["keelson_mandate"]`, the type an app asks for spending
+limits with. An access token issued to an app for a user carries, as `authorization_details`, each
+mandate that user approved for it and has not ended, with its id and limits, so a resource reads
+the grant from the token itself.
+
 **Who stands behind an app.** The consent and approval pages show it as `identity`
 (`src/oauth/cimd-trust.ts`): `cimd`, the host of the metadata document the server fetched; `operator`,
 the registered agent that linked the client; or `unverified`, an app that registered itself, whose

@@ -19,6 +19,7 @@ import { buildSdPayload, parseMandate } from "@keelson/mandate";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { betterAuth } from "better-auth";
 import { testUtils } from "better-auth/plugins";
+import { decodeJwt } from "jose";
 import { pino } from "pino";
 import { ulid } from "ulid";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
@@ -531,6 +532,26 @@ test("the consent page shows the hosted operator answering for a host with none,
     .from(agentConnections)
     .where(eq(agentConnections.userCode, userCode));
   expect(row).toMatchObject({ clientId: host, userId: user.id, operatorAgentId: HOSTED });
+});
+
+test("tokens carry the spending the user granted as RFC 9396 authorization_details", async () => {
+  const as = await (await app.request("/.well-known/oauth-authorization-server/api/auth")).json();
+  expect(as.authorization_details_types_supported).toEqual(["keelson_mandate"]);
+  const host = await registerHost();
+  const user = await newUser();
+  const tokens = await grant(host, user);
+  expect(decodeJwt(tokens.access_token).authorization_details).toBeUndefined();
+  const asked = await ask(tokens.access_token);
+  const { request_id } = (await asked.json()) as { request_id: string };
+  const mandateId = await approve(request_id, user.id);
+  const next = (await (await refresh(host, tokens.refresh_token as string)).json()) as Tokens;
+  expect(decodeJwt(next.access_token).authorization_details).toEqual([
+    expect.objectContaining({
+      type: "keelson_mandate",
+      mandate_id: mandateId,
+      limits: expect.objectContaining({ currency: "USD" }),
+    }),
+  ]);
 });
 
 describe("revocation", () => {

@@ -8,18 +8,12 @@ import { HOSTED_CAP_CURRENCY, hostedCapError, hostTier, tierCap } from "../hoste
 import { requireSession } from "../middleware/auth.ts";
 import { notify, requestAlert } from "../notify/notifier.ts";
 import { type ClientIdentity, ClientIdentitySchema, verifiedClient } from "../oauth/cimd-trust.ts";
+import { MANDATE_DETAILS_TYPE } from "../oauth/rar.ts";
 import type { Principal } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
 import { ConnectionRequest, invalidLimits, storeRequest } from "./connections.ts";
 
 const problemContent = { "application/problem+json": { schema: ProblemSchema } };
-
-/**
- * The type of the `authorization_details` entry (in RFC 9396's format, carried as a plain
- * authorization request parameter: it is shown on the consent page, not bound to the token) an MCP
- * client asks for spending limits with.
- */
-const MANDATE_DETAILS_TYPE = "keelson_mandate";
 
 const SignedQuery = z
   .object({
