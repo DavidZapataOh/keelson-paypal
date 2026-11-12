@@ -21,6 +21,7 @@
       "!**/test/snapshots",
       "!engine/tee/measurements.json",
       "!engine/tee/measurements-rotation.json",
+      "!engine/tee/phala/app-compose.json",
       "!engine/tee/zk",
       "!services/api/zk",
       "!**/src/generated",
