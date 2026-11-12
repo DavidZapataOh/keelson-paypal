@@ -1,11 +1,12 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { disputes, eq, purchases } from "@keelson/db";
+import { and, chainEvents, disputes, eq, purchases, sql } from "@keelson/db";
 import { CHAINS, isChainId } from "@keelson/relayer";
 import type { Deps } from "../app.ts";
 import { ProblemSchema, problem } from "../problem.ts";
+import { ENGINE_RESUMES, ENGINE_RUN_MS, REQUEST_CLAIM } from "../zk/engine.ts";
 
-/** The `proveEngine` workflow task's timeout times its two attempts, plus the queue. */
-const PROVING_MS = 7 * 3_600_000;
+/** The first `proveEngine` run's hour, plus the queue, for a proof that was never paid for. */
+const PROVING_MS = 3_600_000;
 
 const Hex32 = z.string().regex(/^0x[0-9a-f]{64}$/);
 
@@ -14,7 +15,7 @@ const EngineProofSchema = z
     purchase_id: z.string(),
     status: z.enum(["proven", "proving", "failed"]).openapi({
       description:
-        "`proving`: the purchase is disputed and its proof is being made. `proven`: the proof is recorded on chain. `failed`: no proof was recorded within the workflow's time, retries included.",
+        "`proving`: the purchase is disputed and its proof is being made. `proven`: the proof is recorded on chain. `failed`: no proof was recorded within the workflow's time and none was paid for; a paid one stays `proving` until it is recorded.",
     }),
     countersign_eval_hash: Hex32.openapi({ description: "The `evalHash` both TEE legs signed." }),
     countersign_digest: Hex32.openapi({ description: "The EIP-712 digest of their countersign." }),
@@ -37,7 +38,7 @@ const EngineProofSchema = z
         proof_bytes: z.number().int(),
         verifier: z.object({ chain_id: z.number().int(), address: z.string() }).openapi({
           description:
-            "The `EngineProofVerifier` that verified the proof through Succinct's SP1 verifier gateway; `verify(public_values, proof)` checks it again in an `eth_call`, `proven(countersign_digest)` returns the recorded `eval_hash`.",
+            "The `EngineProofVerifier` that verified the proof with Succinct's immutable SP1 v6.1.0 Groth16 verifier; `verify(public_values, proof)` checks it again in an `eth_call`, `proven(countersign_digest)` returns the recorded `eval_hash`.",
         }),
         tx: z.string().openapi({ description: "The `EngineProofVerifier.record` transaction." }),
         explorer_url: z.string().nullable(),
@@ -45,6 +46,21 @@ const EngineProofSchema = z
         proven_at: z.iso.datetime(),
       })
       .nullable(),
+    contests: z
+      .array(
+        z.object({
+          dispute_id: Hex32.openapi({ description: "The vault's id of the vetoed slash." }),
+          field_id: z.number().int().openapi({
+            description: "The `failedFieldsMask` bit the slash's verdict blamed.",
+          }),
+          tx: z.string().openapi({ description: "The `EngineProofCourt.contest` transaction." }),
+          explorer_url: z.string().nullable(),
+        }),
+      )
+      .openapi({
+        description:
+          "Queued slashes of this purchase's coverage that `EngineProofCourt` vetoed with this proof: their verdicts blamed a field the proven ALLOW passed.",
+      }),
   })
   .openapi("EngineProof");
 
@@ -55,7 +71,7 @@ const route = createRoute({
   tags: ["purchases"],
   summary: "SP1 proof of a purchase's engine evaluation",
   description:
-    "For a disputed purchase, an SP1 Groth16 proof that the engine's own canonicalizer and Cedar evaluation, run again in the SP1 zkVM over the purchase's stored inputs, give the `evalHash` both TEE legs signed, and the transaction that verified it on chain through Succinct's SP1 verifier gateway. It holds only hashes and the proof, so it needs no authentication.",
+    "For a disputed purchase, an SP1 Groth16 proof that the engine's own canonicalizer and Cedar evaluation, run again in the SP1 zkVM over the purchase's stored inputs, give the `evalHash` both TEE legs signed, and the transaction that verified it on chain with Succinct's immutable SP1 v6.1.0 Groth16 verifier, and the slashes it vetoed. It holds only hashes and the proof, so it needs no authentication.",
   request: { params: z.object({ id: z.string().regex(/^[0-9A-HJKMNP-TV-Z]{26}$/) }) },
   responses: {
     200: {
@@ -79,6 +95,10 @@ export function registerEngineProofs(app: OpenAPIHono, deps: Pick<Deps, "db">): 
         digest: purchases.countersignDigest,
         input: purchases.engineInput,
         proof: purchases.engineProof,
+        proved: purchases.engineProved,
+        request: purchases.engineRequest,
+        attemptedAt: purchases.engineAttemptedAt,
+        resumes: purchases.engineResumes,
         disputeId: disputes.id,
         disputedAt: disputes.createdAt,
       })
@@ -92,9 +112,35 @@ export function registerEngineProofs(app: OpenAPIHono, deps: Pick<Deps, "db">): 
     const evalHash = row.countersign.evalHash as string;
     const digest = `0x${Buffer.from(row.digest).toString("hex")}`;
     const p = row.proof;
+    // A paid request or proof is finished by the engine proof sweep's runs until it gives it up.
+    const running =
+      row.attemptedAt !== null && Date.now() - row.attemptedAt.getTime() < ENGINE_RUN_MS;
+    const resumable =
+      ((row.proved !== null || (row.request !== null && row.request !== REQUEST_CLAIM)) &&
+        (row.resumes < ENGINE_RESUMES || running)) ||
+      // A first run still inside its claim, however late it started.
+      (row.request === REQUEST_CLAIM && running);
     const failed =
-      !p && row.disputedAt !== null && Date.now() - row.disputedAt.getTime() > PROVING_MS;
-    c.header("Cache-Control", p ? "public, max-age=3600" : "no-store");
+      !p &&
+      !resumable &&
+      row.disputedAt !== null &&
+      Date.now() - row.disputedAt.getTime() > PROVING_MS;
+    const contested = p
+      ? await db
+          .select({ txHash: chainEvents.txHash, args: chainEvents.args })
+          .from(chainEvents)
+          .where(
+            and(
+              eq(chainEvents.name, "SlashContested"),
+              sql`${chainEvents.args}->>'countersignDigest' = ${digest}`,
+            ),
+          )
+          .orderBy(chainEvents.blockNumber)
+      : [];
+    const explorer = (chainId: number, tx: string) =>
+      isChainId(chainId) ? `${CHAINS[chainId].explorer}/tx/${tx}` : null;
+    // A contest can come at any time in the coverage's veto window.
+    c.header("Cache-Control", p ? "public, max-age=60" : "no-store");
     return c.json(
       {
         purchase_id: id,
@@ -114,13 +160,21 @@ export function registerEngineProofs(app: OpenAPIHono, deps: Pick<Deps, "db">): 
               proof_bytes: p.proof_bytes,
               verifier: { chain_id: p.chain_id, address: p.verifier },
               tx: p.tx,
-              explorer_url: isChainId(p.chain_id)
-                ? `${CHAINS[p.chain_id].explorer}/tx/${p.tx}`
-                : null,
+              explorer_url: explorer(p.chain_id, p.tx),
               gas_used: p.gas_used,
               proven_at: p.proven_at,
             }
           : null,
+        contests: contested.map((e) => {
+          const args = e.args as { disputeId: string; fieldId: string | number };
+          const tx = `0x${Buffer.from(e.txHash).toString("hex")}`;
+          return {
+            dispute_id: args.disputeId,
+            field_id: Number(args.fieldId),
+            tx,
+            explorer_url: explorer(p?.chain_id ?? 421614, tx),
+          };
+        }),
       },
       200,
     );

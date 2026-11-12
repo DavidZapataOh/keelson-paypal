@@ -28,6 +28,7 @@ fs_permissions = [
   { access = "read", path = "../packages/core/test/vectors" },
   { access = "read", path = "../packages/mandate/test/vectors" },
   { access = "read", path = "../engine/tee/measurements.json" },
+  { access = "read", path = "../engine/tee/tests/vectors" },
   { access = "read", path = "./lib/nitro-validator/out" },
   { access = "read", path = "./out/Ed25519Verifier.sol" },
   { access = "read", path = "./out/MandatePredicateReferenceVerifier.sol" },

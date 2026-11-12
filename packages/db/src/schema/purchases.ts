@@ -163,6 +163,23 @@ export const purchases = pgTable(
      */
     engineProof: jsonb().$type<EngineProof>(),
     /**
+     * A paid and verified engine proof not yet recorded on chain, so that recording it again
+     * never pays for another one.
+     */
+    engineProved: jsonb().$type<EngineProved>(),
+    /**
+     * The Succinct Prover Network request paying for this purchase's engine proof, kept before
+     * waiting for it so that a run that dies while waiting resumes it rather than paying again.
+     */
+    engineRequest: text(),
+    /**
+     * When a run last claimed or resumed this purchase's engine proof; the engine proof sweep
+     * resumes it only once no run can still hold it.
+     */
+    engineAttemptedAt: timestamp({ withTimezone: true }),
+    /** How many runs the engine proof sweep started for this purchase. */
+    engineResumes: integer().notNull().default(0),
+    /**
      * What the operator attested about the item the coverage backs, fixed by the first cover
      * attempt: the product page, the amber fields, the salt and their `amberCommitment`.
      */
@@ -198,6 +215,12 @@ export const purchases = pgTable(
   ],
 );
 
+/** An engine proof as the prover returns it, before it is recorded. */
+export type EngineProved = Omit<
+  EngineProof,
+  "chain_id" | "verifier" | "tx" | "gas_used" | "proven_at"
+>;
+
 /** An SP1 proof of a purchase's engine evaluation, as `purchases.engine_proof` stores it. */
 export interface EngineProof {
   vkey: string;
@@ -209,6 +232,17 @@ export interface EngineProof {
   prove_ms: number;
   proof_bytes: number;
   sp1_version: string;
+  /** The Succinct Prover Network request that proved it; amounts are PROVE wei. */
+  network?: {
+    request_id: string;
+    explorer: string;
+    gas_limit: number | null;
+    gas_used: number | null;
+    cost: string | null;
+    balance: string | null;
+  };
+  /** The prover's peak resident memory while it waited for and verified the proof. */
+  peak_rss_kb?: number;
   chain_id: number;
   verifier: string;
   tx: string;

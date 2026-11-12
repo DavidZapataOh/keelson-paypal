@@ -15,6 +15,7 @@ export const roles = {
   PARAMETERS_ROLE: 2n,
   SIGNERS_ROLE: 3n,
   PUBLISHER_ROLE: 4n,
+  VETO_ROLE: 5n,
 } as const;
 
 /**

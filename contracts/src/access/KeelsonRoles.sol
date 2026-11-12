@@ -14,6 +14,8 @@ library KeelsonRoles {
     uint64 internal constant SIGNERS_ROLE = 3;
     /// @notice Keelson's relayer, no delay: publishes registered-user roots to `RegisteredUserSet`, nothing else.
     uint64 internal constant PUBLISHER_ROLE = 4;
+    /// @notice No delay: vetoes a queued slash, nothing else. Held by the Guardian Safe and the `EngineProofCourt`.
+    uint64 internal constant VETO_ROLE = 5;
     /// @notice OpenZeppelin `AccessManager.PUBLIC_ROLE`.
     uint64 internal constant PUBLIC_ROLE = type(uint64).max;
 }

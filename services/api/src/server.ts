@@ -21,6 +21,7 @@ import { newestAlibi, warmAlibiVerifier } from "./alibi/warm.ts";
 import { createApp } from "./app.ts";
 import { createAuth } from "./auth.ts";
 import { projectAmberConvictions } from "./chain/amber-court.ts";
+import { contestQueuedSlashes } from "./chain/engine-court.ts";
 import { followChainEvents, isFinal, wssUrl } from "./chain/events.ts";
 import {
   arbitrumSepoliaLogsTransport,
@@ -49,7 +50,12 @@ import { appEmbedPage } from "./routes/embed-page.ts";
 import { legIssuer } from "./routes/exports.ts";
 import { timings } from "./server-timing.ts";
 import { closeServer } from "./shutdown.ts";
-import { startPipelineResumer, startPurchaseSweeper, startSettlementSweeper } from "./sweeper.ts";
+import {
+  startEngineProofSweeper,
+  startPipelineResumer,
+  startPurchaseSweeper,
+  startSettlementSweeper,
+} from "./sweeper.ts";
 import { createTee } from "./tee/config.ts";
 import { engineSource } from "./tee/engine-source.ts";
 import { startSignerRefresh } from "./tee/signers.ts";
@@ -365,6 +371,22 @@ const stopSettlements = relayer
     })
   : undefined;
 
+const stopEngineProofs =
+  render && env.DISPUTE_WORKFLOW
+    ? startEngineProofSweeper({
+        db,
+        log,
+        async start(purchaseId, key) {
+          const run = await render.workflows.startTask(
+            `${env.DISPUTE_WORKFLOW}/proveEngine`,
+            [purchaseId],
+            { idempotencyKey: key },
+          );
+          log.info({ purchaseId, taskRunId: run.taskRunId }, "engine proof resumed");
+        },
+      })
+    : undefined;
+
 const anchorDeps =
   env.LOG_URL && env.LOG_WRITE_TOKEN
     ? {
@@ -384,6 +406,9 @@ const chainEvents = followChainEvents({
     if (sweeperDeps) await recordOutcomes(sweeperDeps);
     if (anchorDeps) await anchorCovered(anchorDeps);
     await projectAmberConvictions({ db, log, client: chains[arbitrumSepolia.id].client });
+    if (relayer) {
+      await contestQueuedSlashes({ db, log, relayer, client: chains[arbitrumSepolia.id].client });
+    }
   },
 });
 
@@ -402,6 +427,7 @@ process.once("SIGTERM", () => {
   stopRefresh?.();
   stopSweeper?.();
   stopSettlements?.();
+  stopEngineProofs?.();
   stopResumer();
   stopHolds();
   stopUnfunded?.();

@@ -38,6 +38,11 @@ test("of RegisteredUserSet only publishing a root is relayable, never revoking o
   expect(isAllowed("RegisteredUserSet", "revoke")).toBe(false);
 });
 
+test("of EngineProofCourt only contesting a slash is relayable", () => {
+  expect(isAllowed("EngineProofCourt", "contest")).toBe(true);
+  expect(isAllowed("EngineProofCourt", "vault")).toBe(false);
+});
+
 test("of EngineProofVerifier only recording a proof is relayable", () => {
   expect(isAllowed("EngineProofVerifier", "record")).toBe(true);
   expect(isAllowed("EngineProofVerifier", "verify")).toBe(false);

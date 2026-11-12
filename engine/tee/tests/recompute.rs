@@ -5,12 +5,21 @@ mod common;
 
 use std::path::Path;
 
-use alloy_primitives::{Address, B256};
+use alloy_primitives::{Address, B256, U256, address};
+use keelson_core::eip712::Countersign;
+use keelson_mandate::h_sd;
 use keelson_policy::{CountersignInput, recompute};
 use keelson_tee::wire::{CountersignRequest, Countersigned};
 use serde_json::{Value, json};
 
 use common::*;
+
+/// The demo agent registered in the ERC-8004 Identity registry on Arbitrum Sepolia.
+const DEMO_AGENT_ID: &str = "351";
+/// The `VerdictVerifier` whose domain the legs sign under on Arbitrum Sepolia.
+const VERDICT_VERIFIER: Address = address!("0xe16E8767EC1DA59Ef0D9Bc7851637E4D22352d96");
+/// Unix seconds: an hour after the block the contract tests fork Arbitrum Sepolia at.
+const COUNTERSIGNED_AT: i64 = 1_794_140_000;
 
 fn input_of(r: &CountersignRequest, out: &Countersigned) -> CountersignInput {
     let reg = register_request();
@@ -57,19 +66,53 @@ fn countersigned(f: &CartFixture, n: u128) -> (CountersignRequest, Countersigned
 fn recomputes_an_allow() {
     let (r, out) = countersigned(&CartFixture::demo(), 1);
     assert_eq!(out.countersign.decision, "1");
-    let input = assert_recomputed(&r, &out);
+    let mut input = assert_recomputed(&r, &out);
 
+    // The vector is this ALLOW for the demo agent under the Arbitrum Sepolia `VerdictVerifier`'s domain, so a fork of
+    // the chain can lock a coverage with it and dispute that coverage with its proof.
+    input.payload_sd["agent"]["operator"]["agent_id"] = json!(DEMO_AGENT_ID);
+    input.verifying_contract = VERDICT_VERIFIER;
+    // Countersigned after the block the contract tests fork Arbitrum Sepolia at, inside the mandate's validity.
+    input.now_ms = COUNTERSIGNED_AT * 1000;
+    input.expires_at = COUNTERSIGNED_AT as u64 + 900;
+    let got = recompute(&input).unwrap();
+    assert_eq!(got.countersign.decision, 1);
+    assert_eq!(got.countersign.agentId, U256::from(351));
     let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/vectors/countersign-allow.json");
     let vector = json!({
         "input": input,
-        "eval_hash": out.countersign.eval_hash.to_string(),
-        "digest": out.digest.to_string(),
+        "eval_hash": got.countersign.evalHash.to_string(),
+        "digest": B256::new(got.digest).to_string(),
+        "h_sd": B256::new(h_sd(&input.payload_sd).unwrap()).to_string(),
+        "countersign": countersign_json(&got.countersign),
     });
     if std::env::var_os("KEELSON_WRITE_VECTORS").is_some() {
         std::fs::write(&path, serde_json::to_string_pretty(&vector).unwrap() + "\n").unwrap();
     }
     let stored: Value = serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
     assert_eq!(stored, vector);
+}
+
+/// The countersign as the contract vectors write it: every field a string.
+fn countersign_json(c: &Countersign) -> Value {
+    json!({
+        "requestId": c.requestId.to_string(),
+        "mandateHash": c.mandateHash.to_string(),
+        "mandateCommitment": c.mandateCommitment.to_string(),
+        "cartHash": c.cartHash.to_string(),
+        "agentId": c.agentId.to_string(),
+        "merchantId": c.merchantId.to_string(),
+        "amount": c.amount.to_string(),
+        "currency": c.currency.to_string(),
+        "category": c.category.to_string(),
+        "evidenceRoot": c.evidenceRoot.to_string(),
+        "evalHash": c.evalHash.to_string(),
+        "policySetHash": c.policySetHash.to_string(),
+        "decision": c.decision.to_string(),
+        "failedFieldsMask": c.failedFieldsMask.to_string(),
+        "issuedAt": c.issuedAt.to_string(),
+        "expiresAt": c.expiresAt.to_string(),
+    })
 }
 
 #[test]

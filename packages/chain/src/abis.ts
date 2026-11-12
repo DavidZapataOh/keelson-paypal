@@ -881,6 +881,133 @@ export const ed25519VerifierAbi = [
   },
 ] as const;
 
+export const engineProofCourtAbi = [
+  {
+    type: "constructor",
+    inputs: [
+      { name: "vault_", type: "address", internalType: "contract IKeelsonBondVault" },
+      { name: "teeVerifier_", type: "address", internalType: "contract IVerdictVerifier" },
+      {
+        name: "validations_",
+        type: "address",
+        internalType: "contract IKeelsonValidationRegistry",
+      },
+      { name: "engineProofs_", type: "address", internalType: "contract EngineProofVerifier" },
+    ],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "AMOUNT_FIELD",
+    inputs: [],
+    outputs: [{ name: "", type: "uint8", internalType: "uint8" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "FIRST_FIELD_RULE",
+    inputs: [],
+    outputs: [{ name: "", type: "uint8", internalType: "uint8" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "LAST_FIELD_RULE",
+    inputs: [],
+    outputs: [{ name: "", type: "uint8", internalType: "uint8" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "VARIANT_FIELD",
+    inputs: [],
+    outputs: [{ name: "", type: "uint8", internalType: "uint8" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "contest",
+    inputs: [
+      {
+        name: "v",
+        type: "tuple",
+        internalType: "struct KeelsonTypes.Verdict",
+        components: [
+          { name: "disputeId", type: "bytes32", internalType: "bytes32" },
+          { name: "coverageId", type: "bytes32", internalType: "bytes32" },
+          { name: "agentId", type: "uint256", internalType: "uint256" },
+          { name: "payee", type: "address", internalType: "address" },
+          { name: "amount", type: "uint96", internalType: "uint96" },
+          { name: "ruleId", type: "uint8", internalType: "uint8" },
+          { name: "liable", type: "uint8", internalType: "uint8" },
+          { name: "fieldId", type: "uint8", internalType: "uint8" },
+          { name: "evidenceHash", type: "bytes32", internalType: "bytes32" },
+          { name: "inputsHash", type: "bytes32", internalType: "bytes32" },
+          { name: "policySetHash", type: "bytes32", internalType: "bytes32" },
+          { name: "checkpointRoot", type: "bytes32", internalType: "bytes32" },
+          { name: "issuedAt", type: "uint40", internalType: "uint40" },
+          { name: "deadline", type: "uint40", internalType: "uint40" },
+        ],
+      },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
+  {
+    type: "function",
+    name: "covers",
+    inputs: [
+      { name: "ruleId", type: "uint8", internalType: "uint8" },
+      { name: "fieldId", type: "uint8", internalType: "uint8" },
+    ],
+    outputs: [{ name: "", type: "bool", internalType: "bool" }],
+    stateMutability: "pure",
+  },
+  {
+    type: "function",
+    name: "engineProofs",
+    inputs: [],
+    outputs: [{ name: "", type: "address", internalType: "contract EngineProofVerifier" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "teeVerifier",
+    inputs: [],
+    outputs: [{ name: "", type: "address", internalType: "contract IVerdictVerifier" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "validations",
+    inputs: [],
+    outputs: [{ name: "", type: "address", internalType: "contract IKeelsonValidationRegistry" }],
+    stateMutability: "view",
+  },
+  {
+    type: "function",
+    name: "vault",
+    inputs: [],
+    outputs: [{ name: "", type: "address", internalType: "contract IKeelsonBondVault" }],
+    stateMutability: "view",
+  },
+  {
+    type: "event",
+    name: "SlashContested",
+    inputs: [
+      { name: "disputeId", type: "bytes32", indexed: true, internalType: "bytes32" },
+      { name: "countersignDigest", type: "bytes32", indexed: true, internalType: "bytes32" },
+      { name: "fieldId", type: "uint8", indexed: false, internalType: "uint8" },
+    ],
+    anonymous: false,
+  },
+  { type: "error", name: "NoCountersign", inputs: [] },
+  { type: "error", name: "NotAnEvaluationFault", inputs: [] },
+  { type: "error", name: "NotContestable", inputs: [] },
+  { type: "error", name: "NotProven", inputs: [] },
+  { type: "error", name: "VerdictMismatch", inputs: [] },
+] as const;
+
 export const engineProofVerifierAbi = [
   {
     type: "constructor",

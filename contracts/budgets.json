@@ -43,5 +43,6 @@
   "userSet_verify": 760000,
   "logBond_proveEquivocation": 2150000,
   "engine_verify": 230000,
-  "engine_record_tx": 285000
+  "engine_record_tx": 285000,
+  "engine_contest": 150000
 }

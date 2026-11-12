@@ -49,7 +49,14 @@ contract RolesLiveTest is ForkTest {
         _assertRole(manager, vault, KeelsonBondVault.setRateLimit.selector, KeelsonRoles.PARAMETERS_ROLE, chain);
         _assertRole(manager, vault, KeelsonBondVault.pause.selector, KeelsonRoles.GUARDIAN_ROLE, chain);
         _assertRole(manager, vault, KeelsonBondVault.unpause.selector, KeelsonRoles.GUARDIAN_ROLE, chain);
-        _assertRole(manager, vault, KeelsonBondVault.vetoSlash.selector, KeelsonRoles.GUARDIAN_ROLE, chain);
+        // Where an `EngineProofCourt` is deployed, the veto moves to its own role, which the Guardian keeps.
+        if (vm.keyExistsJson(json, ".contracts.EngineProofCourt")) {
+            _assertRole(manager, vault, KeelsonBondVault.vetoSlash.selector, KeelsonRoles.VETO_ROLE, chain);
+            _assertMember(manager, KeelsonRoles.VETO_ROLE, guardian, 0, chain);
+            _assertMember(manager, KeelsonRoles.VETO_ROLE, json.readAddress(".contracts.EngineProofCourt"), 0, chain);
+        } else {
+            _assertRole(manager, vault, KeelsonBondVault.vetoSlash.selector, KeelsonRoles.GUARDIAN_ROLE, chain);
+        }
         _assertRole(manager, reserve, KeelsonReserve.setCooldown.selector, KeelsonRoles.PARAMETERS_ROLE, chain);
         _assertRole(manager, reserve, KeelsonReserve.setRateLimit.selector, KeelsonRoles.PARAMETERS_ROLE, chain);
 

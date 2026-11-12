@@ -4,6 +4,7 @@ import { resumeSettlements, type SettleDeps } from "./disputes/settle.ts";
 import { closeExpiredCards, collectForcePosted } from "./pipeline/card-step.ts";
 import { logDenials, type PipelineDeps, resumePurchases } from "./pipeline/drive.ts";
 import { finishStops } from "./stop.ts";
+import { sweepEngineProofs } from "./zk/engine.ts";
 
 /** A countersign that has not finished by now was lost with its process; the request timeout is 30 s. */
 const STALE_AFTER_MS = 120_000;
@@ -99,6 +100,29 @@ export function startSettlementSweeper(deps: SettleDeps): () => void {
         running = false;
       });
   }, SETTLE_INTERVAL_MS);
+  timer.unref();
+  return () => clearInterval(timer);
+}
+
+const ENGINE_SWEEP_INTERVAL_MS = 5 * 60_000;
+
+/** Every five minutes, starts again the engine proofs paid for by a run that ended unrecorded. */
+export function startEngineProofSweeper(deps: Parameters<typeof sweepEngineProofs>[0]): () => void {
+  let running = false;
+  const timer = setInterval(() => {
+    if (running) return;
+    running = true;
+    void sweepEngineProofs(deps)
+      .then(
+        ({ resumed }) => {
+          if (resumed.length > 0) deps.log.info({ resumed }, "engine proofs resumed");
+        },
+        (err: unknown) => deps.log.error({ err }, "engine proof sweep failed"),
+      )
+      .finally(() => {
+        running = false;
+      });
+  }, ENGINE_SWEEP_INTERVAL_MS);
   timer.unref();
   return () => clearInterval(timer);
 }
