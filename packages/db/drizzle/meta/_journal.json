@@ -358,6 +358,13 @@
       "when": 1794429197531,
       "tag": "0050_paypal_wallets",
       "breakpoints": true
+    },
+    {
+      "idx": 51,
+      "version": "7",
+      "when": 1794472660817,
+      "tag": "0051_live_amount_check",
+      "breakpoints": true
     }
   ]
 }
