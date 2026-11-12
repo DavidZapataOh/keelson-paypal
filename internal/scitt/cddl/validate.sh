@@ -12,4 +12,5 @@ case "$3" in
   *.json) input=--json ;;
   *) input=--cbor ;;
 esac
-"${CDDL_BIN:-cddl}" validate --cddl "$schema" "$input" "$3"
+# Without --ci the CLI only logs validation errors and exits 0.
+"${CDDL_BIN:-cddl}" --ci validate --cddl "$schema" "$input" "$3"
