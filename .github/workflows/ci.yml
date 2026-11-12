@@ -202,7 +202,10 @@ jobs:
           grep -rEn "paypalMockResponse|PayPal-Mock-Response" packages services apps --exclude-dir=node_modules --exclude-dir=dist || status=$?
           test "$status" -eq 1
       - run: pnpm --filter @keelson/timestamp exec playwright install chromium
-      - run: pnpm turbo run typecheck test build --filter='!./packages/db' --filter='!./packages/attest' --filter='!./packages/evidence' --filter='!./services/api' --filter='!./apps/store' --filter='!./services/monitor' --filter='!./packages/relayer' --cache-dir=.turbo
+      - run: pnpm turbo run typecheck test build --filter='!./packages/db' --filter='!./packages/attest' --filter='!./packages/evidence' --filter='!./services/api' --filter='!./apps/store' --filter='!./services/monitor' --filter='!./packages/relayer' --filter='!./apps/landing' --concurrency=100% --cache-dir=.turbo
+      # On its own, after the fan-out: its e2e times a visitor's tamper flow against a 10 s budget.
+      - name: Landing
+        run: pnpm turbo run typecheck test build --filter=@keelson/landing --cache-dir=.turbo
       - name: The captured timestamp tokens verify with OpenSSL
         working-directory: packages/timestamp
         run: node scripts/openssl-verify.ts
@@ -257,6 +260,95 @@ jobs:
         working-directory: packages/alibi
         shell: bash
         run: node bench/pdf.bench.ts | tee -a "$GITHUB_STEP_SUMMARY"
+
+  # The SDKs, their types, the Context Plugin and the Postman collection agree with the OpenAPI document.
+  sdk:
+    needs: changes
+    if: needs.changes.outputs.ts == 'true'
+    runs-on: ubuntu-24.04
+    # bash with pipefail, so a failing test piped into the summary fails the step.
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - uses: astral-sh/setup-uv@v10.3.3
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm turbo run build --filter=@keelson-finance/sdk... --filter=@keelson-finance/verifier... --filter=@keelson-finance/context...
+      - name: Types, models, tools and the collection are generated from openapi/keelson.public.json
+        run: |
+          pnpm --filter @keelson-finance/sdk types
+          node services/api/scripts/postman.ts
+          (cd packages/sdk && node scripts/vectors.ts)
+          packages/sdk-python/scripts/models.sh
+          git diff --exit-code packages/sdk/src/schema.d.ts packages/sdk/api-surface.json openapi/postman packages/sdk-python
+      - name: Size, typing and quickstart budgets
+        working-directory: packages/sdk
+        run: pnpm exec vitest run --reporter=verbose test/size.test.ts | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Python
+        working-directory: packages/sdk-python
+        run: |
+          uv sync --all-extras --frozen
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run mypy
+          uv run pytest -q -s tests --ignore=tests/live | tee -a "$GITHUB_STEP_SUMMARY"
+      # Last: it rewrites the verifier's manifest for publishing, as the release does.
+      - name: The verifier package installs and verifies offline
+        run: |
+          node packages/verify/scripts/bundle.mjs
+          (cd packages/verify && pnpm pack --pack-destination "$RUNNER_TEMP/verifier")
+          packages/verify/scripts/check-package.sh "$RUNNER_TEMP"/verifier/*.tgz
+
+  # Both SDKs against the live sandbox: sign-in, mandates, purchases, verification and adapters.
+  sdk-live:
+    needs: changes
+    if: github.event_name != 'pull_request' && needs.changes.outputs.ts == 'true'
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        shell: bash
+    env:
+      KEELSON_LIVE: "1"
+      PAYPAL_SANDBOX_BUYER_EMAIL: ${{ secrets.PAYPAL_SANDBOX_BUYER_EMAIL }}
+      PAYPAL_SANDBOX_BUYER_PASSWORD: ${{ secrets.PAYPAL_SANDBOX_BUYER_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - uses: astral-sh/setup-uv@v10.3.3
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm turbo run build --filter=@keelson-finance/sdk... --filter=@keelson-finance/verifier... --filter=@keelson/paypal...
+      - run: pnpm --filter @keelson-finance/sdk exec playwright install --with-deps chromium
+      # One Judge Mode user for the whole run, which makes one purchase; the suite that buys
+      # rotates with the run number, so four runs cover all four.
+      - name: Pick this run's purchase
+        run: |
+          suites=(purchase-ts quickstart-ts purchase-py quickstart-py)
+          echo "KEELSON_LIVE_BUY=${suites[$((GITHUB_RUN_NUMBER % 4))]}" >> "$GITHUB_ENV"
+      - name: TypeScript SDK and verifier
+        run: |
+          pnpm --filter @keelson-finance/sdk exec vitest run --no-file-parallelism --reporter=verbose test/live | tee -a "$GITHUB_STEP_SUMMARY"
+          pnpm --filter @keelson-finance/verifier exec vitest run --reporter=verbose | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Python SDK
+        working-directory: packages/sdk-python
+        env:
+          KEELSON_VERIFY_COMMAND: node ${{ github.workspace }}/packages/verify/dist/cli.js
+        run: |
+          uv sync --all-extras --frozen
+          uv run pytest -q -s tests/live | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: The Postman collection's public reads
+        run: |
+          id=$(curl -s https://api.keelson.finance/v1/live-purchases | jq -r '[.purchases[] | select(.logIndex != null)][0].id')
+          npx -y newman@6.2.3 run openapi/postman/keelson.postman_collection.json --folder system --env-var "purchaseId=$id"
 
   # Every tampering class and every field of the real Alibis, verified against Arbitrum Sepolia.
   alibi-live:

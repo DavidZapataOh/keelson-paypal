@@ -3,7 +3,8 @@
   "extends": ["//"],
   "tasks": {
     "test": {
-      "dependsOn": ["build", "@keelson/verify#build"]
+      "dependsOn": ["build", "@keelson/verify#build"],
+      "cache": false
     }
   }
 }

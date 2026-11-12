@@ -20,6 +20,7 @@ import { type Auth, apiAudience, SCOPE_DESCRIPTIONS } from "./auth.ts";
 import type { CardIssuer } from "./cards/issuer.ts";
 import type { ChainReaders } from "./chain/reader.ts";
 import type { Channel3Lookup } from "./channel3/client.ts";
+import { registerContext } from "./context.ts";
 import type { HostedCaps } from "./hosted-caps.ts";
 import type { LogConfig } from "./log/append.ts";
 import { requestLogger } from "./logger.ts";
@@ -411,6 +412,7 @@ export function createApp(deps: Deps): OpenAPIHono {
       rateLimit(deps.kv, deps.rateLimit),
     );
   }
+  registerContext(app, rateLimit(deps.kv, { ...deps.rateLimit, name: "context" }));
   registerHealth(app);
   registerAgentDocs(app);
   registerStatus(app, deps);

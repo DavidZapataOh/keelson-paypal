@@ -7400,6 +7400,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/paypal/wallet/setup-token:
     post:
+      operationId: createPayPalSetupToken
       tags:
         - paypal
       summary: Start saving PayPal
@@ -7443,6 +7444,7 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/paypal/wallet:
     post:
+      operationId: savePayPalWallet
       tags:
         - paypal
       summary: Save PayPal
@@ -7496,6 +7498,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
     get:
+      operationId: getPayPalWallet
       tags:
         - paypal
       summary: The saved PayPal
@@ -7527,6 +7530,7 @@ paths:
               schema:
                 $ref: "#/components/schemas/Problem"
     delete:
+      operationId: removePayPalWallet
       tags:
         - paypal
       summary: Remove the saved PayPal

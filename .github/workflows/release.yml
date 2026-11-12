@@ -1,0 +1,71 @@
+name: release
+
+# Publishes @keelson-finance/sdk, @keelson-finance/verifier and @keelson-finance/context to npm and
+# keelson-finance to PyPI from a tag `sdk-v<version>` that matches every package's version.
+on:
+  push:
+    tags: ["sdk-v*"]
+
+permissions:
+  contents: read
+
+jobs:
+  npm:
+    runs-on: ubuntu-24.04
+    environment: npm
+    permissions:
+      contents: read
+      # npm trusted publishing (OIDC), which also writes the provenance attestation.
+      id-token: write
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - name: npm 11.5.1 or later, for trusted publishing
+        run: |
+          npm --version
+          node -e 'const [a,b,c]=process.argv[1].split(".").map(Number); process.exit(a>11||(a===11&&(b>5||(b===5&&c>=1)))?0:1)' "$(npm --version)"
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm turbo run build --filter=@keelson-finance/sdk... --filter=@keelson-finance/context... --filter=@keelson-finance/verifier...
+      # The verifier's private @keelson/* code is inlined; its third-party packages become dependencies.
+      - run: node packages/verify/scripts/bundle.mjs
+      - name: Versions match the tag
+        run: |
+          v="${GITHUB_REF_NAME#sdk-v}"
+          for p in sdk context verify; do test "$(jq -r .version packages/$p/package.json)" = "$v"; done
+      # pnpm pack writes the catalog and workspace versions into each manifest; npm publishes the
+      # tarball. The first publish of a package uses NPM_TOKEN, since npm can only trust a
+      # publisher for a package that exists; after that, trusted publishing needs no token.
+      - name: Publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/npm"
+          for p in sdk verify context; do (cd packages/$p && pnpm pack --pack-destination "$RUNNER_TEMP/npm"); done
+          # The verifier as a user installs it: its bundle must run, not only build.
+          packages/verify/scripts/check-package.sh "$RUNNER_TEMP"/npm/keelson-finance-verifier-*.tgz
+          for tgz in "$RUNNER_TEMP"/npm/*.tgz; do npm publish "$tgz" --access public --provenance; done
+
+  pypi:
+    runs-on: ubuntu-24.04
+    environment: pypi
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.3
+      - name: Version matches the tag
+        working-directory: packages/sdk-python
+        run: grep -q "^version = \"${GITHUB_REF_NAME#sdk-v}\"" pyproject.toml
+      - run: uv build
+        working-directory: packages/sdk-python
+      - run: uv publish --trusted-publishing always
+        working-directory: packages/sdk-python
