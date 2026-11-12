@@ -6,6 +6,7 @@ import type { Context, MiddlewareHandler } from "hono";
 import { type Address, getAddress } from "viem";
 import { AMBER_FIELD } from "../amber.ts";
 import type { Deps } from "../app.ts";
+import { challenge } from "../middleware/auth.ts";
 import { rateLimit } from "../middleware/rate-limit.ts";
 import { agentAuthority, OPERATOR_CHAIN, walletsOf } from "../operators/owners.ts";
 import { ProblemSchema, problem } from "../problem.ts";
@@ -49,7 +50,7 @@ function requireOperator(
 ): MiddlewareHandler {
   return async (c, next) => {
     if (c.var.invalidToken) {
-      c.header("WWW-Authenticate", 'Bearer error="invalid_token"');
+      challenge(c, 'error="invalid_token"');
       return problem(c, 401, "invalid-token", "Invalid token", "The access token is invalid.");
     }
     const principal = c.var.principal;

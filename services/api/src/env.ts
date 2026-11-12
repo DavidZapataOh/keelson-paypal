@@ -89,6 +89,9 @@ const schema = z
     LITHIC_ASA_SECRET: z.string().min(1).optional(),
     /** The secret of the Lithic event subscription card transactions are delivered to. */
     LITHIC_WEBHOOK_SECRET: z.string().min(1).optional(),
+    /** The P-256 PKCS #8 key that signs Alibi PDFs (PAdES B-T), and its PEM chain, leaf first. */
+    KEELSON_PDF_SIGNING_KEY: z.string().includes("PRIVATE KEY").optional(),
+    KEELSON_PDF_SIGNING_CHAIN: z.string().includes("CERTIFICATE").optional(),
     TSA_DIGICERT_URL: z.url().optional(),
     TSA_SIGSTORE_URL: z.url().optional(),
     TSA_FREETSA_URL: z.url().optional(),

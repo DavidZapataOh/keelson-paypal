@@ -508,6 +508,7 @@ describe.each(Object.keys(VIEWPORTS) as Kind[])("agents on %s", (kind) => {
         name: "Claude Code",
         operator: "Anthropic Labs",
         connected: true,
+        signals: true,
         mandate: {
           id: "01M7MANDATE000000000000000",
           state: "ACTIVE",
@@ -526,6 +527,7 @@ describe.each(Object.keys(VIEWPORTS) as Kind[])("agents on %s", (kind) => {
     await page.getByRole("heading", { level: 1, name: "Agents" }).waitFor();
     await page.getByText("$11.94").waitFor();
     expect(await page.getByText("left of $50.00").count()).toBe(1);
+    expect(await page.getByText("Gets stop signals").count()).toBe(1);
     expect(
       await page
         .getByRole("meter", { name: "Claude Code has spent" })
@@ -578,6 +580,7 @@ describe.each(Object.keys(VIEWPORTS) as Kind[])("agents on %s", (kind) => {
         return {
           id: "01M7STOP000000000000000000",
           revoked: 1,
+          cardsClosed: 2,
           released: [{ currency: "USD", minor: "41200" }],
           releasing: [],
           mandateHashes: ["ab".repeat(32)],
@@ -601,7 +604,9 @@ describe.each(Object.keys(VIEWPORTS) as Kind[])("agents on %s", (kind) => {
     await page.mouse.down();
     await page.waitForTimeout(1800);
     await page.mouse.up();
-    await page.getByText("All agents stopped. $412.00 of holds released.").waitFor();
+    await page
+      .getByText("All agents stopped. $412.00 of holds released. 2 single-use cards closed.")
+      .waitFor();
     expect(await page.getByText("entry #1207", { exact: false }).count()).toBe(1);
     const listed = page.getByRole("link", { name: "1 approval revoked in the public status list" });
     expect(await listed.getAttribute("href")).toBe(

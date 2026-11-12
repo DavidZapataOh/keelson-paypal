@@ -1,5 +1,4 @@
 import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
-import { renderAlibiPdf } from "@keelson/alibi/pdf";
 import {
   and,
   cardChargebacks,
@@ -11,6 +10,7 @@ import {
   sql,
 } from "@keelson/db";
 import { loadAlibi } from "../alibi/issue.ts";
+import { alibiPdf } from "../alibi/pdf.ts";
 import type { Deps } from "../app.ts";
 import {
   CHARGEBACK_REASONS,
@@ -181,7 +181,8 @@ export function registerChargebacks(
       try {
         const bundle = await loadAlibi(db, id);
         if (bundle) {
-          await issuer.attachEvidence(filed.token, `alibi-${id}.pdf`, await renderAlibiPdf(bundle));
+          const { pdf } = await alibiPdf(deps.log, bundle);
+          await issuer.attachEvidence(filed.token, `alibi-${id}.pdf`, pdf);
           evidenceUploaded = true;
           await db
             .update(cardChargebacks)

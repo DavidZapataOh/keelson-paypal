@@ -36,7 +36,7 @@ import { hostedCapError } from "../hosted-caps.ts";
 import { MERCHANTS } from "../merchants.ts";
 import { requireAgent, requireClient, requireSession } from "../middleware/auth.ts";
 import { rateLimit } from "../middleware/rate-limit.ts";
-import { notify, requestAlert } from "../notify/notifier.ts";
+import { decidedAlert, notify, requestAlert } from "../notify/notifier.ts";
 import { ClientIdentitySchema, verifiedClient } from "../oauth/cimd-trust.ts";
 import { type Principal, principalChannel } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
@@ -557,7 +557,7 @@ export async function connectionView(
  * `userId` is who said no, when known.
  */
 export async function denyRequest(
-  deps: Pick<Deps, "db" | "kv" | "log">,
+  deps: Pick<Deps, "db" | "kv" | "log" | "notifier">,
   request: Connection,
   userId: string | null,
 ): Promise<boolean> {
@@ -573,6 +573,7 @@ export async function denyRequest(
     request.id,
     { type: "connection.denied", userCode: request.userCode },
   );
+  notify(deps.notifier, (n) => decidedAlert(n, request.id));
   return true;
 }
 

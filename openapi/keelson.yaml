@@ -1598,6 +1598,47 @@ components:
         - lines
         - return_days
         - returns_free
+    SsfStream:
+      type: object
+      properties:
+        stream_id:
+          type: string
+        iss:
+          type: string
+        aud:
+          type: string
+        delivery:
+          type: object
+          properties:
+            method:
+              type: string
+              enum:
+                - urn:ietf:rfc:8936
+            endpoint_url:
+              type: string
+          required:
+            - method
+            - endpoint_url
+        events_supported:
+          type: array
+          items:
+            type: string
+        events_requested:
+          type: array
+          items:
+            type: string
+        events_delivered:
+          type: array
+          items:
+            type: string
+      required:
+        - stream_id
+        - iss
+        - aud
+        - delivery
+        - events_supported
+        - events_requested
+        - events_delivered
     AccessEvaluationResponse:
       type: object
       properties:
@@ -1842,6 +1883,10 @@ components:
           type: string
         connected:
           type: boolean
+        signals:
+          type: boolean
+          description: Whether the app polls a Shared Signals stream (OpenID SSF), so it
+            learns at once when you stop or disconnect it.
         mandate:
           type:
             - object
@@ -1880,6 +1925,7 @@ components:
         - name
         - operator
         - connected
+        - signals
         - mandate
         - lastActivityAt
     PendingApproval:
@@ -1921,6 +1967,10 @@ components:
         revoked:
           type: integer
           description: Mandates ended.
+        cardsClosed:
+          type: integer
+          description: Single-use cards closed at the issuer, none of whose authorizations
+            was approved yet. Any authorization still reaching one is declined.
         released:
           type: array
           items:
@@ -1973,6 +2023,7 @@ components:
       required:
         - id
         - revoked
+        - cardsClosed
         - released
         - mandateHashes
         - releasing
@@ -8835,6 +8886,135 @@ paths:
                 $ref: "#/components/schemas/Problem"
         "404":
           description: No such mandate of an operator this client linked
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /ssf/streams:
+    post:
+      operationId: createSsfStream
+      tags:
+        - agents
+      summary: Create the app's Shared Signals stream
+      description: An app acting for a user creates its stream (OpenID SSF 1.0
+        §8.1.1), polled per RFC 8936, and is told by CAEP `session-revoked` when
+        the user stops every agent or disconnects it.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                delivery:
+                  type: object
+                  properties:
+                    method:
+                      type: string
+                      enum:
+                        - urn:ietf:rfc:8936
+                  required:
+                    - method
+                events_requested:
+                  type: array
+                  items:
+                    type: string
+              required:
+                - delivery
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SsfStream"
+        "403":
+          description: Not an app acting for a user
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "409":
+          description: The app already has a stream for this user
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+    delete:
+      operationId: deleteSsfStream
+      tags:
+        - agents
+      summary: Delete the app's Shared Signals stream
+      parameters:
+        - schema:
+            type: string
+          required: true
+          name: stream_id
+          in: query
+      responses:
+        "204":
+          description: Deleted
+        "403":
+          description: Not an app acting for a user
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: No such stream of this app
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+  /ssf/poll:
+    post:
+      operationId: pollSsfEvents
+      tags:
+        - agents
+      summary: Poll the app's security events (RFC 8936)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                ack:
+                  type: array
+                  items:
+                    type: string
+                  maxItems: 100
+                maxEvents:
+                  type: integer
+                  minimum: 0
+                  maximum: 100
+                returnImmediately:
+                  type: boolean
+      responses:
+        "200":
+          description: Events not yet acknowledged
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sets:
+                    type: object
+                    additionalProperties:
+                      type: string
+                  moreAvailable:
+                    type: boolean
+                required:
+                  - sets
+                  - moreAvailable
+        "403":
+          description: Not an app acting for a user
+          content:
+            application/problem+json:
+              schema:
+                $ref: "#/components/schemas/Problem"
+        "404":
+          description: The app has no stream for this user
           content:
             application/problem+json:
               schema:

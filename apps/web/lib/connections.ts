@@ -65,6 +65,8 @@ export interface AgentRow {
   name: string;
   operator: string;
   connected: boolean;
+  /** The app polls a Shared Signals stream, so it hears of a stop at once. */
+  signals?: boolean;
   mandate: {
     id: string;
     state: string;

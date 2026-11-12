@@ -3,7 +3,7 @@
 import { STATUS_URI } from "@keelson/mandate/browser";
 import { Button } from "@keelson/ui/components/button";
 import { Skeleton } from "@keelson/ui/components/skeleton";
-import { Bot, EllipsisVertical, OctagonX, Plus } from "lucide-react";
+import { Bot, EllipsisVertical, OctagonX, Plus, RadioTower } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { get, post } from "../lib/api";
@@ -31,6 +31,8 @@ const short = (iso: string) =>
 interface Stop {
   id: string;
   revoked: number;
+  /** Single-use cards closed at the issuer. */
+  cardsClosed: number;
   released: { currency: string; minor: string }[];
   releasing: { currency: string; minor: string }[];
   logIndexes: Record<string, string>;
@@ -54,6 +56,9 @@ function Stopped({ stop }: { stop: Stop }) {
           : stop.releasing.length > 0
             ? ""
             : "Nothing was held."}
+        {stop.cardsClosed > 0
+          ? ` ${stop.cardsClosed} single-use ${stop.cardsClosed === 1 ? "card" : "cards"} closed.`
+          : ""}
       </p>
       <p className="text-bone/75 text-sm">
         {stop.revoked} {stop.revoked === 1 ? "mandate" : "mandates"} ended, every request denied and
@@ -205,6 +210,15 @@ function Row({ agent, onChange }: { agent: AgentRow; onChange: () => void }) {
                 ? "Connected"
                 : "Stopped"}
           </span>
+          {agent.signals ? (
+            <span
+              className="flex items-center gap-1 text-muted-foreground text-xs"
+              title="This app polls Keelson's Shared Signals stream (OpenID SSF): it learns at once when you stop or disconnect it."
+            >
+              <RadioTower className="size-3.5" aria-hidden="true" />
+              Gets stop signals
+            </span>
+          ) : null}
         </span>
         <span className="truncate text-muted-foreground text-sm">
           {agent.operator} · last active {ago(agent.lastActivityAt)}

@@ -138,6 +138,15 @@ set; the API runs disputes when it has the legs and the log. Without either the 
 | Merchant          | R11, R21, R35, R40, R50 | same                                                    | `ORDER_DETAILS` with the Alibi PDF                                                                                                                   |
 | Operator, Keelson | R00, R30, R31, R60, R61 | `accept-claim` (refund to the buyer)                    | none                                                                                                                                                 |
 
+The Alibi PDF that PayPal, the card issuer and `GET /v1/alibis/{id}.pdf` receive is signed with
+PAdES baseline B-T when `KEELSON_PDF_SIGNING_KEY` and `KEELSON_PDF_SIGNING_CHAIN` are set: an
+incremental `ETSI.CAdES.detached` signature over the file as rendered, signed attributes
+`contentType`, `messageDigest` and `signingCertificateV2`, and a DigiCert RFC 3161 timestamp of the
+signature value. The embedded `.alibi` is untouched. The chain is Keelson's own
+(`packages/alibi/scripts/pdf-cert.sh`), so a reader shows the signer as unknown until it trusts
+Keelson's root; any change after signing still shows. If the TSA is down, the PDF is sent unsigned
+(`X-Keelson-Pdf-Signature: unavailable`), never failed.
+
 The rule fixes the call and the evidence type; each submission carries one evidence, because
 PayPal requires an `item_id` on each of several evidences. With `ANTHROPIC_API_KEY` set, the notes are drafted
 in two calls, because Citations cannot be combined with structured outputs: `claude-opus-5-5`
@@ -605,9 +614,29 @@ buyer approved in that time is voided, so neither counts. A request, a change, a
 over a cap answers `422 hosted-cap`; approvals and holds are measured under an advisory lock, so
 concurrent ones cannot pass a cap. The consent page shows the per-user cap of the host's tier.
 
+**Telling connected apps.** An app acting for a user can learn of a stop or a disconnect the
+moment it happens through OpenID Shared Signals 1.0 (`/.well-known/ssf-configuration`). It creates
+its stream (`POST /ssf/streams`, one per app and user) and polls `POST /ssf/poll` (RFC 8936,
+`ack` to acknowledge). Each stop of every agent, and each disconnect of that app, queues a CAEP
+1.0 `session-revoked` Security Event Token (RFC 8417, `typ: secevent+jwt`, `sub_id` in `iss_sub`
+format) signed with the authorization server's key, so it verifies against `/api/auth/jwks`. A
+stream holds only its own user's events. Push delivery (RFC 8935) is not offered: polling needs no
+outbound request to an app's URL. The agents page shows "Gets stop signals" on such an app.
+
+**Sender-constrained tokens.** A client that sends a DPoP proof (RFC 9449, ES256 or EdDSA) to the
+token endpoint gets a token bound to its key (`token_type: DPoP`, `cnf.jkt`). The REST API then
+takes it only as `Authorization: DPoP` with a fresh proof for that request's method and URL and
+the token's hash; each proof id is reserved once in Postgres, across instances. A bound token sent
+as a bearer token, with a proof for another URL, a replayed proof or another key's proof, gets
+`401` with a `DPoP` challenge. `/mcp`, whose authorization is Bearer, refuses bound tokens. Every
+challenge names the protected resource metadata (RFC 9728 §5.1).
+
 Refresh tokens rotate and can be revoked (RFC 7009, `/api/auth/oauth2/revoke`). Stopping every
 agent (`POST /v1/agents/stop`) revokes the user's refresh tokens and consents and refuses every
-access token issued before it, on the API and on `/mcp`. Disconnecting one host
+access token issued before it, on the API and on `/mcp`. It also closes at the card issuer every
+single-use card none of whose authorizations was approved yet (`cardsClosed`), and the card veto
+declines any authorization of a stopped user's card as `stopped` before asking a leg, so a card the
+issuer has not closed yet is still refused. Disconnecting one host
 (`POST /v1/agents/{agentId}/disconnect?client={clientId}`, one row per host on the agents page)
 does the same for that host only: its mandates, requests, consent and refresh tokens end, and its
 access tokens issued before then are refused. The hosted operator's mandates no app holds show as

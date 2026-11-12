@@ -1,14 +1,18 @@
-// Shows Keelson's alerts and opens the page each one is about.
+// Shows Keelson's alerts and opens the page each one is about. Pushes are Declarative Web Push
+// messages: Safari shows `notification` itself; other browsers show it here.
 
 self.addEventListener("push", (event) => {
-  const data = event.data?.json() ?? {};
+  const n = event.data?.json()?.notification ?? {};
   event.waitUntil(
-    self.registration.showNotification(data.title ?? "Keelson", {
-      body: data.body,
+    self.registration.showNotification(n.title ?? "Keelson", {
+      body: n.body,
       icon: "/icon-192.png",
       badge: "/icon-192.png",
-      tag: data.tag,
-      data: { url: data.url ?? "/" },
+      tag: n.tag,
+      lang: n.lang,
+      dir: n.dir,
+      silent: n.silent === true,
+      data: { url: n.navigate ?? "/" },
     }),
   );
 });

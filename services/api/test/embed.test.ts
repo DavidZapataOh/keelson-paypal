@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { agentConnections, eq, oauthClient, operators } from "@keelson/db";
 import { pino } from "pino";
 import { ulid } from "ulid";
@@ -9,7 +9,12 @@ import { testDb, testKv } from "./setup.ts";
 import { headerPrincipal } from "./tee-live.ts";
 
 const appOrigin = "https://app.keelson.finance";
-const PAGE = "<!doctype html><title>Approve</title>";
+const BOOT = "self.__next_f=self.__next_f||[]";
+const PUSH = 'self.__next_f.push([1,"0:{}"])';
+const PAGE = `<!doctype html><title>Approve</title><script src="${appOrigin}/_next/static/chunks/a.js" async=""></script><script>${BOOT}</script><script id="_R_">${PUSH}</script>`;
+let page = PAGE;
+const hashOf = (script: string) =>
+  `'sha256-${createHash("sha256").update(script).digest("base64")}'`;
 const app = createApp({
   db: testDb,
   kv: testKv,
@@ -17,7 +22,7 @@ const app = createApp({
   authenticate: headerPrincipal,
   appOrigin,
   authBaseUrl: "https://api.keelson.finance",
-  embedPage: async () => PAGE,
+  embedPage: async () => page,
 });
 
 const HOST = "https://agents.example.com";
@@ -172,7 +177,11 @@ describe("the embed page's headers", () => {
     expect(res.status).toBe(200);
     expect(await res.text()).toBe(PAGE);
     const csp = res.headers.get("content-security-policy") ?? "";
-    expect(csp).toBe(embedPolicy(appOrigin, HOST));
+    expect(csp).toBe(embedPolicy(appOrigin, HOST, [hashOf(BOOT), hashOf(PUSH)]));
+    const scriptSrc = csp.split("; ").find((d) => d.startsWith("script-src ")) ?? "";
+    expect(scriptSrc).toBe(
+      `script-src ${hashOf(BOOT)} ${hashOf(PUSH)} 'wasm-unsafe-eval' ${appOrigin}`,
+    );
     expect(csp).toContain(`frame-ancestors ${HOST}`);
     expect(csp).not.toContain("other.example.com");
     expect(res.headers.get("x-frame-options")).toBeNull();
@@ -183,6 +192,21 @@ describe("the embed page's headers", () => {
     expect(policy).toContain("camera=()");
     expect(res.headers.get("referrer-policy")).toBe("no-referrer");
     expect(res.headers.get("cache-control")).toBe("no-store");
+  });
+
+  test("the script hashes are those of the markup served, after the app redeploys too", async () => {
+    const next = 'self.__next_f.push([1,"1:{}"])';
+    page = PAGE.replace(PUSH, next);
+    try {
+      const csp = (await app.request(`/embed/approve?r=${ulid()}`)).headers.get(
+        "content-security-policy",
+      );
+      expect(csp).toContain(hashOf(next));
+      expect(csp).not.toContain(hashOf(PUSH));
+      expect(csp).not.toContain("'unsafe-inline' 'wasm");
+    } finally {
+      page = PAGE;
+    }
   });
 
   test("an unknown or malformed ref may be framed by no one", async () => {

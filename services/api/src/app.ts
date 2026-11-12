@@ -92,6 +92,7 @@ import { registerTimestamps } from "./routes/timestamps.ts";
 import { registerTransactions } from "./routes/transactions.ts";
 import { registerValidations } from "./routes/validations.ts";
 import { registerWebFacts } from "./routes/web-facts.ts";
+import { registerSsf } from "./ssf.ts";
 import type { TeeConfig } from "./tee/signers.ts";
 import type { StampWorker } from "./timestamps/worker.ts";
 
@@ -314,7 +315,12 @@ export function createApp(deps: Deps): OpenAPIHono {
         origin: deps.appOrigin,
         credentials: true,
         allowHeaders: ["content-type", "idempotency-key", "keelson-device"],
-        exposeHeaders: ["location", "idempotent-replayed", "keelson-model"],
+        exposeHeaders: [
+          "location",
+          "idempotent-replayed",
+          "keelson-model",
+          "x-keelson-pdf-signature",
+        ],
       })
     : undefined;
   // The verifier reads only public receipts, timestamps and public Alibis, never with credentials,
@@ -447,6 +453,7 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerRevoke(app, deps);
   registerConnections(app, deps);
   registerMandateRequests(app, deps);
+  registerSsf(app, deps);
   registerProblems(app);
   registerAuthzen(app, deps);
   registerCredentialIssuer(app, deps);

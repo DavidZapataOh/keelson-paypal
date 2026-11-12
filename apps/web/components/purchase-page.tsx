@@ -8,7 +8,15 @@ import { CopyValue } from "@keelson/ui/components/copy-value";
 import { DataItem, DataList } from "@keelson/ui/components/data-list";
 import { Status } from "@keelson/ui/components/status";
 import { Timeline, TimelineItem } from "@keelson/ui/components/timeline";
-import { Check, ChevronRight, Loader2, MessageSquareWarning, TriangleAlert, X } from "lucide-react";
+import {
+  Check,
+  ChevronRight,
+  FileCheck,
+  Loader2,
+  MessageSquareWarning,
+  TriangleAlert,
+  X,
+} from "lucide-react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -250,13 +258,15 @@ function DisputeCard({ id }: { id: string }) {
   );
 }
 
-async function download(path: string, name: string) {
+/** Saves the file; resolves to whether the API signed it (a PDF's PAdES signature). */
+async function download(path: string, name: string): Promise<boolean> {
   const res = await fetch(`${API}${path}`, { credentials: "include" });
   if (!res.ok) throw new Error("The Alibi is not ready yet.");
   const url = URL.createObjectURL(await res.blob());
   const a = Object.assign(document.createElement("a"), { href: url, download: name });
   a.click();
   URL.revokeObjectURL(url);
+  return res.headers.get("x-keelson-pdf-signature") === "pades-b-t";
 }
 
 /** The store's name as the signed card spells it. */
@@ -285,6 +295,7 @@ function Receipt() {
   const [checking, setChecking] = useState(false);
   const [checkedAt, setCheckedAt] = useState<number>();
   const [fileError, setFileError] = useState<string>();
+  const [pdfSigned, setPdfSigned] = useState(false);
   const [disputing, setDisputing] = useState(false);
   const [filed, setFiled] = useState(false);
   // Only a v2 Alibi has a transparent statement; a v1 one, or none yet, answers 404.
@@ -521,9 +532,9 @@ function Receipt() {
               <Button
                 variant="outline"
                 onClick={() =>
-                  download(`/v1/alibis/${p.id}.pdf`, `${p.id}.pdf`).catch((e: Error) =>
-                    setFileError(e.message),
-                  )
+                  download(`/v1/alibis/${p.id}.pdf`, `${p.id}.pdf`)
+                    .then(setPdfSigned)
+                    .catch((e: Error) => setFileError(e.message))
                 }
               >
                 Download PDF
@@ -540,6 +551,15 @@ function Receipt() {
               </Button>
               <AlibiExports id={p.id} denied={p.state === "DENIED"} />
             </div>
+            {pdfSigned ? (
+              <p className="flex items-center gap-1.5 text-xs">
+                <FileCheck className="size-3.5 text-ok" aria-hidden="true" />
+                <span>
+                  Signed PDF: Keelson signed it and a timestamp authority dated the signature
+                  (PAdES). Any change after signing shows in your PDF reader.
+                </span>
+              </p>
+            ) : null}
             <p className="text-muted-foreground text-xs">
               The link checks the public log entry. Drop the .alibi file into the verifier to check
               everything else.

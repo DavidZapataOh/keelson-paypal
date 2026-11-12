@@ -19,9 +19,13 @@ import { generateSiweNonce } from "viem/siwe";
 import { SETTLEMENT } from "./merchants.ts";
 import { rarExtension } from "./oauth/rar.ts";
 import { ownsLinkedOperator } from "./operators/owners.ts";
+import { securityEvents } from "./ssf.ts";
 
 /** RFC 8707 resource identifier of this API; the `aud` of every access token it accepts. */
 export const apiAudience = "https://api.keelson.finance";
+
+/** The DPoP proof algorithms the authorization server and the API accept. */
+export const DPOP_ALGORITHMS = ["ES256", "EdDSA"] as const;
 
 /** Keelson's own hosts, which never name a client. */
 const isOwnHost = (host: string) => host === "keelson.finance" || host.endsWith(".keelson.finance");
@@ -261,6 +265,7 @@ export function createAuth(
     },
     plugins: [
       jwt({ jwks: env.jwks ?? JWKS_ROTATION }),
+      securityEvents(),
       // Agents act for themselves with client credentials. MCP clients act for a user with the
       // authorization code grant and PKCE (S256 only, required of public clients), named by a
       // Client ID Metadata Document or else registering themselves (RFC 7591), as the MCP
@@ -280,6 +285,8 @@ export function createAuth(
         clientRegistrationAllowedResources: [apiAudience],
         resources: [apiAudience],
         clientPrivileges: ({ user }) => user?.role === "admin",
+        // A client that sends a DPoP proof (RFC 9449) gets a token bound to its key.
+        dpop: { signingAlgorithms: [...DPOP_ALGORITHMS], proofMaxAgeSeconds: 60 },
         extensions: [rarExtension(db)],
       }),
       // The server fetches a client's metadata document itself, resolving its host once and

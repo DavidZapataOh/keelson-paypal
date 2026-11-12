@@ -18,6 +18,8 @@ export const agentStops = pgTable(
     /** The hex of the 32-byte hashes of the mandates the stop ended. */
     mandateHashes: text().array().notNull().default(sql`'{}'`),
     revoked: integer().notNull().default(0),
+    /** The single-use cards the stop closed at the issuer before any authorization. */
+    cardsClosed: integer().notNull().default(0),
     /** What PayPal released when the stop voided the holds, per currency in minor units. */
     released: jsonb().$type<{ currency: string; minor: string }[]>().notNull().default([]),
     /** Holds still backing a countersigned purchase: released once it is captured. */
