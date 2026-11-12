@@ -224,6 +224,8 @@ contract ReputationReporterForkTest is Erc8004Base {
         _identity().transferFrom(operator, address(reporter), agentId);
         _release(v);
         _assertSkippedThenRetried(v.coverage.coverageId);
+        assertEq(reporter.unratedSlashes(agentId), 0);
+        assertFalse(reporter.slashSkipped(v.coverage.coverageId));
     }
 
     /// @dev No gas limit makes the call skip the feedback: either the floor reverts the whole call or the registry gets
@@ -250,8 +252,53 @@ contract ReputationReporterForkTest is Erc8004Base {
             vm.revertToState(snapshot);
         }
         assertGt(reverted, 0, "floor reached");
+        assertLt(reverted, 140, "floor passed");
         vm.expectRevert(KeelsonReputationReporter.InsufficientGas.selector);
         reporter.rateCoverage{gas: floor}(id);
+    }
+
+    /// @dev The smallest gas limit `rateCoverage` accepts, measured; the floor `REPUTATION_GAS * 64 / 63 + OVERHEAD`
+    /// sets it, so it moves only with that floor or with the code that runs before the check.
+    uint256 internal constant MIN_RATE_GAS = 409_323;
+
+    function _passesFloor(bytes32 id, uint256 gas) internal returns (bool passed) {
+        uint256 snapshot = vm.snapshotState();
+        try reporter.rateCoverage{gas: gas}(id) returns (bool) {
+            passed = true;
+        } catch {}
+        vm.revertToState(snapshot);
+    }
+
+    /// @dev The floor is exact: at the smallest gas limit that passes it the registry gets its whole stipend, and one
+    /// unit less reverts `InsufficientGas`.
+    function test_gasFloor_isExact() public {
+        Vector memory v = _locked(WEBAUTHN);
+        _release(v);
+        bytes32 id = v.coverage.coverageId;
+        uint256 lo = reporter.REPUTATION_GAS();
+        uint256 hi = 2 * lo;
+        assertFalse(_passesFloor(id, lo));
+        assertTrue(_passesFloor(id, hi));
+        while (hi - lo > 1) {
+            uint256 mid = (lo + hi) / 2;
+            if (_passesFloor(id, mid)) hi = mid;
+            else lo = mid;
+        }
+        assertEq(hi, MIN_RATE_GAS, "minimum gas limit");
+
+        vm.expectRevert(KeelsonReputationReporter.InsufficientGas.selector);
+        reporter.rateCoverage{gas: hi - 1}(id);
+        vm.expectCall(
+            address(reputation),
+            0,
+            uint64(reporter.REPUTATION_GAS()),
+            abi.encodeCall(
+                IERC8004Reputation.giveFeedback,
+                (agentId, 100, 2, "keelson", "release", "", reporter.feedbackURI(id), bytes32(0))
+            )
+        );
+        assertTrue(reporter.rateCoverage{gas: hi}(id));
+        _assertFeedback(1, 100, "release");
     }
 
     /// @dev The worst case `REPUTATION_GAS` is sized from: the agent's first feedback from a new client, every slot

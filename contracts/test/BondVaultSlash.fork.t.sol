@@ -110,6 +110,28 @@ contract BondVaultSlashForkTest is SlashBase {
         vault.slash(verdict, treeSize, sigs);
     }
 
+    /// @dev A verdict is valid through its deadline's second.
+    function test_slash_atDeadline() public {
+        Vector memory v = _locked(WEBAUTHN);
+        KeelsonTypes.Verdict memory verdict = _amber(v, AMOUNT);
+        verdict.deadline = uint40(vm.getBlockTimestamp() + 10);
+        vm.warp(verdict.deadline);
+        _slash(verdict);
+        assertTrue(vault.settled(verdict.disputeId));
+        assertEq(pyusd.balanceOf(merchant), AMOUNT);
+    }
+
+    /// @dev A zero root never counts as anchored, though `rootAt` reads zero for every size not anchored.
+    function test_slash_zeroRootReverts() public {
+        Vector memory v = _locked(WEBAUTHN);
+        KeelsonTypes.Verdict memory verdict = _amber(v, AMOUNT);
+        verdict.checkpointRoot = 0;
+        bytes memory sigs = _sign2of2(verdict);
+        assertEq(vault.anchor().rootAt(vault.logOrigin(), treeSize + 1), 0);
+        vm.expectRevert(IKeelsonBondVault.NotAnchored.selector);
+        vault.slash(verdict, treeSize + 1, sigs);
+    }
+
     function test_slash_revertsUnanchoredRoot() public {
         Vector memory v = _locked(WEBAUTHN);
         KeelsonTypes.Verdict memory verdict = _amber(v, AMOUNT);
@@ -228,6 +250,42 @@ contract BondVaultSlashForkTest is SlashBase {
         vm.expectRevert();
         vault.claim(merchant, merchant, 0, 0, "");
         assertEq(vault.claimable(merchant), AMOUNT);
+    }
+
+    /// @dev The account itself claims without a signature, to any address, whatever deadline it passes.
+    function test_claim_byTheAccountNeedsNoSignature() public {
+        Vector memory v = _locked(WEBAUTHN);
+        _freeze(merchant);
+        _slash(_amber(v, AMOUNT));
+        address fresh = makeAddr("merchant's new account");
+        vm.expectEmit(address(vault));
+        emit IKeelsonBondVault.Claimed(merchant, fresh, AMOUNT);
+        vm.prank(merchant);
+        vault.claim(merchant, fresh, 0, 0, "");
+        assertEq(pyusd.balanceOf(fresh), AMOUNT);
+        assertEq(vault.claimable(merchant), 0);
+        assertEq(vault.nonces(merchant), 0);
+
+        vm.prank(merchant);
+        vm.expectRevert(IKeelsonBondVault.ZeroAmount.selector);
+        vault.claim(merchant, fresh, 0, 0, "");
+    }
+
+    /// @dev A claim signature is valid through its deadline's second, not after it.
+    function test_claim_deadlineBoundary() public {
+        Vector memory v = _locked(WEBAUTHN);
+        _freeze(merchant);
+        _slash(_amber(v, AMOUNT));
+        address fresh = makeAddr("merchant's new account");
+        uint256 deadline = vm.getBlockTimestamp() + 1 hours;
+        bytes memory sig = _signClaim(merchantKey, merchant, fresh, 0, deadline, vault.domainSeparator());
+        vm.warp(deadline + 1);
+        vm.expectRevert(IKeelsonBondVault.Expired.selector);
+        vault.claim(merchant, fresh, 0, deadline, sig);
+        vm.warp(deadline);
+        vault.claim(merchant, fresh, 0, deadline, sig);
+        assertEq(pyusd.balanceOf(fresh), AMOUNT);
+        assertEq(vault.nonces(merchant), 1);
     }
 
     function test_claim_wrongSignerReverts() public {
