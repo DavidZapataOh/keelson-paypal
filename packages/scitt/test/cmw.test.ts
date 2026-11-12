@@ -58,8 +58,7 @@ describe("CMW collection of the legs' evidence (RFC 9999)", () => {
   test.skipIf(!hasCddl())("validates against the RFC 9999 CDDL", () => {
     const json = enc.encode(JSON.stringify(teeCollection({ tdx, nitro })));
     expect(validateCddl("rfc9999.cddl", "json-collection", json, "json")).toBe(true);
-    // cddl 0.10.7 checks the collection's envelope only: it accepts any member keyed by `&(label:
-    // text)` and has no `.bits`, so the records' rules are readCollection's, tested above.
+    expect(validateCddl("rfc9999.cddl", "json-collection", enc.encode("{}"), "json")).toBe(false);
     const record = enc.encode(JSON.stringify([TEE_EVIDENCE_TYPE, "AA", 4]));
     expect(validateCddl("rfc9999.cddl", "json-collection", record, "json")).toBe(false);
   });

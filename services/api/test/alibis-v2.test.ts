@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -32,14 +32,9 @@ const app = createApp({
   authenticate: headerPrincipal,
 });
 const cddl = new URL("../../../internal/scitt/cddl/validate.sh", import.meta.url).pathname;
-const hasCddl = () => {
-  try {
-    execFileSync(process.env.CDDL_BIN ?? "cddl", ["--version"], { stdio: "ignore" });
-    return true;
-  } catch {
-    return false;
-  }
-};
+// The cddl tool has no --version: without arguments it prints its usage and exits 64 (EX_USAGE).
+const hasCddl = () =>
+  spawnSync(process.env.CDDL_BIN ?? "cddl", [], { stdio: "ignore" }).status === 64;
 
 describe("v2 Alibis", () => {
   const core = v2Bundle();
