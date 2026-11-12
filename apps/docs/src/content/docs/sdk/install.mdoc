@@ -1,0 +1,117 @@
+---
+title: Install the SDK
+description: Keelson's SDKs for TypeScript and Python, and the verifier that checks an Alibi on your machine.
+estimate: 3 min
+section: SDK
+order: 1
+---
+
+Two packages do the work: the SDK, which asks for mandates and buys under them, and the verifier, which checks each purchase's Alibi on your machine. Everything runs on the PayPal sandbox and Arbitrum Sepolia, so no real money moves.
+
+| Package | Language | Requires |
+| --- | --- | --- |
+| `@keelson/sdk` | TypeScript and JavaScript | Node.js 20 or later |
+| `@keelson/verifier` | TypeScript and JavaScript, and the `keelson-verify` command | Node.js 20 or later |
+| `keelson-finance` (`import keelson`) | Python | Python 3.11 or later; Node.js 20 for `verify_alibi` |
+
+## From the repository
+
+The packages are not on npm or PyPI yet. Until they are, build them from the repository:
+
+```sh
+git clone https://github.com/DavidZapataOh/keelson-paypal.git
+cd keelson-paypal
+pnpm install
+pnpm --filter "@keelson/sdk..." --filter "@keelson/verifier..." build
+```
+
+Check the verifier against a real Alibi kept in this site:
+
+```sh {% check="sdk-verifier-from-repo" %}
+pnpm --filter "@keelson/verifier..." build > /dev/null
+node packages/verify/dist/cli.js apps/docs/public/samples/01M6ZWZJHWRRHQEYNJAT7NMSV8.alibi 2> /dev/null | head -1
+# expect: ^verified-offline
+```
+
+Then sign in and run the quickstart, which asks you for a mandate, buys one pair of shoes at the sandbox store and verifies the Alibi:
+
+{% languages label="Run the quickstart" %}
+```sh {% title="TypeScript" %}
+node packages/sdk/dist/cli.js login
+node packages/sdk/examples/quickstart.mjs
+```
+
+```sh {% title="Python" %}
+uv run --project packages/sdk-python keelson login
+uv run --project packages/sdk-python python packages/sdk-python/examples/quickstart.py
+```
+{% /languages %}
+
+## What the quickstart does
+
+{% languages label="Quickstart" %}
+```ts
+import { Keelson, quote } from "@keelson/sdk";
+import { verifyAlibi } from "@keelson/verifier";
+
+const keelson = new Keelson(); // signed in with `keelson login`
+const req = await keelson.mandates.request({
+  name: "Quickstart",
+  reason:
+    "I buy one pair of Pace Lite running shoes, size 10, at RunFast on the PayPal sandbox, and nothing else.",
+  perPurchase: "$100",
+  total: "$100",
+  until: "1h",
+});
+console.log(`Approve with your passkey: ${req.approvalUrl}`);
+const mandate = await keelson.mandates.waitForApproval(req.id);
+const { cart, sources } = await quote([
+  { productUrl: "https://store.keelson.finance/products/pace-lite", size: "10", qty: 1 },
+]);
+const { evidenceRoot } = await keelson.evidence.seal({
+  mandateId: mandate.id,
+  sources: { ...sources, observation: "Pace Lite, size 10, $99.00." },
+});
+const { purchaseId } = await keelson.purchases.countersign({ mandate, evidenceRoot, cart });
+const purchase = await keelson.purchases.waitFor(purchaseId);
+const report = await verifyAlibi(await keelson.alibis.retrieve(purchase.id));
+console.log(`Bought ${purchase.id}. Alibi: ${report.verdict}`); // verified-offline
+```
+
+```python
+from keelson import Keelson, quote, verify_alibi
+
+keelson = Keelson()  # signed in with `keelson login`
+why = "I buy one pair of Pace Lite running shoes, size 10, at RunFast on the PayPal sandbox, and nothing else."
+req = keelson.mandates.request(name="Quickstart", reason=why, per_purchase="$100", total="$100", until="1h")
+print(f"Approve with your passkey: {req.approval_url}")
+mandate = keelson.mandates.wait_for_approval(req.id)
+q = quote([{"productUrl": "https://store.keelson.finance/products/pace-lite", "size": "10", "qty": 1}])
+seen = {**q["sources"], "observation": "Pace Lite, size 10, $99.00."}
+sealed = keelson.evidence.seal(mandate_id=mandate.id, sources=seen)
+signed = keelson.purchases.countersign(mandate=mandate, evidence_root=sealed["evidenceRoot"], cart=q["cart"])
+report = verify_alibi(keelson.alibis.retrieve(keelson.purchases.wait_for(signed.purchase_id).id))
+print(f"Bought {signed.purchase_id}. Alibi: {report['verdict']}")  # verified-offline
+```
+{% /languages %}
+
+Each step has its own page: [authentication](/sdk/authentication/), [mandates](/sdk/mandates/), [purchases](/sdk/purchases/) and [verifying an Alibi](/sdk/verify/). `AsyncKeelson` is the same Python client for asyncio.
+
+## Agent frameworks
+
+The SDKs give a model Keelson's tools under the names and answers of Keelson's MCP server (`keelson_request_mandate`, `keelson_submit_evidence`, `keelson_request_countersign`...). A tool never throws at the model: it answers `{ status, next, message, retryable }`, and `next` says what to do.
+
+{% languages label="Agent frameworks" %}
+```ts
+import { aiSdkTools } from "@keelson/sdk/ai-sdk"; // Vercel AI SDK
+import { openAiAgentsTools } from "@keelson/sdk/openai-agents"; // OpenAI Agents SDK
+import { langchainTools } from "@keelson/sdk/langchain"; // LangChain, LangGraph
+import { keelsonMcpServer } from "@keelson/sdk/claude-agent-sdk"; // Claude Agent SDK
+```
+
+```python
+from keelson.adapters.openai_agents import openai_agents_tools
+from keelson.adapters.langchain import langchain_tools
+from keelson.adapters.claude_agent_sdk import keelson_mcp_server
+```
+{% /languages %}
