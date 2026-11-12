@@ -117,6 +117,14 @@ contract BondVaultDepositForkTest is VaultBase {
         vault.depositWithPermit(agentId, funder, AMOUNT, type(uint256).max, sig);
     }
 
+    function test_deposit_zeroAmountReverts() public {
+        (address from, bytes memory sig) = _authorization(0, type(uint256).max, "zero");
+        vm.expectRevert(IKeelsonBondVault.ZeroAmount.selector);
+        vault.depositWithAuthorization(agentId, from, 0, 0, type(uint256).max, "zero", sig);
+        vm.expectRevert(IKeelsonBondVault.ZeroAmount.selector);
+        vault.depositWithPermit(agentId, operator, 0, type(uint256).max, "");
+    }
+
     /// @dev The agent's ERC-8004 wallet is an authority too: it can bond with a permit.
     function test_depositWithPermit_fromAgentWallet() public {
         (address wallet, uint256 walletKey) = makeAddrAndKey("agent wallet");
