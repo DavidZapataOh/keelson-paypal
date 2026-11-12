@@ -50,6 +50,7 @@ import { registerDisputes } from "./routes/disputes.ts";
 import { registerEmbed } from "./routes/embed.ts";
 import { noFraming, registerEmbedPage } from "./routes/embed-page.ts";
 import { registerEmbedSigning } from "./routes/embed-signing.ts";
+import { registerEngineCapabilities } from "./routes/engine-capabilities.ts";
 import { registerEngineProofs } from "./routes/engine-proofs.ts";
 import { registerEvents } from "./routes/events.ts";
 import { registerEvidence } from "./routes/evidence.ts";
@@ -79,6 +80,7 @@ import { registerPurchases } from "./routes/purchases.ts";
 import { registerRedTeam } from "./routes/redteam.ts";
 import { registerRevoke } from "./routes/revoke.ts";
 import { registerStatus } from "./routes/status.ts";
+import { registerStatusList } from "./routes/status-list.ts";
 import { registerTee } from "./routes/tee.ts";
 import { registerTimestamps } from "./routes/timestamps.ts";
 import { registerTransactions } from "./routes/transactions.ts";
@@ -414,6 +416,8 @@ export function createApp(deps: Deps): OpenAPIHono {
   }
   registerContext(app, rateLimit(deps.kv, { ...deps.rateLimit, name: "context" }));
   registerHealth(app);
+  registerEngineCapabilities(app, deps);
+  registerStatusList(app, deps);
   registerAgentDocs(app);
   registerStatus(app, deps);
   registerEvents(app, deps);

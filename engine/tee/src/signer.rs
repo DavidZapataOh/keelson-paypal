@@ -8,6 +8,8 @@ use k256::elliptic_curve::Generate;
 use k256::elliptic_curve::zeroize::ZeroizeOnDrop;
 use keelson_core::eip712::{CardAuthorization, Checkpoint, Countersign, Verdict, WebFact};
 
+use sha2::Digest as _;
+
 use crate::countersign_digest;
 use crate::error::{Error, check_chain};
 
@@ -135,6 +137,20 @@ impl Signer {
         self.sign_digest(digest)
     }
 
+    /// Signs an EIP-712 digest the caller computed from a Keelson type.
+    pub fn sign_digest_of(&self, digest: &[u8; 32]) -> Result<[u8; 65], Error> {
+        self.sign_digest(digest)
+    }
+
+    /// Signs a COSE `Sig_structure` with ES256K (RFC 8812): SHA-256, low-S, `r ‖ s`.
+    pub fn sign_statement(&self, to_be_signed: &[u8]) -> Result<[u8; 64], Error> {
+        let digest: [u8; 32] = sha2::Sha256::digest(to_be_signed).into();
+        let full = self.sign_digest(&digest)?;
+        let mut out = [0; 64];
+        out.copy_from_slice(&full[..64]);
+        Ok(out)
+    }
+
     fn sign_digest(&self, digest: &[u8; 32]) -> Result<[u8; 65], Error> {
         // k256 normalizes to low-S and flips the recovery id accordingly.
         let (signature, recovery_id) = self.key.sign_prehash_recoverable(digest);
@@ -151,6 +167,25 @@ fn v_byte(recovery_id: RecoveryId) -> Result<u8, Error> {
         id @ (0 | 1) => Ok(27 + id),
         _ => Err(Error::UnusableSignature),
     }
+}
+
+/// The address that signed `digest` with a 65-byte `r ‖ s ‖ v`, refusing a high `s`.
+pub fn recover_address(digest: &[u8; 32], signature: &[u8; 65]) -> Option<Address> {
+    let sig = k256::ecdsa::Signature::from_slice(&signature[..64]).ok()?;
+    if sig.normalize_s() != sig {
+        return None;
+    }
+    let id = match signature[64] {
+        v @ (0 | 1) => v,
+        v @ (27 | 28) => v - 27,
+        _ => return None,
+    };
+    let key =
+        k256::ecdsa::VerifyingKey::recover_from_prehash(digest, &sig, RecoveryId::from_byte(id)?)
+            .ok()?;
+    Some(Address::from_raw_public_key(
+        &key.to_sec1_point(false).as_bytes()[1..],
+    ))
 }
 
 #[cfg(test)]

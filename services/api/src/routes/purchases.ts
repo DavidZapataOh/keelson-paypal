@@ -356,11 +356,15 @@ const liveRoute = createRoute({
  */
 async function payeeInvalid(db: Db, mandateId: string, payee: string): Promise<string | undefined> {
   const [m] = await db
-    .select({ payloadSd: mandates.payloadSd, disclosures: mandates.disclosures })
+    .select({
+      payloadSd: mandates.payloadSd,
+      disclosures: mandates.disclosures,
+      decoySalts: mandates.decoySalts,
+    })
     .from(mandates)
     .where(eq(mandates.id, mandateId));
   if (!m?.payloadSd || !m.disclosures) return "the mandate is not signed";
-  const allowed = allowedPayees(decodeMandate(m.payloadSd, m.disclosures));
+  const allowed = allowedPayees(decodeMandate(m.payloadSd, m.disclosures, m.decoySalts));
   return payeeAllowed(allowed, payee)
     ? undefined
     : "PayPal's order pays a merchant the mandate does not allow";

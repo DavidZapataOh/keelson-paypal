@@ -1,0 +1,17 @@
+{
+  "source": "awscli/botocore SigV4Auth",
+  "region": "us-west-2",
+  "service": "kms",
+  "access_key_id": "AKIDEXAMPLE",
+  "secret_access_key": "wJalrXUtnFEMI/K7MDENG+bPxRfiCYEXAMPLEKEY",
+  "session_token": "FwoGZXIvYXdzEXAMPLETOKEN",
+  "amz_date": "20261111T120000Z",
+  "body": "{\"CiphertextBlob\":\"AQIDBA==\",\"Recipient\":{\"AttestationDocument\":\"BQYHCA==\",\"KeyEncryptionAlgorithm\":\"RSAES_OAEP_SHA_256\"}}",
+  "headers": {
+    "Content-Type": "application/x-amz-json-1.1",
+    "X-Amz-Target": "TrentService.Decrypt",
+    "X-Amz-Date": "20261111T120000Z",
+    "X-Amz-Security-Token": "FwoGZXIvYXdzEXAMPLETOKEN",
+    "Authorization": "AWS4-HMAC-SHA256 Credential=AKIDEXAMPLE/20261111/us-west-2/kms/aws4_request, SignedHeaders=content-type;host;x-amz-date;x-amz-security-token;x-amz-target, Signature=6e087fff25145b4ae6b85754af4fe12e2399809078895f1bb07fc3d7f620785a"
+  }
+}

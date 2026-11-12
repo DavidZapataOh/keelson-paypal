@@ -456,6 +456,9 @@ export interface components {
        */
       liveViewUrl?: string;
     };
+    AlibiEar: {
+      [key: string]: unknown;
+    };
     AlibiReceipt: {
       alibi_id: string;
       /** @description The leaf bytes, base64. */
@@ -1981,7 +1984,10 @@ export interface operations {
   };
   getAlibi: {
     parameters: {
-      query?: never;
+      query?: {
+        /** @description `2`: the Alibi as an IETF SCITT transparent statement (RFC 9943). A v1 Alibi is served as the bridge statement that carries its countersigned facts, once there is one. */
+        version?: "1" | "2";
+      };
       header?: never;
       path: {
         /** @description The Alibi id: the purchase's ULID. */
@@ -1998,6 +2004,7 @@ export interface operations {
         };
         content: {
           "application/vnd.keelson.alibi.v1+json": string;
+          "application/vnd.keelson.alibi.v2+json": string;
         };
       };
       /** @description The bundle has not changed */
@@ -2028,16 +2035,19 @@ export interface operations {
     requestBody: {
       content: {
         "application/vnd.keelson.alibi.v1+json": string;
+        "application/vnd.keelson.alibi.v2+json": string;
+        "application/scitt-statement+cose": string;
       };
     };
     responses: {
-      /** @description The report */
+      /** @description The report; with `Accept: application/eat-ucs+json`, the same appraisal as an EAT Attestation Result (draft-ietf-rats-ear) */
       200: {
         headers: {
           [name: string]: unknown;
         };
         content: {
           "application/json": components["schemas"]["AlibiReport"];
+          "application/eat-ucs+json": components["schemas"]["AlibiEar"];
         };
       };
       /** @description Not an Alibi bundle; `pointer` names the failing value */

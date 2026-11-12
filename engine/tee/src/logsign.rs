@@ -33,6 +33,8 @@ pub fn key_domain(origin: &str) -> String {
 }
 
 const SEAL_PURPOSE: &str = "keelson/seal/log-checkpoint/v1";
+/// HKDF info deriving an origin's receipt key from its log-key seed.
+const RECEIPT_KEY_INFO: &[u8] = b"keelson/log-receipt/v1";
 /// Longest consistency proof between trees of up to 2^64 - 1 leaves (RFC 9162 §2.1.4.1).
 const MAX_PROOF: usize = 65;
 
@@ -40,6 +42,8 @@ const MAX_PROOF: usize = 65;
 pub struct LogKey {
     pub origin: &'static str,
     key: SigningKey,
+    /// Signs the roots of the origin's RFC 9942 receipts; derived from the same seed.
+    receipt: SigningKey,
     /// `GetKey`'s `signature_chain`: the app root key's signature over the key claim and the
     /// KMS root key's signature over the app root key.
     pub signature_chain: Vec<Vec<u8>>,
@@ -52,11 +56,25 @@ impl LogKey {
         seed: &Zeroizing<[u8; 32]>,
         signature_chain: Vec<Vec<u8>>,
     ) -> Self {
+        // `Hkdf::new` would drop the pseudorandom key unwiped.
+        let mut extract = hkdf::HkdfExtract::<Sha256>::new(None);
+        extract.input_ikm(seed.as_slice());
+        let (mut prk, hkdf) = extract.finalize();
+        zeroize::Zeroize::zeroize(&mut prk);
+        let mut receipt = Zeroizing::new([0u8; 32]);
+        hkdf.expand(RECEIPT_KEY_INFO, receipt.as_mut_slice())
+            .expect("32 bytes is a valid HKDF-SHA256 length");
         Self {
             origin,
             key: SigningKey::from_bytes(seed),
+            receipt: SigningKey::from_bytes(&receipt),
             signature_chain,
         }
+    }
+
+    /// The Ed25519 key of the origin's RFC 9942 receipts.
+    pub fn receipt_public_key(&self) -> [u8; 32] {
+        self.receipt.verifying_key().to_bytes()
     }
 
     pub fn public_key(&self) -> [u8; 32] {
@@ -101,6 +119,8 @@ pub struct Signed {
     pub signature: String,
     /// The note verifier key that signed.
     pub vkey: String,
+    /// The Ed25519 signature, base64, over the RFC 9942 receipt `Sig_structure` of the same root.
+    pub receipt_signature: String,
 }
 
 /// Why a checkpoint was not signed.
@@ -244,9 +264,14 @@ impl LogSigner {
         drop(latest);
 
         let signature = key.key.sign(r.checkpoint.as_bytes());
+        let receipt = key.receipt.sign(&keelson_core::statement::to_be_signed(
+            &keelson_core::statement::receipt_protected(&key.receipt_public_key(), key.origin),
+            &tree.root,
+        ));
         Ok(Signed {
             signature: STANDARD.encode(signature.to_bytes()),
             vkey: key.vkey(),
+            receipt_signature: STANDARD.encode(receipt.to_bytes()),
         })
     }
 
@@ -394,4 +419,106 @@ pub fn verify_consistency(
         sn >>= 1;
     }
     sn == 0 && fr == *root1 && sr == *root2
+}
+
+/// RFC 9162 §2.1.3.2: the root an inclusion path yields, or `None` for a malformed proof.
+pub fn root_from_inclusion(
+    leaf_hash: &[u8; 32],
+    index: u64,
+    size: u64,
+    path: &[[u8; 32]],
+) -> Option<[u8; 32]> {
+    if index >= size {
+        return None;
+    }
+    let (mut fn_, mut sn) = (index, size - 1);
+    let mut r = *leaf_hash;
+    for p in path {
+        if sn == 0 {
+            return None;
+        }
+        if fn_ & 1 == 1 || fn_ == sn {
+            r = node(p, &r);
+            while fn_ & 1 == 0 && fn_ != 0 {
+                fn_ >>= 1;
+                sn >>= 1;
+            }
+        } else {
+            r = node(&r, p);
+        }
+        fn_ >>= 1;
+        sn >>= 1;
+    }
+    (sn == 0).then_some(r)
+}
+
+impl LogSigner {
+    /// Whether `proof` (c2sp.org/tlog-proof@v1) includes `leaf` in a checkpoint of `origin` that
+    /// this leg's own log key signed.
+    pub fn includes(&self, origin: &str, leaf: &[u8], proof: &str) -> bool {
+        let Some(key) = self.keys.iter().find(|k| k.origin == origin) else {
+            return false;
+        };
+        let Some(rest) = proof.strip_prefix("c2sp.org/tlog-proof@v1\n") else {
+            return false;
+        };
+        let Some((head, note)) = rest.split_once("\n\n") else {
+            return false;
+        };
+        let mut lines = head.split('\n').filter(|l| !l.starts_with("extra "));
+        let Some(index) = lines
+            .next()
+            .and_then(|l| l.strip_prefix("index "))
+            .and_then(|n| n.parse::<u64>().ok())
+        else {
+            return false;
+        };
+        let Some(path) = lines
+            .map(|l| {
+                STANDARD
+                    .decode(l)
+                    .ok()
+                    .and_then(|h| <[u8; 32]>::try_from(h).ok())
+            })
+            .collect::<Option<Vec<_>>>()
+        else {
+            return false;
+        };
+        let Some((body, signatures)) = note.split_once("\n\n") else {
+            return false;
+        };
+        let body = format!("{body}\n");
+        let Some((name, tree)) = parse_body(&body) else {
+            return false;
+        };
+        let id = note_key_id(origin, 0x01, &key.public_key());
+        let signed = signatures.lines().any(|line| {
+            let Some(rest) = line.strip_prefix("\u{2014} ") else {
+                return false;
+            };
+            let Some((who, sig)) = rest.split_once(' ') else {
+                return false;
+            };
+            let Ok(raw) = STANDARD.decode(sig) else {
+                return false;
+            };
+            who == origin
+                && raw.len() == 68
+                && raw[..4] == id
+                && <[u8; 64]>::try_from(&raw[4..]).is_ok_and(|s| {
+                    key.key
+                        .verifying_key()
+                        .verify_strict(body.as_bytes(), &ed25519_dalek::Signature::from_bytes(&s))
+                        .is_ok()
+                })
+        });
+        let leaf_hash: [u8; 32] = Sha256::new()
+            .chain_update([0])
+            .chain_update(leaf)
+            .finalize()
+            .into();
+        name == origin
+            && signed
+            && root_from_inclusion(&leaf_hash, index, tree.size, &path) == Some(tree.root)
+    }
 }

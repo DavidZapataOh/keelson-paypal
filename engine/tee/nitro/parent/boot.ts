@@ -4,10 +4,15 @@
  *
  *   node boot.ts <boot.json> [--url http://127.0.0.1:8000] [--print]
  *
- * `<boot.json>` is `{ config, token_sha256 }`. With `--print` the request is written to stdout
- * and not sent. Otherwise it waits for an unbooted enclave, boots it and prints the signer.
+ * `<boot.json>` is `{ config, token_sha256 }`, plus `paypal: { env, client_id }` when the enclave
+ * reads PayPal itself. Its secret is then sent as the KMS ciphertext in the SSM parameter
+ * `/keelson/leg-b/paypal-secret-ct`, with the instance role's session, which may only decrypt it
+ * for the measured enclave. With `--print` the request is written to stdout and not sent.
+ * Otherwise it waits for an unbooted enclave, boots it and prints the signer.
  */
+import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
+import { promisify } from "node:util";
 
 const RPC = process.env.ARBITRUM_SEPOLIA_RPC_URL ?? "https://sepolia-rollup.arbitrum.io/rpc";
 const WAIT_MS = 60_000;
@@ -37,7 +42,50 @@ async function latestBlock() {
   return { number: Number(BigInt(result.number)), hash: result.hash };
 }
 
-const request = { ...JSON.parse(await readFile(file, "utf8")), block: await latestBlock() };
+const IMDS = "http://169.254.169.254/latest";
+
+/** The instance role's session and region, from IMDSv2. */
+async function roleSession() {
+  const token = await fetch(`${IMDS}/api/token`, {
+    method: "PUT",
+    headers: { "x-aws-ec2-metadata-token-ttl-seconds": "300" },
+  }).then((r) => r.text());
+  const get = (path: string) =>
+    fetch(`${IMDS}/${path}`, { headers: { "x-aws-ec2-metadata-token": token } }).then((r) =>
+      r.text(),
+    );
+  const role = (await get("meta-data/iam/security-credentials/")).trim();
+  const c = JSON.parse(await get(`meta-data/iam/security-credentials/${role}`)) as {
+    AccessKeyId: string;
+    SecretAccessKey: string;
+    Token: string;
+  };
+  return {
+    region: (await get("meta-data/placement/region")).trim(),
+    access_key_id: c.AccessKeyId,
+    secret_access_key: c.SecretAccessKey,
+    session_token: c.Token,
+  };
+}
+
+const boot = JSON.parse(await readFile(file, "utf8")) as {
+  paypal?: { env: string; client_id: string };
+};
+const request: Record<string, unknown> = { ...boot, block: await latestBlock() };
+if (boot.paypal) {
+  const { stdout } = await promisify(execFile)("aws", [
+    "ssm",
+    "get-parameter",
+    "--name",
+    "/keelson/leg-b/paypal-secret-ct",
+    "--query",
+    "Parameter.Value",
+    "--output",
+    "text",
+  ]);
+  request.paypal = { ...boot.paypal, secret_ciphertext: stdout.trim() };
+  request.aws = await roleSession();
+}
 if (print) {
   console.log(JSON.stringify(request));
   process.exit(0);

@@ -20,6 +20,7 @@ import { major, money, when } from "../lib/format";
 import { purchaseStatus, unknownOutcome } from "../lib/status";
 import type { Dispute, Purchase } from "../lib/types";
 import { useMandate } from "../lib/use-mandate";
+import { AlibiStandards, useStatement } from "./alibi-standards";
 import { AnonymousProof } from "./anonymous-proof";
 import { AppShell } from "./app-shell";
 import { RiveMoment } from "./brand";
@@ -284,6 +285,8 @@ function Receipt() {
   const [fileError, setFileError] = useState<string>();
   const [disputing, setDisputing] = useState(false);
   const [filed, setFiled] = useState(false);
+  // Only a v2 Alibi has a transparent statement; a v1 one, or none yet, answers 404.
+  const statement = useStatement(params.get("id") ?? "", true);
   if (error) return <ErrorNotice>{error}</ErrorNotice>;
   const p = mandate?.purchases.find((x) => x.id === params.get("id"));
   if (!mandate)
@@ -458,6 +461,7 @@ function Receipt() {
             open={disputing}
             onOpenChange={setDisputing}
             purchaseId={p.id}
+            statement={statement !== null}
             onFiled={async () => {
               setFiled(true);
               await reload();
@@ -534,6 +538,7 @@ function Receipt() {
               The link checks the public log entry. Drop the .alibi file into the verifier to check
               everything else.
             </p>
+            {statement ? <AlibiStandards id={p.id} statement={statement} /> : null}
           </div>
         ) : unknownOutcome(p) ? (
           <p className="text-muted-foreground text-sm">

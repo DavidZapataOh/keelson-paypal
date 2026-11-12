@@ -1,6 +1,13 @@
 import { readFileSync } from "node:fs";
 import { expect, test } from "vitest";
-import { LOG_ORIGINS, LOG_VKEYS, LOG_WITNESSES, parseWitnessPolicy } from "../src/index.ts";
+import {
+  CUTOVER_PENDING,
+  LOG_ORIGINS,
+  LOG_VKEY_HISTORY,
+  LOG_VKEYS,
+  LOG_WITNESSES,
+  parseWitnessPolicy,
+} from "../src/index.ts";
 
 const read = (name: string) =>
   readFileSync(new URL(`../../../services/log/${name}`, import.meta.url), "utf8");
@@ -51,4 +58,22 @@ test("malformed policies are refused", () => {
   expect(() => parseWitnessPolicy("witness w1 k\ngroup none 1 w1\nquorum none")).toThrow(
     "reserved",
   );
+});
+
+test("the Ed25519 keys are the ones leg A derives under its on-chain KMS app", () => {
+  const derived = JSON.parse(
+    readFileSync(
+      new URL("../../../engine/tee/tests/fixtures/onchain-kms/getkey-chain.json", import.meta.url),
+      "utf8",
+    ),
+  ) as { origin: string; vkey: string }[];
+  for (const { origin, vkey } of derived) expect(LOG_VKEYS[origin]?.[0]).toBe(vkey);
+});
+
+// The cutover size is the size the log anchored when the new key signed its first checkpoint.
+test("no retired key set still waits for its cutover size", () => {
+  const pending = Object.entries(LOG_VKEY_HISTORY).flatMap(([origin, sets]) =>
+    sets.filter((s) => s.untilSize === CUTOVER_PENDING).map(() => origin),
+  );
+  expect(pending).toEqual([]);
 });

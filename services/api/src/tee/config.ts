@@ -31,8 +31,8 @@ interface TeeEnv {
   TEE_B_URL: string;
   KEELSON_TEE_TOKEN: string;
   ARBITRUM_SEPOLIA_RPC_URL?: string | undefined;
-  /** The RFC 7638 thumbprint of the credential issuer key both legs must attest. */
-  KEELSON_ISSUER_THUMBPRINT?: Hex | undefined;
+  /** The RFC 7638 thumbprints of the credential issuer keys the legs may attest. */
+  KEELSON_ISSUER_THUMBPRINTS?: Hex[] | undefined;
   /** Registers each admitted signer in the VerdictVerifier first. */
   KEELSON_REGISTRAR_KEY?: Hex | undefined;
 }
@@ -79,8 +79,8 @@ export function createTee(
     policySetHash: POLICY_SET_HASH.replace("sha256:", "0x") as Hex,
     engineBuildId: m.engineBuildId,
     rpc,
-    ...(env.KEELSON_ISSUER_THUMBPRINT
-      ? { issuerJwkThumbprint: env.KEELSON_ISSUER_THUMBPRINT }
+    ...(env.KEELSON_ISSUER_THUMBPRINTS
+      ? { issuerJwkThumbprints: env.KEELSON_ISSUER_THUMBPRINTS }
       : {}),
   };
   const expect: Record<"a" | "b", LegExpectations> = {

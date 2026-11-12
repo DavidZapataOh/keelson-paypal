@@ -4,13 +4,14 @@
 
 ## Secrets
 
-Three values reach the CVM, all as Phala encrypted environment variables (encrypted on the client to the CVM's KMS key, readable only inside the TEE):
+Four values reach the CVM, all as Phala encrypted environment variables (encrypted on the client to the CVM's KMS key, readable only inside the TEE):
 
 | Variable                   | Value                                            |
 | -------------------------- | ------------------------------------------------ |
 | `PAYPAL_CLIENT_ID`         | PayPal REST app client id                        |
 | `PAYPAL_CLIENT_SECRET`     | PayPal REST app secret                           |
 | `KEELSON_TEE_TOKEN_SHA256` | hex SHA-256 of the bearer token the API presents |
+| `LITHIC_API_KEY`           | Lithic API key; leg A reads card settlements     |
 
 None of them is in the compose file or the image. Updating them replaces the whole set. The sandbox is used unless `PAYPAL_ENV=live` is also passed.
 

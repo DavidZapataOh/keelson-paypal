@@ -59,3 +59,13 @@ export const put = <T>(path: string, body: unknown) =>
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
+
+/**
+ * Whether both TEEs resolve decoy digests, so a new mandate may carry them; `false` when the API
+ * cannot say.
+ */
+export const engineDecoys = (): Promise<boolean> =>
+  get<{ decoys: boolean }>("/v1/engine/capabilities").then(
+    (c) => c.decoys === true,
+    () => false,
+  );
