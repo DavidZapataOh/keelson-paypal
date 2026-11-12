@@ -3,9 +3,9 @@ pragma solidity 0.8.38;
 
 import {KeelsonRoles} from "../src/access/KeelsonRoles.sol";
 import {KeelsonDeployer} from "../src/deploy/KeelsonDeployer.sol";
+import {GuardianSafe} from "./GuardianSafe.sol";
 import {KeelsonDeploy} from "./KeelsonDeploy.sol";
 import {ISafe} from "./interfaces/ISafe.sol";
-import {ISafeProxyFactory} from "./interfaces/ISafeProxyFactory.sol";
 import {AccessManager} from "@openzeppelin/contracts/access/manager/AccessManager.sol";
 import {TimelockController} from "@openzeppelin/contracts/governance/TimelockController.sol";
 import {stdJson} from "forge-std/StdJson.sol";
@@ -14,9 +14,6 @@ import {stdJson} from "forge-std/StdJson.sol";
 /// @dev Every step checks current state first, so a re-run does only what is missing.
 contract Deploy is KeelsonDeploy {
     using stdJson for string;
-
-    /// @dev Equal across chains for equal owners and threshold.
-    uint256 internal constant GUARDIAN_SALT_NONCE = uint256(keccak256("keelson.finance/guardian"));
 
     struct Release {
         KeelsonDeployer deployer;
@@ -55,44 +52,13 @@ contract Deploy is KeelsonDeploy {
     }
 
     function _deployGuardian(string memory json) internal returns (ISafe guardian) {
-        ISafeProxyFactory factory = ISafeProxyFactory(json.readAddress(".external.safeProxyFactory"));
-        address singleton = json.readAddress(".external.safeL2");
-        guardian = ISafe(predictGuardian(json));
-        if (address(guardian).code.length == 0) {
-            require(
-                factory.createProxyWithNonce(singleton, guardianInitializer(json), GUARDIAN_SALT_NONCE)
-                    == address(guardian),
-                "Guardian Safe address"
-            );
-        }
-        _record("GuardianSafe", address(guardian), abi.encode(singleton));
+        guardian = GuardianSafe.ensure(json);
+        _record("GuardianSafe", address(guardian), abi.encode(json.readAddress(".external.safeL2")));
     }
 
     /// @notice The Guardian Safe's address: CREATE2 by the Safe factory over the owners, threshold and salt nonce.
     function predictGuardian(string memory json) public pure returns (address) {
-        ISafeProxyFactory factory = ISafeProxyFactory(json.readAddress(".external.safeProxyFactory"));
-        address singleton = json.readAddress(".external.safeL2");
-        return vm.computeCreate2Address(
-            keccak256(abi.encodePacked(keccak256(guardianInitializer(json)), GUARDIAN_SALT_NONCE)),
-            keccak256(abi.encodePacked(factory.proxyCreationCode(), uint256(uint160(singleton)))),
-            address(factory)
-        );
-    }
-
-    function guardianInitializer(string memory json) public pure returns (bytes memory) {
-        return abi.encodeCall(
-            ISafe.setup,
-            (
-                json.readAddressArray(".governance.guardianOwners"),
-                json.readUint(".governance.guardianThreshold"),
-                address(0),
-                "",
-                json.readAddress(".external.safeFallbackHandler"),
-                address(0),
-                0,
-                payable(address(0))
-            )
-        );
+        return GuardianSafe.predict(json);
     }
 
     /// @dev Later releases map each `restricted` function here with `setTargetFunctionRole`. A target with

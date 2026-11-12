@@ -29,6 +29,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -66,6 +67,8 @@ func run(args []string) error {
 	switch {
 	case len(args) == 2 && args[0] == "rfc6962":
 		return writeJSON(rfc6962Vectors(ctx, args[1]))
+	case len(args) == 2 && args[0] == "statements":
+		return writeJSON(statementVectors(args[1]))
 	case len(args) == 2 && args[0] == "checkpoints":
 		return writeJSON(checkpointVectors(ctx, args[1]))
 	case len(args) == 2 && args[0] == "note":
@@ -80,7 +83,7 @@ func run(args []string) error {
 		_, err = os.Stdout.Write(conformance.SignedCheckpoint(s, n, conformance.Tree(n)))
 		return err
 	}
-	return errors.New("usage: gen rfc6962 <note> | gen checkpoints <note> | gen note <size>")
+	return errors.New("usage: gen rfc6962 <note> | gen checkpoints <note> | gen note <size> | gen statements <repo root>")
 }
 
 func writeJSON[T any](v T, err error) error {
@@ -500,5 +503,69 @@ func checkpointVectors(ctx context.Context, notePath string) (*checkpointsFile, 
 		}
 	}
 	out.Cases = cases
+	return out, nil
+}
+
+type statementLeaf struct {
+	Index    uint64   `json:"index"`
+	Leaf     hexBytes `json:"leaf"`
+	LeafHash hash32   `json:"leafHash"`
+	Proof    []hash32 `json:"proof"`
+}
+
+type hexBytes []byte
+
+func (b hexBytes) MarshalJSON() ([]byte, error) { return json.Marshal("0x" + hex.EncodeToString(b)) }
+
+type statementFile struct {
+	Leaves []statementLeaf `json:"leaves"`
+	Root   hash32          `json:"root"`
+	Size   uint64          `json:"size"`
+}
+
+// statementVectors is a log of two real v1 leaves and six SCITT statement leaves (purchase, card
+// decision, settlement, bridge) with every leaf's RFC 6962 inclusion proof.
+func statementVectors(root string) (*statementFile, error) {
+	var leaves [][]byte
+	for _, id := range []string{"01M6ZWZJHWRRHQEYNJAT7NMSV8", "01M6ZX07MFWDDDW4199FDJHWEG"} {
+		raw, err := os.ReadFile(filepath.Join(root, "packages/alibi/test/fixtures", id+".alibi"))
+		if err != nil {
+			return nil, err
+		}
+		var b struct {
+			Leaf []byte `json:"leaf"`
+		}
+		if err := json.Unmarshal(raw, &b); err != nil {
+			return nil, err
+		}
+		leaves = append(leaves, b.Leaf)
+	}
+	for _, name := range []string{"allow-2of2", "allow-degraded", "card-2of2", "card-auth-approve", "card-settlement", "bridge-degraded"} {
+		raw, err := os.ReadFile(filepath.Join(root, "internal/alibilog/testdata/statement-v2", name+".json"))
+		if err != nil {
+			return nil, err
+		}
+		var v struct {
+			StatementHex string `json:"statement_hex"`
+		}
+		if err := json.Unmarshal(raw, &v); err != nil {
+			return nil, err
+		}
+		leaf, err := hex.DecodeString(v.StatementHex)
+		if err != nil {
+			return nil, err
+		}
+		leaves = append(leaves, leaf)
+	}
+	n := uint64(len(leaves))
+	t := build(n, func(i uint64) []byte { return leaves[i] })
+	out := &statementFile{Root: hash32(t.root(n)), Size: n}
+	for i, leaf := range leaves {
+		v := statementLeaf{Index: uint64(i), Leaf: leaf, LeafHash: hash32(tlog.RecordHash(leaf)), Proof: hashes(t.inclusion(uint64(i), n))}
+		if err := checkInclusion(inclusionVector{Index: v.Index, LeafHash: v.LeafHash, OK: true, Proof: v.Proof, Root: out.Root, Size: n}); err != nil {
+			return nil, err
+		}
+		out.Leaves = append(out.Leaves, v)
+	}
 	return out, nil
 }

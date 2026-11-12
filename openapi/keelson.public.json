@@ -32,6 +32,10 @@
           "state"
         ]
       },
+      "AlibiEar": {
+        "type": "object",
+        "additionalProperties": {}
+      },
       "AlibiReceipt": {
         "type": "object",
         "properties": {
@@ -4090,6 +4094,20 @@
             "description": "The Alibi id: the purchase's ULID.",
             "name": "id",
             "in": "path"
+          },
+          {
+            "schema": {
+              "type": "string",
+              "enum": [
+                "1",
+                "2"
+              ],
+              "description": "`2`: the Alibi as an IETF SCITT transparent statement (RFC 9943). A v1 Alibi is served as the bridge statement that carries its countersigned facts, once there is one."
+            },
+            "required": false,
+            "description": "`2`: the Alibi as an IETF SCITT transparent statement (RFC 9943). A v1 Alibi is served as the bridge statement that carries its countersigned facts, once there is one.",
+            "name": "version",
+            "in": "query"
           }
         ],
         "responses": {
@@ -4097,6 +4115,12 @@
             "description": "The bundle",
             "content": {
               "application/vnd.keelson.alibi.v1+json": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              },
+              "application/vnd.keelson.alibi.v2+json": {
                 "schema": {
                   "type": "string",
                   "format": "binary"
@@ -4136,16 +4160,33 @@
                 "type": "string",
                 "format": "binary"
               }
+            },
+            "application/vnd.keelson.alibi.v2+json": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
+            },
+            "application/scitt-statement+cose": {
+              "schema": {
+                "type": "string",
+                "format": "binary"
+              }
             }
           }
         },
         "responses": {
           "200": {
-            "description": "The report",
+            "description": "The report; with `Accept: application/eat-ucs+json`, the same appraisal as an EAT Attestation Result (draft-ietf-rats-ear)",
             "content": {
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AlibiReport"
+                }
+              },
+              "application/eat-ucs+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlibiEar"
                 }
               }
             }

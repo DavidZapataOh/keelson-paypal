@@ -170,8 +170,15 @@ describe.each([
     ["bondVault", (e) => ({ ...e, bondVault: `0x${"11".repeat(20)}` })],
     ["policySetHash", (e) => ({ ...e, policySetHash: `0x${"22".repeat(32)}` })],
     ["engineBuildId", (e) => ({ ...e, engineBuildId: `0x${"33".repeat(32)}` })],
-    ["issuerJwkThumbprint", (e) => ({ ...e, issuerJwkThumbprint: `0x${"44".repeat(32)}` })],
+    ["issuerJwkThumbprints", (e) => ({ ...e, issuerJwkThumbprints: [`0x${"44".repeat(32)}`] })],
   ];
+  test("admits either issuer while a key move admits two", async () => {
+    const expect_ = await expectations(att, now);
+    const both = [`0x${"44".repeat(32)}` as Hex, att.binding.issuerJwkThumbprint];
+    const result = await verifySigner(att, { ...expect_, issuerJwkThumbprints: both });
+    expect(result.issuerJwkThumbprint).toBe(att.binding.issuerJwkThumbprint);
+  });
+
   test.each(changes)("fails with binding_mismatch when expected %s differs", async (_f, change) => {
     const expect_ = change(await expectations(att, now));
     expect(await codeOf(verifySigner(att, expect_))).toBe("binding_mismatch");

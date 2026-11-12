@@ -56,6 +56,11 @@ type RetiredKey struct {
 	UntilSize uint64
 }
 
+// cutoverPending is the size of a move whose cutover is not known yet, as
+// @keelson/log's CUTOVER_PENDING: the retired key still covers every size, and
+// a test refuses to ship it.
+const cutoverPending = ^uint64(0)
+
 // retiredKeys are the keys each origin moved from, with the size it had
 // reached when it moved, as in @keelson/log's LOG_VKEY_HISTORY.
 var retiredKeys = map[string][]struct {
@@ -64,9 +69,11 @@ var retiredKeys = map[string][]struct {
 }{
 	"log.keelson.finance/alibi/2026-1": {
 		{"log.keelson.finance/alibi/2026-1+2e11a7ea+AfBrbrDNyb9uyXNtg3PXXnVxKQBcMGqa1OlCtxlttUBX", 796},
+		{"log.keelson.finance/alibi/2026-1+8553fcbd+ATEHrhTfdzkwLLgf9SZhMsIhsHzRmvpFnaBfgK0D10Id", cutoverPending},
 	},
 	"log.keelson.finance/alibi-live/2026-1": {
 		{"log.keelson.finance/alibi-live/2026-1+2cbeb917+AUYYGFiA5vhiLgoStIMQMZCqkg5QPBseIXyURpLLwvph", 0},
+		{"log.keelson.finance/alibi-live/2026-1+39e7ebfa+AUiaY8TAW9gFbueTv6mPbHeZq5ClgTnG9a4kGEnU5uyL", cutoverPending},
 	},
 }
 

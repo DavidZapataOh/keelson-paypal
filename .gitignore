@@ -20,3 +20,6 @@ target/
 packages/compiler/eval/results-*.json
 engine/tee/out/
 /services/log/log
+engine/tee/phala/rehearsal/state.json
+engine/tee/phala/rehearsal/*.log
+engine/tee/phala/onchain-state.json

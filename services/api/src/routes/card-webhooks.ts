@@ -16,6 +16,7 @@ import type { Deps } from "../app.ts";
 import { type CardResult, decide } from "../cards/authorize.ts";
 import { refundToUser } from "../cards/chargeback.ts";
 import { alpha2, type CardIssuer } from "../cards/issuer.ts";
+import { collectedMinor, settleCard } from "../cards/statements.ts";
 import { captureCardStep } from "../pipeline/card-step.ts";
 import { publishPurchase } from "../pipeline/events.ts";
 import { problem } from "../problem.ts";
@@ -70,7 +71,10 @@ const CREDITS = new Set(["CREDIT_AUTHORIZATION", "FINANCIAL_CREDIT_AUTHORIZATION
  */
 export function registerCardWebhooks(
   app: OpenAPIHono,
-  deps: Pick<Deps, "db" | "kv" | "log" | "tee" | "cards" | "paypal" | "startDisputeWorkflow">,
+  deps: Pick<
+    Deps,
+    "db" | "kv" | "log" | "tee" | "tlog" | "cards" | "paypal" | "startDisputeWorkflow"
+  >,
 ): void {
   const limit = bodyLimit({
     maxSize: 64 * 1024,
@@ -184,7 +188,7 @@ export function registerCardWebhooks(
  * @internal
  */
 export async function applyTransaction(
-  deps: Pick<Deps, "db" | "kv" | "log" | "cards" | "paypal">,
+  deps: Pick<Deps, "db" | "kv" | "log" | "cards" | "paypal"> & Partial<Pick<Deps, "tee" | "tlog">>,
   t: { cardToken: string; transactionToken: string; status: string; settledMinor: number },
 ): Promise<void> {
   const { db } = deps;
@@ -224,10 +228,24 @@ export async function applyTransaction(
     );
   }
   if (t.status === "SETTLED" && t.settledMinor > 0 && approval) {
-    const settled = BigInt(t.settledMinor);
-    let collected = settled;
+    // The legs read the settlement from the issuer themselves; its webhook amount counts only
+    // when the legs predate signed settlements.
+    const signed = await settleCard(deps, card.purchaseId, t.transactionToken).catch(
+      (err: unknown) => {
+        deps.log.error(
+          { err, purchaseId: card.purchaseId },
+          "the legs did not sign the settlement",
+        );
+        return null;
+      },
+    );
+    const settled = signed?.settledMinor ?? BigInt(t.settledMinor);
+    const collected = collectedMinor(
+      approval.amountMinor,
+      signed?.settledMinor ?? null,
+      t.settledMinor,
+    );
     if (settled > approval.amountMinor) {
-      collected = approval.amountMinor;
       deps.log.error(
         { purchaseId: card.purchaseId, settled: t.settledMinor, approved: approval.amountMinor },
         "card settled above the approved amount; the excess is not collected",

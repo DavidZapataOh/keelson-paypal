@@ -26,6 +26,7 @@ fn options(o: &Value) -> ClosedMandateVerifyOptions {
             expected_nonce: open["expectedNonce"].as_str().unwrap().into(),
             now: open["now"].as_i64().unwrap(),
             max_skew_sec: open["maxSkewSec"].as_i64().unwrap(),
+            decoy_salts: vec![],
         },
         request_id: o["requestId"].as_str().unwrap().into(),
         cart_hash: o["cartHash"].as_str().unwrap().into(),

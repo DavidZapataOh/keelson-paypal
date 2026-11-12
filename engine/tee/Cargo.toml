@@ -26,7 +26,18 @@ tdx = [
 
 # Leg B in an AWS Nitro Enclave: NSM attestation and vsock serving.
 nitro = [
+    "dep:aes",
     "dep:aws-nitro-enclaves-nsm-api",
+    "dep:cbc",
+    "dep:cms",
+    "dep:hmac",
+    "dep:rsa",
+    "getrandom/sys_rng",
+    "dep:http-body-util",
+    "dep:hyper",
+    "dep:hyper-util",
+    "dep:rustls",
+    "dep:tokio-rustls",
     "dep:serde_bytes",
     "dep:serde_cbor",
     "dep:tokio-vsock",
@@ -41,7 +52,10 @@ acvm = "1.0.0"
 aes-gcm = { version = "0.11.1", features = ["zeroize"] }
 alloy-primitives = { version = "1.7.3", features = ["serde"] }
 alloy-sol-types = "1.7.3"
+aes = { version = "0.9.4", optional = true }
 aws-nitro-enclaves-nsm-api = { version = "=0.5.2", optional = true }
+cbc = { version = "0.2.1", optional = true, features = ["alloc", "block-padding"] }
+cms = { version = "0.2.3", optional = true, default-features = false, features = ["std"] }
 # The pipe backend only: the FFI backend downloads a glibc static library at build time.
 barretenberg-rs = { version = "=5.3.0", default-features = false, features = ["native"] }
 axum = { version = "0.8.9", default-features = false, features = ["http1", "json", "tokio"] }
@@ -50,16 +64,18 @@ bn254_blackbox_solver = "1.0.0"
 ed25519-dalek = { version = "3.0.0", default-features = false }
 flate2 = "1.1.9"
 getrandom = "0.4.3"
+hmac = { version = "0.13.0", optional = true }
 hkdf = "0.13.0"
 http-body-util = { version = "0.1.5", optional = true }
 hyper = { version = "1.12.0", optional = true, features = ["client", "http1"] }
 hyper-util = { version = "0.1.21", optional = true, features = ["tokio"] }
 k256 = { version = "0.14.0", default-features = false, features = ["ecdsa", "getrandom", "std"] }
 keelson-canon = { path = "../canon" }
-keelson-core = { path = "../core" }
+keelson-core = { path = "../core", features = ["statement"] }
 keelson-mandate = { path = "../mandate" }
 keelson-policy = { path = "../policy", default-features = false }
 keelson-tlsn = { path = "../tlsn", optional = true }
+rsa = { version = "0.10.0", optional = true, default-features = false, features = ["std", "encoding", "getrandom"] }
 p256 = { version = "0.14.0", default-features = false, features = ["ecdsa", "std"] }
 # TLS on rustls with the ring provider: no aws-lc-sys and no cmake in the image build.
 reqwest = { version = "0.13.5", optional = true, default-features = false, features = ["form", "json", "rustls-no-provider"] }
@@ -85,6 +101,8 @@ rustix = { version = "1.1.5", default-features = false, features = ["process", "
 
 [dev-dependencies]
 alloy-primitives = { version = "1.7.3", features = ["k256", "serde"] }
+ciborium = "0.2.2"
+coset = "0.4.2"
 criterion = { version = "0.8.2", default-features = false }
 http-body-util = "0.1.5"
 keelson-tlsn = { path = "../tlsn", features = ["prover"] }
@@ -102,6 +120,10 @@ required-features = ["tdx"]
 [[test]]
 name = "tdx_simulator"
 required-features = ["tdx"]
+
+[[test]]
+name = "kmsseal"
+required-features = ["nitro"]
 
 [[test]]
 name = "paypal_sandbox"

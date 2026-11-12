@@ -57,6 +57,7 @@ jobs:
             ts:
               - *shared
               - packages/**
+              - internal/scitt/**
               - services/api/**
               - services/agent/**
               - services/redteam/**
@@ -203,7 +204,15 @@ jobs:
           grep -rEn "paypalMockResponse|PayPal-Mock-Response" packages services apps --exclude-dir=node_modules --exclude-dir=dist || status=$?
           test "$status" -eq 1
       - run: pnpm --filter @keelson/timestamp exec playwright install chromium
-      - run: pnpm turbo run typecheck test build --filter='!./packages/db' --filter='!./packages/attest' --filter='!./packages/evidence' --filter='!./services/api' --filter='!./apps/store' --filter='!./services/monitor' --filter='!./packages/relayer' --filter='!./apps/landing' --concurrency=100% --cache-dir=.turbo
+      - name: Install the cddl CLI
+        run: |
+          curl -fsSL https://github.com/anweiss/cddl/releases/download/v0.10.7/cddl-linux-amd64.tar.gz -o /tmp/cddl.tar.gz
+          echo "08a68f7aae25d5781c82e64f8926ca4cad491bd5d2d2f47c72a848d3ff858b8a  /tmp/cddl.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/cddl.tar.gz -C /tmp cddl-linux-amd64
+          sudo install -m 0755 /tmp/cddl-linux-amd64 /usr/local/bin/cddl
+      - env:
+          KEELSON_REQUIRE_CDDL: "1"
+        run: pnpm turbo run typecheck test build --filter='!./packages/db' --filter='!./packages/attest' --filter='!./packages/evidence' --filter='!./services/api' --filter='!./apps/store' --filter='!./services/monitor' --filter='!./packages/relayer' --filter='!./apps/landing' --concurrency=100% --cache-dir=.turbo
       # On its own, after the fan-out: its e2e times a visitor's tamper flow against a 10 s budget.
       - name: Landing
         run: pnpm turbo run typecheck test build --filter=@keelson/landing --cache-dir=.turbo
@@ -1012,7 +1021,11 @@ jobs:
       - name: bb proves and verifies the demo mandate
         run: |
           circuits/c1/prove.sh "$RUNNER_TEMP/c1-proof.json"
-          bb gates -b circuits/c1/target/mandate_predicate.json | tee -a "$GITHUB_STEP_SUMMARY"
+          circuits/tamper.sh c1 circuits/c1/target engine/tee/zk/mandate_predicate.vk
+          if TAMPER_SELFTEST=1 circuits/tamper.sh c1 circuits/c1/target engine/tee/zk/mandate_predicate.vk; then
+            echo "tamper.sh passed a proof whose public inputs were left as they are" >&2
+            exit 1
+          fi
       - run: nargo test
         working-directory: circuits/c2a
       - name: The C2a key and Solidity verifiers are what the circuit compiles to
@@ -1023,8 +1036,8 @@ jobs:
         run: |
           for class in amount currency category expiry merchant; do
             circuits/c2a/prove.sh "$class" "$RUNNER_TEMP/c2a-$class.json"
+            circuits/tamper.sh "c2a/$class" "circuits/c2a/target/$class" circuits/c2a/mandate_violation.vk
           done
-          bb gates -b circuits/c2a/target/mandate_violation.json | tee -a "$GITHUB_STEP_SUMMARY"
       - run: nargo test
         working-directory: circuits/c3
       - name: The C3 program, key and Solidity verifiers are what the circuit compiles to
@@ -1035,8 +1048,8 @@ jobs:
         run: |
           for type in payment webauthn; do
             circuits/c3/prove.sh "$type" "$RUNNER_TEMP/c3-$type.json"
+            circuits/tamper.sh "c3/$type" "circuits/c3/target/$type" circuits/c3/anonymous_mandate.vk
           done
-          bb gates -b circuits/c3/target/anonymous_mandate.json | tee -a "$GITHUB_STEP_SUMMARY"
       - name: The composed program, key and Solidity verifiers are what the circuit compiles to
         run: |
           circuits/c1c3/build.sh
@@ -1044,8 +1057,8 @@ jobs:
       - name: bb composes C1 and C3 of the anonymous demo purchase by recursion
         run: |
           circuits/c1c3/prove.sh "$RUNNER_TEMP/c1c3.json"
+          circuits/tamper.sh c1c3 circuits/c1c3/target circuits/c1c3/anonymous_purchase.vk
           circuits/c1c3/refuses.sh
-          bb gates -b circuits/c1c3/target/anonymous_purchase.json | tee -a "$GITHUB_STEP_SUMMARY"
       - run: nargo test
         working-directory: circuits/c2b
       - name: The C2b key and Solidity verifiers are what the circuit compiles to
@@ -1056,5 +1069,11 @@ jobs:
         run: |
           for field in size color unitPrice returnsFree; do
             circuits/c2b/prove.sh "$field" "$RUNNER_TEMP/c2b-$field.json"
+            circuits/tamper.sh "c2b/$field" "circuits/c2b/target/$field" circuits/c2b/amber_contradiction.vk
           done
-          bb gates -b circuits/c2b/target/amber_contradiction.json | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Each circuit proves within its time budget
+        shell: bash
+        run: circuits/bench.sh | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: No circuit grows past its gate budget
+        if: ${{ !cancelled() }}
+        run: circuits/gates.sh

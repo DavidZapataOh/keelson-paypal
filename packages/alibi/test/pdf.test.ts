@@ -4,13 +4,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { inflateSync } from "node:zlib";
 import { getDocument } from "pdfjs-dist";
+import PDFDocument from "pdfkit";
+import { toBytes } from "pdfkit/output";
 import { describe, expect, test } from "vitest";
-import { encodeAlibi } from "../src/codec.ts";
+import { encodeAlibi, encodeAny, statementOf } from "../src/codec.ts";
 import { extractAlibi } from "../src/extract.ts";
 import { renderAlibiPdf } from "../src/pdf.ts";
 import { verifyUrl } from "../src/qr.ts";
 import { verifyAlibi } from "../src/verify/index.ts";
 import { fixtures } from "./fixtures.ts";
+import { cardV2Bundle, v2Bundle } from "./v2.ts";
 
 const has = (tool: string) => {
   try {
@@ -116,5 +119,40 @@ describe.each(fixtures.map((f) => [f.id, f] as const))("the pdf of %s", (_, f) =
       .trim();
     expect(decoded).toBe(verifyUrl(f.bundle));
     expect(readFileSync(file).length).toBeGreaterThan(0);
+  });
+});
+
+describe("the pdf of a v2 Alibi", () => {
+  const b = v2Bundle();
+  test("embeds the bundle and its transparent statement, and names the envelope", async () => {
+    const pdf = await renderAlibiPdf(b);
+    expect(await renderAlibiPdf(b)).toEqual(pdf);
+    expect(await extractAlibi(pdf)).toEqual(encodeAny(b));
+    const task = getDocument({ data: pdf.slice() });
+    try {
+      const doc = await task.promise;
+      const files = [...((await doc.getAttachments()) ?? new Map()).entries()] as [
+        string,
+        { filename: string },
+      ][];
+      const cose = files.find(([, a]) => a.filename === `${b.alibi_id}.cose`);
+      expect(cose).toBeDefined();
+      expect(await doc.getAttachmentContent(cose?.[0] as string)).toEqual(statementOf(b));
+    } finally {
+      await task.destroy();
+    }
+    expect(await textOf(pdf)).toContain("IETF SCITT transparent statement (RFC 9943)");
+    expect(inflated(pdf)).toContain("/AFRelationship /Data");
+    if (out) writeFileSync(join(out, `${b.alibi_id}-v2.pdf`), pdf);
+  });
+
+  test("a statement that is not the bundle's is refused", async () => {
+    const doc = new PDFDocument();
+    const pdf = toBytes(doc);
+    doc.file(Buffer.from(encodeAny(b)), { name: `${b.alibi_id}.alibi` });
+    doc.file(Buffer.from(statementOf(cardV2Bundle())), { name: `${b.alibi_id}.cose` });
+    doc.text("Alibi");
+    doc.end();
+    await expect(extractAlibi(await pdf)).rejects.toMatchObject({ code: "attachment" });
   });
 });

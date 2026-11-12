@@ -1,0 +1,107 @@
+[
+  {
+    "profile": "keelson.export/1",
+    "typ": "JWT",
+    "rows": []
+  },
+  {
+    "profile": "ap2.open/1",
+    "typ": "sd+jwt",
+    "rows": []
+  },
+  {
+    "profile": "ap2.checkout_jwt/1",
+    "typ": "JWT",
+    "rows": [
+      {
+        "pointer": "/totals/0/amount",
+        "fact": "amount_minor",
+        "transform": "Minor"
+      },
+      {
+        "pointer": "/currency",
+        "fact": "currency",
+        "transform": "UpperCurrency"
+      }
+    ]
+  },
+  {
+    "profile": "ap2.checkout_receipt/1",
+    "typ": "JWT",
+    "rows": [
+      {
+        "pointer": "/status",
+        "fact": "decision",
+        "transform": "StatusOfDecision"
+      }
+    ]
+  },
+  {
+    "profile": "ucp.checkout/1",
+    "typ": "JWT",
+    "rows": [
+      {
+        "pointer": "/checkout/totals/0/amount",
+        "fact": "amount_minor",
+        "transform": "Minor"
+      },
+      {
+        "pointer": "/checkout/currency",
+        "fact": "currency",
+        "transform": "UpperCurrency"
+      }
+    ]
+  },
+  {
+    "profile": "visa.pack/1",
+    "typ": "JWT",
+    "rows": [
+      {
+        "pointer": "/pack/transaction/amount_minor",
+        "fact": "amount_minor",
+        "transform": "Minor"
+      },
+      {
+        "pointer": "/pack/transaction/currency",
+        "fact": "currency",
+        "transform": "UpperCurrency"
+      },
+      {
+        "pointer": "/pack/transaction/decision",
+        "fact": "decision"
+      }
+    ]
+  },
+  {
+    "profile": "acp.allowance/1",
+    "typ": "JWT",
+    "rows": [
+      {
+        "pointer": "/allowance/currency",
+        "fact": "currency",
+        "transform": "LowerCurrency"
+      }
+    ]
+  },
+  {
+    "profile": "ap2.payment_receipt/1",
+    "typ": "JWT",
+    "rows": [
+      {
+        "pointer": "/status",
+        "fact": "decision",
+        "transform": "StatusOfDecision"
+      }
+    ]
+  },
+  {
+    "profile": "vi.l1/1",
+    "typ": "sd+jwt",
+    "rows": []
+  },
+  {
+    "profile": "vi.l2/1",
+    "typ": "kb-sd-jwt+kb",
+    "rows": []
+  }
+]
