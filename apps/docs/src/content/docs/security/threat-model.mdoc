@@ -152,6 +152,27 @@ flowchart LR
 15. **Whoever controls leg A's app on Phala Cloud can start another instance** and have it sign a different extension of the latest anchor, up to an hour of the log. The witnesses then see two views, and the monitor and `LogBond` turn them into proof.
 16. **The monitor does not yet check the TEE signatures of leaves or the on-chain anchors**, and its report says so.
 
+## Third-party keys
+
+Keys Keelson does not hold that can change what its contracts or verifiers accept. Each was read from the deployed contracts. Automata's are the same on Arbitrum Sepolia and Arbitrum One.
+
+| Party | Key | Can change | Worst case for Keelson | Mitigation |
+| --- | --- | --- | --- | --- |
+| Automata | Owner of the DCAP attestation entrypoint (`AutomataDcapAttestationFee`), a single externally owned account | `setQuoteVerifier`, `setZkConfiguration`, `updateProgramIdentifier`, `removeProgramIdentifier`, `addVerifyRoute`, `freezeVerifyRoute` | A forged TDX quote passes, so a signer that runs no allowed image registers as leg A | A countersign or verdict still needs a Nitro signer under AWS's root; the measurement allowlist; the Guardian's `revokeSigner` and `disallowMeasurement`; leg A's quote is rechecked off chain by `@keelson/attest` against Intel's roots |
+| Automata | Owner of the PCCS router (the same account) | `setConfig`, `setQeIdDaoVersionedAddr`, `setFmspcTcbDaoVersionedAddr` | Collateral that Intel did not sign is served to the quote verification, with the same result as above | The same, and the weekly `dcap-collateral` check of leg A's live quote |
+| Automata | PCCS data attesters | Upsert collateral, which is checked against Intel's signatures on write | Stale collateral, so registrations fail until it is refreshed | The weekly `dcap-collateral` check |
+| Base | `nitro-validator`, deployed by Keelson; its certificate cache is owned by Keelson's timelock and revoked by the Guardian Safe | `unrevokeCert` and `setRevoker` (timelock), `revokeCert` (Guardian) | None from Base: the code is immutable and certificates are cached only after they verify to AWS's Nitro root | Timelock delay on any change; revocations are public events |
+| Phala Cloud | Keelson's account that owns leg A's app | The app's compose and instances | A second instance signs another extension of the latest anchor (limit 15) | The compose hash is part of leg A's measurement, which `VerdictVerifier` must allow; the witnesses, the monitor and `LogBond` turn a second view into proof |
+
+The Succinct prover gateway is covered in [Zero-knowledge verifiers](/security/verify/#zk-verifiers). How each attestation is appraised, and which Intel TCB statuses are accepted, is on [Attestation roles](/security/attestation-roles/).
+
+Addresses, identical on both chains:
+
+- Automata DCAP attestation entrypoint: `0xaDdeC7e85c2182202b66E331f2a4A0bBB2cEEa1F`
+- its TDX quote verification (version 4): `0x1692111F7cc3630b15C2f16fb8Ab4d23cE7DE4D6`
+- Automata PCCS router: `0xaf2a0D5473062b36E2dE986DA09d945EB26d492B`
+- owner of both: `0xDf841B239bE7a6b37366005107069b7410da4Ff9`
+
 ## Reporting a vulnerability
 
 Report vulnerabilities privately as described in [the security policy](https://github.com/DavidZapataOh/keelson-paypal/blob/main/contracts/SECURITY.md). Do not open a public issue.
