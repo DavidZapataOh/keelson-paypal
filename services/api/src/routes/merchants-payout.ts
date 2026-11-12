@@ -32,6 +32,7 @@ const PayoutAddress = z
 const route = createRoute({
   method: "post",
   path: "/v1/merchants/payout-address",
+  operationId: "setPayoutAddress",
   tags: ["merchants"],
   summary: "Set a merchant's payout address, gasless",
   description: "Relays `setPayoutAddress` to the bond vault; Keelson pays the gas.",

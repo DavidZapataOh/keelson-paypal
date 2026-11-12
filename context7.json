@@ -1,0 +1,12 @@
+{
+  "$schema": "https://context7.com/schema/context7.json",
+  "projectTitle": "Keelson",
+  "description": "SDKs for letting AI agents buy within a passkey-signed mandate on PayPal, with offline-verifiable receipts.",
+  "folders": ["packages/sdk", "packages/sdk-python", "packages/verify", "packages/context"],
+  "excludeFolders": ["**/test", "**/tests", "**/dist"],
+  "rules": [
+    "Every POST is idempotent: the SDK sends one Idempotency-Key per call and reuses it on retries.",
+    "Never countersign again after OutcomeUnknownError; wait for the purchase instead.",
+    "Payments run on the PayPal sandbox; no real money moves."
+  ]
+}

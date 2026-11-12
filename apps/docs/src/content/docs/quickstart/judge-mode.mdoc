@@ -1,0 +1,81 @@
+---
+title: Judge Mode
+description: The whole product in eleven steps, on the live sandbox, with no keys and no sign-up.
+estimate: 5 minutes, no account
+section: Start
+order: 2
+---
+
+[Judge Mode](https://app.keelson.finance/judge) opens a temporary tenant with one click and walks through Keelson as the three parties see it: the shopper who signs a mandate, the merchant who receives a dispute, and the operator whose agent is bonded. Everything runs on the live sandbox: real TEEs, the public log, PayPal's sandbox and Arbitrum Sepolia. The tenant closes within a day.
+
+## The shopper
+
+### 1. The mandate
+
+One sentence becomes a mandate card, which the shopper signs with a passkey.
+
+What you should see: the card rendered from the mandate's fields, each colored by who answers for it, and the passkey prompt.
+
+### 2. The agent shops
+
+Two runs at RunFast, the sandbox store: one where the page carries a planted prompt, and one clean.
+
+What you should see: the planted run blocked before payment and the clean run countersigned by both TEEs.
+
+### 3. Try to cheat the Alibi
+
+Change the cart or fake the anchor in the purchase's Alibi.
+
+What you should see: the verifier name the check that catches each change.
+
+### 4. Anonymous, and still accountable
+
+A zero-knowledge proof shows that a registered person approved the purchase, without saying who.
+
+What you should see: the proof verified against the registered-user root anchored on chain.
+
+### 5. Catch the log lying
+
+Two signed histories of the same log are proof of a split view.
+
+What you should see: the two checkpoints, the proof submitted, and the log's bond paying out.
+
+## The merchant
+
+### 6. A dispute arrives
+
+A dispute is opened in PayPal's sandbox and Keelson attributes it.
+
+What you should see: the dispute with the purchase it names, and the evidence Keelson holds for it.
+
+### 7. Verdict and settlement
+
+Both TEEs sign who pays and under which rule.
+
+What you should see: the signed verdict, the rule it applied, and the settlement on chain or through PayPal.
+
+### 8. Merchant forensics
+
+The merchant's console, read only.
+
+What you should see: every dispute, and which checks each agent fails.
+
+## The operator
+
+### 9. Operator grade
+
+The operator's grade prices the premium on every coverage.
+
+What you should see: the grade and the evidence behind it.
+
+### 10. Red-team scoreboard
+
+Keelson attacks its own agent, continuously.
+
+What you should see: the attack campaigns and how many each defense stopped.
+
+### 11. Live status
+
+Everything in the tour, running now.
+
+What you should see: each dependency's state, as on [Real or sandbox](/security/environments/).

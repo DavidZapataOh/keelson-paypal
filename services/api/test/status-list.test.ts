@@ -9,6 +9,7 @@ import {
   publishStatusList,
   type StatusListDeps,
 } from "../src/status-list.ts";
+import { stopAgents } from "../src/stop.ts";
 import { channel3Mandate } from "./channel3.ts";
 import { testDb, testKv } from "./setup.ts";
 
@@ -81,5 +82,30 @@ describe("the mandate status list", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("application/statuslist+jwt");
     expect(await res.text()).toMatch(/^token-\d+$/);
+  });
+
+  test("a token past its refresh age is signed again before it is served", async () => {
+    await testDb
+      .update(statusLists)
+      .set({ signedAt: new Date(Date.now() - 241_000) })
+      .where(eq(statusLists.uri, STATUS_URI));
+    const before = signed.length;
+    const app = createApp({ db: testDb, kv: testKv, log, tee } as Parameters<typeof createApp>[0]);
+    const res = await app.request("/status/v1/mandates/2026-1");
+    expect(res.status).toBe(200);
+    expect(signed.length).toBe(before + 1);
+    expect(await res.text()).toBe(`token-${signed.length}`);
+  });
+
+  test("stopping every agent lists each stopped mandate and says how many", async () => {
+    const idx = await listed(false);
+    const [m] = await testDb.select().from(mandates).where(eq(mandates.statusIdx, idx));
+    const stop = await stopAgents(
+      { db: testDb, kv: testKv, log, tee: tee as never },
+      m?.userId as string,
+    );
+    expect(stop.statusListed).toBeGreaterThanOrEqual(1);
+    const bits = await decodeStatusList(signed.at(-1)?.lst as string);
+    expect(bit(bits, idx)).toBe(1);
   });
 });

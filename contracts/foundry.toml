@@ -72,6 +72,7 @@ base = "${BASE_RPC_URL}"
 arbitrum_sepolia = { key = "${ETHERSCAN_API_KEY}", chain = 421614 }
 arbitrum = { key = "${ETHERSCAN_API_KEY}", chain = 42161 }
 sepolia = { key = "${ETHERSCAN_API_KEY}", chain = 11155111 }
+base = { key = "${ETHERSCAN_API_KEY}", chain = 8453 }
 
 [fmt]
 sort_imports = true

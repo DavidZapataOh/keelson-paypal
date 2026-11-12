@@ -1,5 +1,13 @@
 import { execFileSync } from "node:child_process";
-import { createHash, createPublicKey, generateKeyPairSync, randomBytes, sign } from "node:crypto";
+import {
+  createHash,
+  createPrivateKey,
+  createPublicKey,
+  generateKeyPairSync,
+  type KeyObject,
+  randomBytes,
+  sign,
+} from "node:crypto";
 import { mkdtempSync, readFileSync } from "node:fs";
 import { createServer as createHttpsServer, type Server as HttpsServer } from "node:https";
 import { type AddressInfo, connect, createServer as createTcpServer, type Server } from "node:net";
@@ -50,7 +58,9 @@ export const liveEnv = () => ({
   TEE_B_URL: process.env.TEE_B_URL as string,
   KEELSON_TEE_TOKEN: process.env.KEELSON_TEE_TOKEN as string,
   ARBITRUM_SEPOLIA_RPC_URL: process.env.ARBITRUM_SEPOLIA_RPC_URL,
-  KEELSON_ISSUER_THUMBPRINT: process.env.KEELSON_ISSUER_THUMBPRINT as `0x${string}`,
+  KEELSON_ISSUER_THUMBPRINTS: process.env.KEELSON_ISSUER_THUMBPRINTS?.split(",") as
+    | `0x${string}`[]
+    | undefined,
 });
 
 /** The origin the deployed legs accept passkey assertions on; its RP ID is `keelson.finance`. */
@@ -77,27 +87,53 @@ export interface Passkey {
  * and an ES256 signature) for the origin the legs expect, with no browser.
  */
 export class SoftwarePasskey implements Passkey {
-  readonly credentialId = randomBytes(16).toString("base64url");
+  readonly credentialId: string;
   readonly jwk: { kty: string; crv: string; x: string; y: string };
-  private readonly privateKey;
+  private readonly privateKey: KeyObject;
+  private readonly rp: { id: string; origin: string };
   private counter = 0;
 
-  private constructor() {
-    const pair = generateKeyPairSync("ec", { namedCurve: "P-256" });
-    this.privateKey = pair.privateKey;
-    this.jwk = pair.publicKey.export({ format: "jwk" }) as typeof this.jwk;
+  private constructor(
+    privateKey: KeyObject,
+    credentialId: string,
+    rp: { id: string; origin: string },
+  ) {
+    this.privateKey = privateKey;
+    this.credentialId = credentialId;
+    this.rp = rp;
+    this.jwk = createPublicKey(privateKey).export({ format: "jwk" }) as typeof this.jwk;
   }
 
-  static create(): Promise<SoftwarePasskey> {
-    return Promise.resolve(new SoftwarePasskey());
+  /** A new key, for `rp` (Keelson's app by default). */
+  static create(rp = { id: RP_ID, origin: ORIGIN }): Promise<SoftwarePasskey> {
+    const { privateKey } = generateKeyPairSync("ec", { namedCurve: "P-256" });
+    return Promise.resolve(
+      new SoftwarePasskey(privateKey, randomBytes(16).toString("base64url"), rp),
+    );
+  }
+
+  /** A passkey registered elsewhere, from its credential id and its PKCS #8 key (base64). */
+  static fromPkcs8(
+    credentialId: string,
+    pkcs8: string,
+    rp = { id: RP_ID, origin: ORIGIN },
+  ): SoftwarePasskey {
+    const key = createPrivateKey({
+      key: Buffer.from(pkcs8, "base64"),
+      format: "der",
+      type: "pkcs8",
+    });
+    return new SoftwarePasskey(key, credentialId, rp);
   }
 
   assert(challenge: Uint8Array): Promise<Assertion> {
     const flags = Buffer.from([0x05]);
     const counter = Buffer.alloc(4);
-    counter.writeUInt32BE(++this.counter);
+    // Above any count the authenticator reached before this key was loaded here.
+    this.counter = Math.max(this.counter + 1, Math.floor(Date.now() / 1000));
+    counter.writeUInt32BE(this.counter);
     const authenticatorData = Buffer.concat([
-      createHash("sha256").update(RP_ID).digest(),
+      createHash("sha256").update(this.rp.id).digest(),
       flags,
       counter,
     ]);
@@ -105,7 +141,7 @@ export class SoftwarePasskey implements Passkey {
       JSON.stringify({
         type: "webauthn.get",
         challenge: Buffer.from(challenge).toString("base64url"),
-        origin: ORIGIN,
+        origin: this.rp.origin,
         crossOrigin: false,
       }),
     );

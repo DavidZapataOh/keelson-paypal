@@ -1,6 +1,6 @@
 {
-  "id": "558a6dab-efc2-4f17-8bbc-c92da70605d0",
-  "prevId": "b5d7e5e6-cefd-402c-aeca-458c55609fe5",
+  "id": "b5d7e5e6-cefd-402c-aeca-458c55609fe5",
+  "prevId": "0e0611be-275a-4e19-b8ac-20be2502cee0",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2176,18 +2176,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "statement": {
-          "name": "statement",
-          "type": "bytea",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "receipt": {
-          "name": "receipt",
-          "type": "bytea",
-          "primaryKey": false,
-          "notNull": false
-        },
         "latency_ms": {
           "name": "latency_ms",
           "type": "integer",
@@ -2377,100 +2365,6 @@
           "value": "\"card_chargebacks\".\"reason\" in ('not_received', 'not_as_described', 'unauthorized')"
         }
       },
-      "isRLSEnabled": false
-    },
-    "public.card_settlements": {
-      "name": "card_settlements",
-      "schema": "",
-      "columns": {
-        "purchase_id": {
-          "name": "purchase_id",
-          "type": "char(26)",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "transaction_token": {
-          "name": "transaction_token",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "transaction": {
-          "name": "transaction",
-          "type": "bytea",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "card": {
-          "name": "card",
-          "type": "bytea",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "settled_minor": {
-          "name": "settled_minor",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "statement": {
-          "name": "statement",
-          "type": "bytea",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "receipt": {
-          "name": "receipt",
-          "type": "bytea",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "card_settlements_transaction_idx": {
-          "name": "card_settlements_transaction_idx",
-          "columns": [
-            {
-              "expression": "purchase_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "transaction_token",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "card_settlements_purchase_id_purchases_id_fk": {
-          "name": "card_settlements_purchase_id_purchases_id_fk",
-          "tableFrom": "card_settlements",
-          "tableTo": "purchases",
-          "columnsFrom": ["purchase_id"],
-          "columnsTo": ["id"],
-          "onDelete": "no action",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.purchase_cards": {
@@ -4549,6 +4443,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "now()"
+        },
+        "paypal_vault_id": {
+          "name": "paypal_vault_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -6540,6 +6440,66 @@
           "value": "\"verdicts\".\"paid_by\" in ('chain', 'treasury', 'violation-pool')"
         }
       },
+      "isRLSEnabled": false
+    },
+    "public.paypal_wallets": {
+      "name": "paypal_wallets",
+      "schema": "",
+      "columns": {
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "vault_id": {
+          "name": "vault_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "customer_id": {
+          "name": "customer_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "email": {
+          "name": "email",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "paypal_wallets_user_id_user_id_fk": {
+          "name": "paypal_wallets_user_id_user_id_fk",
+          "tableFrom": "paypal_wallets",
+          "tableTo": "user",
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "paypal_wallets_vault_id_unique": {
+          "name": "paypal_wallets_vault_id_unique",
+          "nullsNotDistinct": false,
+          "columns": ["vault_id"]
+        }
+      },
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     }
   },

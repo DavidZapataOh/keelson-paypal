@@ -5,6 +5,7 @@ import {
   eq,
   mandates,
   type paypalEvents,
+  paypalWallets,
   purchaseHolds,
   purchases,
   sql,
@@ -126,6 +127,18 @@ export async function applyEvent(deps: ApplyDeps, row: EventRow): Promise<Applic
       const read = await readResource(() => readDispute(deps.paypal, row.resourceId));
       if (read.status === "missing") return { status: "unresolvable" };
       return applyDispute(deps, read.resource, row.eventType);
+    }
+    case "VAULT.PAYMENT-TOKEN.DELETED": {
+      // The buyer removed the saved PayPal on paypal.com: forgotten once PayPal no longer has it.
+      const read = await readResource(() =>
+        call(deps.paypal.paypal.vault.getPaymentToken(row.resourceId)),
+      );
+      if (read.status === "ok") return { status: "ignored", resource: read.resource };
+      const removed = await deps.db
+        .delete(paypalWallets)
+        .where(eq(paypalWallets.vaultId, row.resourceId))
+        .returning({ userId: paypalWallets.userId });
+      return { status: removed.length > 0 ? "applied" : "ignored" };
     }
     default:
       return { status: "ignored" };

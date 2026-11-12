@@ -209,10 +209,18 @@ async function demoCompiled() {
 }
 
 /** A signed-in buyer whose API answers come from `answer`; anything else is refused. */
+/** An answer of the stubbed API with a status other than 200. */
+class Status {
+  constructor(
+    readonly status: number,
+    readonly body?: unknown,
+  ) {}
+}
+
 async function signedIn(
   kind: keyof typeof VIEWPORTS,
   path: string,
-  answer: (path: string, body: string | null) => unknown | Promise<unknown>,
+  answer: (path: string, body: string | null, method: string) => unknown | Promise<unknown>,
 ) {
   const context = await browser.newContext(VIEWPORTS[kind]);
   await context.route("https://api.keelson.finance/**", async (route) => {
@@ -222,18 +230,28 @@ async function signedIn(
       "access-control-allow-origin": base,
       "access-control-allow-credentials": "true",
       "access-control-allow-headers": "content-type, idempotency-key, keelson-device",
+      "access-control-allow-methods": "GET, POST, PUT, DELETE",
     };
     if (req.method() === "OPTIONS") return route.fulfill({ status: 204, headers });
     const value =
       url.pathname === "/api/auth/get-session"
         ? SESSION()
-        : await answer(url.pathname, req.postData());
+        : await answer(url.pathname, req.postData(), req.method());
     if (value === undefined) return route.abort("connectionrefused");
     if (value instanceof Uint8Array) {
       return route.fulfill({
         headers,
         contentType: "application/scitt-statement+cose",
         body: Buffer.from(value),
+      });
+    }
+    if (value instanceof Status) {
+      return route.fulfill({
+        status: value.status,
+        headers,
+        ...(value.body === undefined
+          ? {}
+          : { contentType: "application/problem+json", body: JSON.stringify(value.body) }),
       });
     }
     return route.fulfill({ headers, contentType: "application/json", body: JSON.stringify(value) });
@@ -449,6 +467,55 @@ describe("signing and going live", () => {
     await context.close();
   });
 
+  test("an approval from before the key move asks to be renewed with the same limits", async () => {
+    const id = "01M7MANDATE000000000000010";
+    const compiled = await demoCompiled();
+    let prompt = "";
+    const { context, page } = await signedIn(
+      "desktop",
+      `/mandate/?id=${id}`,
+      async (path, body) => {
+        if (path === `/v1/mandates/${id}`)
+          return { ...(await viewIn(id, "ACTIVE")), needsRenewal: true };
+        if (path === "/v1/passkeys") {
+          return {
+            passkeys: [
+              {
+                id: "pk_1",
+                name: "Keelson",
+                credentialId: "cred-1",
+                createdAt: new Date().toISOString(),
+              },
+            ],
+          };
+        }
+        if (path === "/v1/mandates/compile") {
+          prompt = (JSON.parse(body ?? "{}") as { prompt: string }).prompt;
+          return compiled;
+        }
+        return undefined;
+      },
+    );
+    const card = page.getByRole("region", { name: "Renew approval" });
+    await card
+      .getByText(
+        "Keelson moved its TEE keys under on-chain governance; approvals from before must be signed again.",
+      )
+      .waitFor();
+    const { violations } = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
+    expect(violations.map((v) => `${v.id}: ${v.nodes.length}`)).toEqual([]);
+    await card.getByRole("link", { name: "Renew approval" }).click();
+    await page.getByRole("heading", { level: 1, name: "What may your agent buy?" }).waitFor();
+    await page
+      .getByText("Same limits as your approval. Sign it again to keep it working.")
+      .waitFor();
+    expect(await page.getByLabel("Store name").inputValue()).toBe("RunFast");
+    await page.getByRole("button", { name: "Review rules" }).click();
+    await page.getByRole("heading", { level: 1, name: "Check it, then sign" }).waitFor();
+    expect(prompt).toMatch(/^Trail running shoe, under \$100, from RunFast, by /);
+    await context.close();
+  });
+
   test("a revoked mandate says it is listed publicly, with its status list entry", async () => {
     const id = "01M7MANDATE000000000000009";
     const status = { uri: "https://api.keelson.finance/status/v1/mandates/2026-1", idx: 4242 };
@@ -458,7 +525,7 @@ describe("signing and going live", () => {
         ? { ...(await viewIn(id, revoked ? "REVOKED" : "ACTIVE")), status: { ...status, revoked } }
         : undefined,
     );
-    await page.getByText("Active", { exact: true }).waitFor();
+    await page.locator('[data-status-list="valid"]').getByText("Active").waitFor();
     revoked = true;
     await page.reload();
     await page.getByText("Revoked · listed publicly").waitFor();
@@ -483,6 +550,78 @@ describe("signing and going live", () => {
     await page.getByRole("heading", { level: 1, name: "Your agent is live" }).waitFor();
     expect(await page.getByRole("list", { name: "All steps done" }).count()).toBe(1);
     expect(await page.getByRole("link", { name: "Go home" }).getAttribute("href")).toBe("/");
+    await context.close();
+  });
+});
+
+describe("saved PayPal", () => {
+  const passkeys = {
+    passkeys: [{ id: "pk_1", name: "Keelson", credentialId: "cred-1", createdAt: null }],
+  };
+  const noWallet = new Status(404, { type: "https://api.keelson.finance/problems/not-found" });
+  const saved = { email: "buyer@example.com", createdAt: "2026-11-11T20:00:00.000Z" };
+
+  test("with none saved, the passkeys page offers to save PayPal for holds", async () => {
+    const { context, page } = await signedIn("desktop", "/passkeys/", (path) => {
+      if (path === "/v1/passkeys") return passkeys;
+      if (path === "/v1/paypal/wallet") return noWallet;
+      return undefined;
+    });
+    const section = page.getByRole("region", { name: "Saved PayPal" });
+    await section.getByText("Save PayPal once and your holds need no PayPal window.").waitFor();
+    const { violations } = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
+    expect(violations.map((v) => `${v.id}: ${v.nodes.length}`)).toEqual([]);
+    await context.close();
+  });
+
+  test("a saved PayPal shows its account and is removed after a confirmation", async () => {
+    let wallet: unknown = saved;
+    const deletes: string[] = [];
+    const { context, page } = await signedIn("desktop", "/passkeys/", (path, _body, method) => {
+      if (path === "/v1/passkeys") return passkeys;
+      if (path === "/v1/paypal/wallet" && method === "DELETE") {
+        deletes.push(path);
+        wallet = noWallet;
+        return new Status(204);
+      }
+      if (path === "/v1/paypal/wallet") return wallet;
+      return undefined;
+    });
+    const section = page.getByRole("region", { name: "Saved PayPal" });
+    await section.getByText("buyer@example.com").waitFor();
+    await section.getByRole("button", { name: "Remove" }).click();
+    expect(deletes).toEqual([]);
+    await section.getByRole("button", { name: "Remove PayPal" }).click();
+    await section.getByText("Save PayPal once and your holds need no PayPal window.").waitFor();
+    expect(deletes).toEqual(["/v1/paypal/wallet"]);
+    await context.close();
+  });
+
+  test("a mandate is held with the saved PayPal, with no PayPal window", async () => {
+    const id = "01M7MANDATE000000000000009";
+    let state = "SIGNED";
+    const calls: string[] = [];
+    const { context, page } = await signedIn("desktop", `/new/?hold=${id}`, (path, body) => {
+      if (path === `/v1/mandates/${id}`) return viewIn(id, state);
+      if (path === "/v1/paypal/wallet") return saved;
+      if (path === `/v1/mandates/${id}/hold`) {
+        calls.push(path);
+        return { orderId: "8K832279M55989614", state: "HOLD_PENDING", approved: true };
+      }
+      if (path === `/v1/mandates/${id}/hold/authorize`) {
+        calls.push(`${path} ${body}`);
+        state = "ACTIVE";
+        return { state: "ACTIVE", authorizationId: "7X550106NA4440028", expiresAt: "" };
+      }
+      return undefined;
+    });
+    await page.getByRole("heading", { level: 1, name: "Hold $100.00 on PayPal" }).waitFor();
+    await page.getByRole("button", { name: "Hold with buyer@example.com" }).click();
+    await page.getByRole("heading", { level: 1, name: "Your agent is live" }).waitFor();
+    expect(calls).toEqual([
+      `/v1/mandates/${id}/hold`,
+      `/v1/mandates/${id}/hold/authorize {"orderId":"8K832279M55989614"}`,
+    ]);
     await context.close();
   });
 });
@@ -1136,6 +1275,10 @@ describe.each(Object.keys(VIEWPORTS) as (keyof typeof VIEWPORTS)[])("scoreboard 
       "https://api.keelson.finance/v1/redteam/campaigns/01M72AN4VSH4FYYT9X7RF01P3N/ledger",
     );
     expect(await page.getByText("≤ 1.55% at 95% · Clopper-Pearson").count()).toBeGreaterThan(0);
+    await page.getByRole("heading", { name: "Checkout attacks on the pay click" }).waitFor();
+    expect(
+      await page.getByRole("link", { name: "Download the scoreboard" }).getAttribute("href"),
+    ).toBe("/redteam/checkout-attacks.json");
     const { violations } = await new AxeBuilder({ page })
       .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa", "wcag22aa", "best-practice"])
       .analyze();

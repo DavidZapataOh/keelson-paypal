@@ -60,6 +60,8 @@ export interface StopRecord {
   logIndexes: Record<string, string>;
   logged: boolean;
   createdAt: string;
+  /** How many of the stopped mandates the public status list now marks revoked; on the stop's own answer. */
+  statusListed?: number;
 }
 
 type Row = typeof agentStops.$inferSelect;
@@ -176,7 +178,7 @@ export async function stopAgents(deps: StopDeps, userId: string): Promise<StopRe
     logIndexes: done.logIndexes,
   });
   notify(deps.notifier, (n) => stopAlert(n, userId, done));
-  return done;
+  return { ...done, statusListed: rows.filter((m) => m.statusIdx !== null).length };
 }
 
 /** Flags every live mandate of the user; a second pass catches one stored while the first ran. */

@@ -1,0 +1,96 @@
+---
+title: Authentication
+description: Sign in from your terminal, or run an operator's own agent with client credentials.
+estimate: 3 min
+section: SDK
+order: 2
+---
+
+A client finds its credentials on its own, in this order:
+
+1. `KEELSON_CLIENT_ID` and `KEELSON_CLIENT_SECRET`: an operator's agent, with OAuth client credentials.
+2. `KEELSON_TOKEN`: a token you already hold.
+3. The sign-in `keelson login` saved.
+
+`KEELSON_API_URL` points a client at another deployment of the API; it defaults to `https://api.keelson.finance`.
+
+## Sign in from your terminal
+
+{% languages label="Sign in" %}
+```sh {% title="TypeScript" %}
+npx @keelson-finance/sdk login
+```
+
+```sh {% title="Python" %}
+keelson login
+```
+{% /languages %}
+
+From a clone of the repository, the same command is `node packages/sdk/dist/cli.js login`, or `uv run --project packages/sdk-python keelson login`.
+
+Your browser opens Keelson's sign-in page, with a passkey or with Judge Mode, which needs no account. The CLI registers itself as an OAuth client for your machine, signs in with an authorization code and PKCE on a loopback redirect ([RFC 8252](https://www.rfc-editor.org/rfc/rfc8252)), and saves the sign-in to `~/.config/keelson/credentials.json`, readable by you only. Both SDKs read the same file and refresh the token when it expires. There is no key to copy.
+
+The sign-in may ask for mandates and buy under them:
+
+| Scope | Lets the client |
+| --- | --- |
+| `mandates:request` | Ask the user for a mandate, or for a change to one |
+| `evidence:write` | Seal what the agent saw before a purchase |
+| `purchases:write` | Ask the two TEEs to countersign a cart |
+| `alibis:read` | Read the Alibi of each purchase |
+
+`keelson whoami` shows the user and scopes you are signed in with; `keelson logout` deletes the saved sign-in.
+
+{% languages label="Use the sign-in" %}
+```ts
+import { Keelson } from "@keelson-finance/sdk";
+
+const keelson = new Keelson(); // reads the saved sign-in
+```
+
+```python
+from keelson import Keelson
+
+keelson = Keelson()  # reads the saved sign-in
+```
+{% /languages %}
+
+## An operator's own agent
+
+An operator that runs its own agent registers an OAuth client and sets `KEELSON_CLIENT_ID` and `KEELSON_CLIENT_SECRET`. The client asks for `countersign:write`, `evidence:write` and `alibis:read`, and keeps the token until 30 seconds before it expires.
+
+`KEELSON_AGENT_KEY` is the agent's private P-256 key, as a JWK. With it, the agent closes each mandate it buys under with its own signature. Without it, Keelson's hosted operator closes the mandate for the signed-in user and, by default, backs at most $100 per user for an app it does not know. In Python, install the `operator` extra to sign with the key.
+
+{% languages label="Client credentials" %}
+```ts
+import { clientCredentials, Keelson } from "@keelson-finance/sdk";
+
+const keelson = new Keelson({
+  auth: clientCredentials({ clientId: process.env.CLIENT_ID!, clientSecret: process.env.CLIENT_SECRET! }),
+});
+```
+
+```python
+from keelson import Keelson, client_credentials
+
+keelson = Keelson(auth=client_credentials(client_id=client_id, client_secret=client_secret))
+```
+{% /languages %}
+
+## A token you already hold
+
+{% languages label="Static token" %}
+```ts
+import { Keelson, staticToken } from "@keelson-finance/sdk";
+
+const keelson = new Keelson({ auth: staticToken(token) });
+```
+
+```python
+from keelson import Keelson, static_token
+
+keelson = Keelson(auth=static_token(token))
+```
+{% /languages %}
+
+`auth: null` (`auth=None` in Python) makes a client that calls only the public operations, such as reading a public Alibi.

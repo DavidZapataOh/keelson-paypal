@@ -5,7 +5,7 @@
 // node services/api/scripts/bridge-backfill.ts [--limit n]
 //
 // Needs DATABASE_URL, TEE_A_URL, TEE_B_URL, KEELSON_TEE_TOKEN, ARBITRUM_SEPOLIA_RPC_URL,
-// KEELSON_ISSUER_THUMBPRINT, LOG_URL and LOG_WRITE_TOKEN.
+// KEELSON_ISSUER_THUMBPRINTS, LOG_URL and LOG_WRITE_TOKEN.
 import { parseArgs } from "node:util";
 import { createDb } from "@keelson/db";
 import { pino } from "pino";
@@ -26,7 +26,7 @@ const tee = createTee({
   TEE_B_URL: env("TEE_B_URL"),
   KEELSON_TEE_TOKEN: env("KEELSON_TEE_TOKEN"),
   ARBITRUM_SEPOLIA_RPC_URL: env("ARBITRUM_SEPOLIA_RPC_URL"),
-  KEELSON_ISSUER_THUMBPRINT: env("KEELSON_ISSUER_THUMBPRINT") as Hex,
+  KEELSON_ISSUER_THUMBPRINTS: env("KEELSON_ISSUER_THUMBPRINTS").split(",") as Hex[],
 });
 const tlog = { url: env("LOG_URL"), token: env("LOG_WRITE_TOKEN") };
 

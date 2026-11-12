@@ -563,6 +563,7 @@ const Me = z
 const meRoute = createRoute({
   method: "get",
   path: "/v1/operators/me",
+  operationId: "listOwnedOperators",
   tags: ["operators"],
   summary: "The operators the session's wallet owns",
   description:
@@ -576,6 +577,7 @@ const meRoute = createRoute({
 const rowsRoute = createRoute({
   method: "post",
   path: "/v1/operators/{agentId}/coverages/rows",
+  operationId: "getCoverageRows",
   tags: ["operators"],
   summary: "A block of the operator's coverages, for AG Grid's server-side row model",
   description:
@@ -601,6 +603,7 @@ const rowsRoute = createRoute({
 const dailyRoute = createRoute({
   method: "get",
   path: "/v1/operators/{agentId}/coverages/daily",
+  operationId: "getDailyCoverages",
   tags: ["operators"],
   summary: "The operator's coverages per day",
   description: "Per UTC day: coverages locked, the amount covered, premiums, and incidents.",
@@ -617,6 +620,7 @@ const dailyRoute = createRoute({
 const queryRoute = createRoute({
   method: "post",
   path: "/v1/operators/{agentId}/grid-query",
+  operationId: "queryCoverageGrid",
   tags: ["operators"],
   summary: "Turn a sentence into the coverage grid's state",
   description:
@@ -830,7 +834,7 @@ export function registerOperatorConsole(
             ? {}
             : { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const }),
         },
-        { signal: c.req.raw.signal },
+        { ...GRID_LIMITS, signal: c.req.raw.signal },
       );
     } catch (err) {
       await settle(deps.kv, budgetKey, turn, 0);
@@ -859,6 +863,13 @@ export function registerOperatorConsole(
     return c.json({ ...answer, model: message.model, costMicros: cost }, 200);
   }) as never);
 }
+
+/**
+ * The grid query's model call: one attempt (the server-side fallback answers an overloaded
+ * model), timed out before the 30 s handler, so the turn settles and answers `model-error`.
+ * @internal
+ */
+export const GRID_LIMITS = { timeout: 25_000, maxRetries: 0 } as const;
 
 /** The wallets of a session that may act for an agent, or none: the deposit route's operator check. */
 export function operatorWallets(

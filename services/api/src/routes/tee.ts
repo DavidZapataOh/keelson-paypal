@@ -36,6 +36,7 @@ const Leg = z
 const route = createRoute({
   method: "get",
   path: "/v1/tee/attestations",
+  operationId: "listTeeAttestations",
   tags: ["tee"],
   summary: "Attested TEE signers",
   description:

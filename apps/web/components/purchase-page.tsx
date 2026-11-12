@@ -22,6 +22,7 @@ import type { Dispute, Purchase } from "../lib/types";
 import { useMandate } from "../lib/use-mandate";
 import { AlibiExports } from "./alibi-exports";
 import { AlibiStandards, useStatement } from "./alibi-standards";
+import { AmountAuthorityLine } from "./amount-authority";
 import { AnonymousProof } from "./anonymous-proof";
 import { AppShell } from "./app-shell";
 import { RiveMoment } from "./brand";
@@ -336,6 +337,9 @@ function Receipt() {
           />
         </h1>
         <CheckoutBreakdown amount={p.amount} layout="ledger" />
+        {p.live?.amountAuthority ? (
+          <AmountAuthorityLine a={p.live.amountAuthority} store={store} />
+        ) : null}
 
         {unknownOutcome(p) ? (
           <section

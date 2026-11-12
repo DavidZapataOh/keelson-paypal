@@ -25,12 +25,31 @@ import {
   type SQL,
   user,
 } from "@keelson/db";
-import { decodeMandate } from "@keelson/mandate";
+import { allowedPayees, decodeMandate, payeeAllowed } from "@keelson/mandate";
 import type { Deps } from "../app.ts";
 import { Amount, breakdowns, withBreakdown } from "../checkout.ts";
 import { requireClient, requirePrincipal } from "../middleware/auth.ts";
-import { cardViewOf, failedFields, type PurchaseView, purchaseView } from "../pipeline/drive.ts";
+import {
+  amountAuthorityView,
+  cardViewOf,
+  failedFields,
+  type PurchaseView,
+  purchaseView,
+} from "../pipeline/drive.ts";
 import { ProblemSchema, problem } from "../problem.ts";
+import { purchaseTimings, serverTiming } from "../server-timing.ts";
+
+/** What decided a live purchase's amount at the pay click. */
+const AmountAuthority = z
+  .object({
+    authority: z.enum(["paypal_order", "merchant_signed_cart", "user_confirmed", "checkout_page"]),
+    via: z.enum(["own", "partner", "ucp"]).optional(),
+    crossCheck: z.enum(["agrees", "unavailable"]),
+  })
+  .openapi("AmountAuthority", {
+    description:
+      "`paypal_order`: PayPal's Orders API returned the order at the countersigned total. `user_confirmed`: the user confirmed it with the passkey that signed the mandate. `crossCheck` is whether PayPal's checkout stated the same order.",
+  });
 
 /** How far the purchase got after its countersign. */
 export const PurchaseProgress = z.object({
@@ -115,10 +134,17 @@ export const PurchaseProgress = z.object({
       description:
         "A card purchase: its single-use card (never its number) and every authorization the card network sent it, with both legs' decision. `CAPTURED` once the merchant's capture settles.",
     }),
-  live: z.object({ store: z.string(), transactionId: z.string().nullable() }).optional().openapi({
-    description:
-      "A purchase the buyer pays at the store's own checkout: the store's origin and the PayPal transaction id once the agent recorded it. Never covered nor captured.",
-  }),
+  live: z
+    .object({
+      store: z.string(),
+      transactionId: z.string().nullable(),
+      amountAuthority: AmountAuthority.optional(),
+    })
+    .optional()
+    .openapi({
+      description:
+        "A purchase the buyer pays at the store's own checkout: the store's origin, what decided the amount at the pay click, and the PayPal transaction id once the agent recorded it. Never covered nor captured.",
+    }),
 });
 
 export function progressOf(view: PurchaseView | undefined): z.infer<typeof PurchaseProgress> {
@@ -153,6 +179,7 @@ const Purchase = z
 const route = createRoute({
   method: "get",
   path: "/v1/purchases/{id}",
+  operationId: "getPurchase",
   tags: ["purchases"],
   summary: "A purchase",
   description:
@@ -198,6 +225,7 @@ const ConversionSchema = z
 const transactionRoute = createRoute({
   method: "put",
   path: "/v1/purchases/{id}/paypal-transaction",
+  operationId: "recordPayPalTransaction",
   tags: ["purchases"],
   summary: "Record a live purchase's PayPal transaction",
   description:
@@ -267,6 +295,7 @@ const LivePurchase = z
       description:
         "When PayPal converted the charge to the buyer's currency: what the buyer paid at PayPal's rate, the reference rate and the spread, as the pay-click gate checked them. Reported by the agent; its Alibi verifies the arithmetic.",
     }),
+    amountAuthority: AmountAuthority.optional(),
     blocked: z.array(z.string()).openapi({
       description:
         "For a DENY, the mandate fields whose check failed, or leg A's reason when it denied on its read of the PayPal hold.",
@@ -332,6 +361,7 @@ function denyReasons(trace: unknown): string[] {
 const liveRoute = createRoute({
   method: "get",
   path: "/v1/live-purchases",
+  operationId: "listLivePurchases",
   tags: ["purchases"],
   summary: "Live purchases",
   description:
@@ -347,8 +377,8 @@ const liveRoute = createRoute({
 });
 
 /**
- * Why `payee` is not a payee the mandate allows, or undefined: a merchant id among its
- * `payment.allowed_payees`, when they name any.
+ * Why `payee` is not a payee the mandate allows, or undefined: the rule the pay click applies
+ * ({@link payeeAllowed}), a merchant id among its `payment.allowed_payees`.
  */
 async function payeeInvalid(db: Db, mandateId: string, payee: string): Promise<string | undefined> {
   const [m] = await db
@@ -360,16 +390,8 @@ async function payeeInvalid(db: Db, mandateId: string, payee: string): Promise<s
     .from(mandates)
     .where(eq(mandates.id, mandateId));
   if (!m?.payloadSd || !m.disclosures) return "the mandate is not signed";
-  const allowed = decodeMandate(
-    m.payloadSd,
-    m.disclosures,
-    m.decoySalts,
-  ).payment.constraints.flatMap((k) =>
-    k.type === "payment.allowed_payees" ? k.allowed.map((a) => a.paypal_merchant_id) : [],
-  );
-  // A mandate that names no PayPal merchant id (a store whose id is not known yet) binds none.
-  const ids = allowed.filter((id) => /^[0-9A-Z]{8,20}$/.test(id));
-  return ids.length === 0 || ids.includes(payee)
+  const allowed = allowedPayees(decodeMandate(m.payloadSd, m.disclosures, m.decoySalts));
+  return payeeAllowed(allowed, payee)
     ? undefined
     : "PayPal's order pays a merchant the mandate does not allow";
 }
@@ -416,7 +438,7 @@ async function conversionInvalid(
 
 export function registerPurchases(
   app: OpenAPIHono,
-  deps: Pick<Deps, "db" | "demoAgentId" | "cards">,
+  deps: Pick<Deps, "db" | "kv" | "demoAgentId" | "cards">,
 ): void {
   app.openapi(liveRoute, async (c) => {
     const rows = await deps.db
@@ -467,6 +489,7 @@ export function registerPurchases(
             decision: p.state === "DENIED" ? ("deny" as const) : ("allow" as const),
             transactionId: p.paypalTransactionId,
             ...(p.conversion ? { conversion: p.conversion as unknown as Conversion } : {}),
+            ...(p.amountCheck ? { amountAuthority: amountAuthorityView(p.amountCheck) } : {}),
             blocked: p.state === "DENIED" ? denyReasons(p.evalTrace) : [],
             ...(card
               ? {
@@ -572,6 +595,9 @@ export function registerPurchases(
     const parts = await breakdowns(deps.db, [p.evidenceRoot]);
     const card = p.rail === "card" ? await cardViewOf(deps.db, p.id) : undefined;
     c.header("Cache-Control", "no-store");
+    // Only the purchase's readers see how long each of its steps took.
+    const steps = await purchaseTimings(deps.kv, p.id);
+    if (Object.keys(steps).length > 0) c.header("Server-Timing", serverTiming(steps));
     return c.json(
       withBreakdown({ ...purchaseView(p), ...(card ? { card } : {}) }, p.evidenceRoot, parts),
       200,
@@ -621,6 +647,7 @@ const CARD_EMBED_TTL_SEC = 60;
 const cardRoute = createRoute({
   method: "get",
   path: "/v1/purchases/{id}/card",
+  operationId: "getPurchaseCard",
   tags: ["purchases"],
   summary: "The single-use card of a card purchase",
   description:

@@ -1,0 +1,45 @@
+{
+  "name": "@keelson-finance/verifier",
+  "version": "0.1.1",
+  "description": "Verify a Keelson Alibi offline: the TEE countersignatures, the log inclusion proof and, if you ask, the on-chain anchor.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/DavidZapataOh/keelson-paypal.git",
+    "directory": "packages/verify"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "bin": {
+    "keelson-verify": "./dist/cli.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@keelson/alibi": "workspace:*",
+    "canonicalize": "5.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.6",
+    "esbuild": "0.28.2",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "name": "keelson",
+  "description": "Keelson's SDK docs, API operations and schemas for your coding assistant, plus a skill for adding Keelson to an app or an agent.",
+  "version": "0.1.0",
+  "author": { "name": "Keelson" },
+  "homepage": "https://keelson.finance",
+  "license": "Apache-2.0",
+  "mcpServers": {
+    "keelson-docs": { "type": "http", "url": "https://api.keelson.finance/context/mcp" }
+  }
+}

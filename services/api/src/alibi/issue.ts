@@ -48,7 +48,7 @@ import {
   parseWitnessPolicy,
   receiptKeyMap,
 } from "@keelson/log";
-import { isPersonalDisclosure, withholdPersonal } from "@keelson/mandate";
+import { type AmountCheck, isPersonalDisclosure, withholdPersonal } from "@keelson/mandate";
 import { holdCustomId, purchaseHoldCustomId, purchaseHoldDigest } from "@keelson/paypal";
 import { decodeSign1, encodeSign1, RECEIPTS, statementImprint, TST_CTT } from "@keelson/scitt";
 import { calculateJwkThumbprint, type JWK } from "jose";
@@ -566,6 +566,7 @@ export async function loadAlibi(
       intent: purchases.paypalOrderIntent,
       payee: purchases.paypalPayeeId,
       conversion: purchases.conversion,
+      amountCheck: purchases.amountCheck,
       currency: purchases.currency,
       amountMinor: purchases.amountMinor,
     })
@@ -596,6 +597,7 @@ export async function loadAlibi(
                   },
                 }
               : {}),
+            ...(row.amountCheck ? { amount_authority: amountAuthorityOf(row.amountCheck) } : {}),
           },
         }
       : {};
@@ -791,4 +793,34 @@ function userAuthOf(stored: unknown): Record<string, string> {
     throw new AlibiIssueError("format", "the stored passkey assertion is incomplete");
   }
   return { authenticatorData, clientDataJSON, signature };
+}
+
+/** A stored `keelson.amount_check/1` as the Alibi carries it, field by field. */
+function amountAuthorityOf(stored: Record<string, unknown>): AmountCheck {
+  const c = stored as unknown as AmountCheck;
+  const a = c.evidence?.assertion;
+  return {
+    v: c.v,
+    authority: c.authority,
+    ...(c.via ? { via: c.via } : {}),
+    read_by: c.read_by,
+    order_id_hash: c.order_id_hash,
+    total: { currency: c.total.currency, minor: c.total.minor },
+    payee: c.payee,
+    intent: c.intent,
+    checked_at: c.checked_at,
+    cross_check: c.cross_check,
+    ...(a
+      ? {
+          evidence: {
+            assertion: {
+              credentialId: a.credentialId,
+              authenticatorData: a.authenticatorData,
+              clientDataJSON: a.clientDataJSON,
+              signature: a.signature,
+            },
+          },
+        }
+      : {}),
+  };
 }

@@ -1,0 +1,30 @@
+---
+import Shell from "../../../layouts/Shell.astro";
+import { apiNav } from "../../../lib/api-nav";
+import { API, operations } from "../../../lib/openapi";
+
+const ops = operations();
+const groups = apiNav();
+---
+<Shell title="API reference" description="Every endpoint of the Keelson API, generated from its OpenAPI document." current="/reference/api/" sidebar={groups}>
+  <article class="doc api-index" data-pagefind-body>
+    <header class="doc-head">
+      <h1>API reference</h1>
+      <p class="lede">{ops.length} operations, generated from the OpenAPI document the API serves. Base URL <code>{API}</code>.</p>
+      <p class="meta"><a href="/openapi.json">openapi.json</a> · <a href="/openapi.yaml">openapi.yaml</a></p>
+    </header>
+    {groups.map((g) => (
+      <section class="api-group">
+        <h2>{g.section}</h2>
+        <ul>
+          {g.items.map((i) => {
+            const op = ops.find((o) => `/reference/api/${o.slug}/` === i.href);
+            return op && (
+              <li><a href={i.href}><span class:list={["method", `method-${op.method}`]}>{op.method.toUpperCase()}</span><code>{op.path}</code><span class="api-summary">{op.summary}</span></a></li>
+            );
+          })}
+        </ul>
+      </section>
+    ))}
+  </article>
+</Shell>

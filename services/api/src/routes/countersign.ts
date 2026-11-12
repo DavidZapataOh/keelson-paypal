@@ -50,6 +50,7 @@ import { deviceAuthorization, grantOf, requestOnce } from "../connections.ts";
 import { approvedMandate, closeForHost, isDelegated, notAnotherApps } from "../delegated.ts";
 import { issuedReference } from "../fx.ts";
 import { capturable, merchantWebsite } from "../hold/state.ts";
+import { currentIssuer, needsRenewal } from "../issuer.ts";
 import { MERCHANTS } from "../merchants.ts";
 import { requireAgent } from "../middleware/auth.ts";
 import { money, notify, purchaseAlert, requestAlert } from "../notify/notifier.ts";
@@ -64,6 +65,7 @@ import { publishPurchase } from "../pipeline/events.ts";
 import { logStep } from "../pipeline/log-step.ts";
 import { principalKey } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
+import { purchaseTimings, serverTiming, timings } from "../server-timing.ts";
 import { currentStatusToken } from "../status-list.ts";
 import { stoppedSince } from "../stop.ts";
 import { LegError } from "../tee/client.ts";
@@ -245,6 +247,7 @@ const problemContent = { "application/problem+json": { schema: ProblemSchema } }
 const route = createRoute({
   method: "post",
   path: "/v1/countersign",
+  operationId: "countersign",
   tags: ["tee"],
   summary: "Countersign a cart",
   description:
@@ -728,6 +731,15 @@ export function registerCountersign(
             found?.clientId && found.clientId === principal.subject ? found.mandate : undefined,
           );
     if (!mandate) return problem(c, 404, "not-found", "Not found");
+    if (needsRenewal(mandate.issuerThumbprint, await currentIssuer(db))) {
+      return problem(
+        c,
+        409,
+        "mandate-needs-renewal",
+        "Mandate needs renewal",
+        "Keelson moved its TEE keys under on-chain governance: the user signs this mandate again.",
+      );
+    }
     // Keelson closes only mandates of its hosted operator, with that operator's key.
     const hostedKey =
       body.mandateId !== undefined && mandate.operatorAgentId === deps.demoAgentId
@@ -1456,6 +1468,10 @@ export function registerCountersign(
       }
       c.header("Keelson-Countersign-Mode", out.mode);
       if (pending) c.header("Location", `/v1/purchases/${purchaseId}`);
+      // The steps done before this answer, for the client that asked: the rest are on the purchase.
+      await timings.forceFlush();
+      const steps = await purchaseTimings(kv, purchaseId);
+      if (Object.keys(steps).length > 0) c.header("Server-Timing", serverTiming(steps));
       return c.json(
         {
           purchaseId,

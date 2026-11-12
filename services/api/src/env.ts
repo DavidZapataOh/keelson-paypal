@@ -11,6 +11,10 @@ const schema = z
       .url()
       .refine((u) => new URL(u).origin === u, "VERIFY_ORIGIN must be an origin")
       .default("https://verify.keelson.finance"),
+    DOCS_ORIGIN: z
+      .url()
+      .refine((u) => new URL(u).origin === u, "DOCS_ORIGIN must be an origin")
+      .default("https://docs.keelson.finance"),
     PAYPAL_CLIENT_ID: z.string().min(1),
     PAYPAL_CLIENT_SECRET: z.string().min(1),
     PAYPAL_ENV: z.enum(["sandbox", "production"]),
@@ -26,8 +30,11 @@ const schema = z
     TEE_A_URL: z.url().optional(),
     TEE_B_URL: z.url().optional(),
     KEELSON_TEE_TOKEN: z.string().min(32).optional(),
-    KEELSON_ISSUER_THUMBPRINT: z
-      .custom<`0x${string}`>((v) => typeof v === "string" && /^0x[0-9a-f]{64}$/.test(v))
+    /** The credential issuers leg A may attest, comma-separated: two while the issuer key moves. */
+    KEELSON_ISSUER_THUMBPRINTS: z
+      .string()
+      .regex(/^0x[0-9a-f]{64}(,0x[0-9a-f]{64})?$/)
+      .transform((v) => v.split(",") as `0x${string}`[])
       .optional(),
     ARBITRUM_SEPOLIA_RPC_URL: z.url().optional(),
     /** The provider's WebSocket for the event subscription; Alchemy's is derived from the RPC URL. */
@@ -170,9 +177,9 @@ const schema = z
     message: "PAYPAL_WEBHOOK_ID is required in production",
     path: ["PAYPAL_WEBHOOK_ID"],
   })
-  .refine((env) => env.NODE_ENV !== "production" || env.KEELSON_ISSUER_THUMBPRINT !== undefined, {
-    message: "KEELSON_ISSUER_THUMBPRINT is required in production",
-    path: ["KEELSON_ISSUER_THUMBPRINT"],
+  .refine((env) => env.NODE_ENV !== "production" || env.KEELSON_ISSUER_THUMBPRINTS !== undefined, {
+    message: "KEELSON_ISSUER_THUMBPRINTS is required in production",
+    path: ["KEELSON_ISSUER_THUMBPRINTS"],
   })
   // The webhook secret comes from Channel3's portal once the endpoint is registered; until then
   // the webhook answers 503 and decisions still get their lookup.

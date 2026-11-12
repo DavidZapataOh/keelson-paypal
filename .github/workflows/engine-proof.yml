@@ -102,7 +102,7 @@ jobs:
         run: |
           vkey=$(./target/release/keelson-engine-proof vkey)
           echo "$vkey" | tee -a "$GITHUB_STEP_SUMMARY"
-          test "$vkey" = "$(jq -r .vkey "$GITHUB_WORKSPACE/contracts/test/vectors/engine-proof.json")"
+          test "$vkey" = "$(jq -r .vkey "$GITHUB_WORKSPACE/contracts/test/vectors/engine-program.json")"
       - uses: actions/upload-artifact@v6
         with:
           name: keelson-engine-proof

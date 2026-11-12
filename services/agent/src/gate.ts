@@ -2,11 +2,11 @@ import { ToolError } from "@anthropic-ai/sdk/helpers/beta/toolsets";
 import {
   type CheckoutTotal,
   type Conversion,
-  convertsTo,
   DEFAULT_MAX_SPREAD_BPS,
   type FxReference,
   spreadBps,
 } from "@keelson/core";
+import { type AmountCheck, orderIdHash, payeeAllowed } from "@keelson/mandate";
 import type { Locator, Page } from "playwright";
 import {
   decimalText,
@@ -15,26 +15,29 @@ import {
   minorDigits,
   type PageReading,
   pageLocales,
+  rateBetween,
   readPage,
   type ShownConversion,
 } from "./amounts.ts";
 import { rows, type Seen, sanitize } from "./capture.ts";
+import { addedCharge } from "./fees.ts";
+import { type Funding, type PayForm, readFunding, readPayForm } from "./paypal-funding.ts";
 import {
   chargeProblem,
-  type KnownConversion,
   orderToken,
   type PayPalCharge,
   readCharge,
   requoteOf,
 } from "./paypal-order.ts";
 import { requote } from "./requote.ts";
+import { shownText } from "./visible.ts";
 
 /** Names of the controls that commit a payment, on a store's checkout or on PayPal. */
 const PAY =
-  /\b(pay(?: now| with paypal| \$?[\d.,]+)?|complete (?:purchase|order|payment)|place (?:your )?order|submit order|buy now|agree (?:and|&) (?:pay|continue)|continue to review(?: order)?|confirm (?:and|&) pay)\b/i;
+  /(?<![\p{L}\d])(pay(?: now| with paypal| \$?[\d.,]+)?|complete (?:purchase|order|payment)|place (?:my |your )?order|submit order|buy (?:it )?now|agree (?:and|&) (?:pay|continue)|continue to review(?: order)?|confirm (?:and|&) pay|confirm (?:purchase|order|payment)|pagar(?: ahora| agora)?|comprar(?: ahora| agora)?|realizar (?:el )?pedido|finalizar (?:la )?(?:compra|pedido)|jetzt (?:bezahlen|kaufen)|(?:zahlungs|kosten)pflichtig bestellen|payer(?: maintenant)?|valider (?:la |ma )?commande|paga(?: ora)?|acquista(?: ora)?)(?![\p{L}\d])|支払|購入する|注文を確定|确认付款|立即支付|결제/iu;
 /** Offers the buyer never takes: saving a payment method, installments or credit. */
 const NEVER =
-  /\b(save (?:paypal|my|your|card|this|payment)|for (?:future|faster)|remember (?:me|this)|pay (?:in \d|later|monthly|over time)|paypal credit|installments?)\b/i;
+  /(?<![\p{L}\d])(save (?:paypal|my|your|card|this|payment)|for (?:future|faster)|remember (?:me|this)|default payment|pay (?:in \d|later|monthly|over time)|paypal credit|installments?|buy now,? pay later|klarna|afterpay|affirm|guardar (?:paypal|mi|tu|la|esta|el|tarjeta)|recordar (?:mi|esta|tarjeta)|cuotas|mensualidades|meses sin intereses|paga (?:después|despues|luego|en \d)|salvar (?:o paypal|paypal|meu|minha|cart[aã]o|este)|parcelas|parcelado|pague depois|speichern|später bezahlen|raten(?:zahlung|kauf)?|enregistrer (?:paypal|ma|mon|votre|cette)|payer (?:en \d|plus tard)|\d (?:rate|fois)|paga dopo|salva (?:paypal|la|questa))(?![\p{L}\d])|保存|あと払い|後払い|分割|分期/iu;
 /**
  * PayPal's hosts, whose review page may show the total converted to the buyer's currency at the
  * rate PayPal writes on it.
@@ -44,8 +47,92 @@ const PAYPAL_HOSTS = ["paypal.com", "*.paypal.com"];
 const INTENTS: ReadonlySet<string> = new Set(["SALE", "AUTHORIZE"]);
 /** How old the reference's rates may be: the provider updates them once a day. */
 const REFERENCE_MAX_AGE_MS = 48 * 3600_000;
+/** How long PayPal's checkout may take to settle before the gate reads it. */
+const SETTLE_MS = 2_000;
+/** The pause between the two reads of the Pay form, which must agree. */
+const REREAD_MS = 250;
 /** A store's checkout, on its own host: Shopify's `/checkouts/…`, and the usual `/checkout`. */
 const CHECKOUT_PATH = /\/checkouts?(?:\/|$)/;
+
+/**
+ * What PayPal's data stated for a payment, for the log: where it was read, the instrument, the
+ * amount charged to the buyer, the rate that amount gives for the order, and the rate PayPal shows.
+ */
+export interface FundingLog {
+  sources: string[];
+  instrument?: { type: string; lastDigits?: string };
+  buyer?: string;
+  /** The buyer's currency per unit of the order's, from the amount PayPal charges. */
+  rate?: string;
+  /** The rate PayPal shows for its conversion: `1 COP = 0.000290145 USD`. */
+  quote?: string;
+}
+
+function fundingLog(total: CheckoutTotal, f: Partial<Funding>): FundingLog {
+  const order = total.currency;
+  const merchant = decimalText(total.minor, minorDigits(order));
+  return {
+    sources: f.sources ?? [],
+    ...(f.instrument ? { instrument: f.instrument } : {}),
+    ...(f.buyer ? { buyer: `${f.buyer.currency} ${f.buyer.value}` } : {}),
+    ...(f.buyer && f.buyer.currency !== order
+      ? { rate: rateBetween(merchant, f.buyer.value) }
+      : {}),
+    ...(f.quote
+      ? {
+          quote: f.quote.inverse
+            ? `1 ${f.quote.currency} = ${f.quote.rate} ${order}`
+            : `1 ${order} = ${f.quote.rate} ${f.quote.currency}`,
+        }
+      : {}),
+  };
+}
+
+/**
+ * Keelson's answer on what decides a PayPal order's amount (`POST /v1/purchases/{id}/amount-check`):
+ * the decision, the user still confirming it on their phone, or why the order is not paid.
+ */
+export type AuthorityAnswer =
+  | { check: AmountCheck }
+  | { needs: "user_confirmed" }
+  | { refused: string };
+
+/**
+ * Asks Keelson to decide the amount of PayPal's order `orderId` for the countersigned purchase,
+ * with what PayPal's checkout stated for it (`order`), when it did.
+ */
+export type Authority = (
+  orderId: string,
+  crossCheck: "agrees" | "unavailable",
+  order?: { intent: string; payee: string },
+) => Promise<AuthorityAnswer>;
+
+/** How long the gate waits on the user to confirm an amount on their phone, at most. */
+const CONFIRM_WAIT_MS = 180_000;
+const CONFIRM_POLL_MS = 2_000;
+const INTENT_OF: Readonly<Record<AmountCheck["intent"], string>> = {
+  CAPTURE: "SALE",
+  AUTHORIZE: "AUTHORIZE",
+};
+
+/**
+ * PayPal's order as its authority decided it, for reading the funding of a checkout whose session
+ * did not answer: the countersigned total, which the authority's equals, and its payee and intent.
+ */
+function chargeOf(check: AmountCheck, total: CheckoutTotal): PayPalCharge {
+  const digits = minorDigits(total.currency);
+  const text = (m: number) => decimalText(m, digits);
+  return {
+    intent: INTENT_OF[check.intent],
+    currency: total.currency,
+    value: text(total.minor),
+    subtotal: text(total.items),
+    shipping: text(total.shipping),
+    tax: text(total.tax),
+    discount: text(total.discount),
+    payee: check.payee,
+  };
+}
 
 /** What the agent is about to do in the browser that could commit a payment. */
 export type PayAction =
@@ -69,29 +156,39 @@ export type PayAction =
  * installments and credit. Checkout hosts
  * are written like the browser's allowlist: exact, or `*.example.com` for its subdomains.
  *
- * On PayPal, the order itself decides: the page asks PayPal for its checkout session as PayPal's
- * own buttons do, and pays only an order whose total is exactly the countersigned value and
- * currency, whose intent is a payment and whose only payee is the one the mandate names, when it
- * names one. The page's text is then a cross-check: it must show no larger charge. When it shows
- * the total converted to the buyer's currency, the converted total must be the countersigned one
- * at the one rate the page writes, and that rate within the mandate's spread of the reference
- * rate Keelson fetched when it countersigned.
+ * On PayPal, PayPal's own data decides. Once the checkout has settled, the gate asks PayPal for
+ * the order as PayPal's own buttons do, and pays only an order whose total is exactly the
+ * countersigned value and currency, whose intent is a payment and whose only payee is one the
+ * mandate names (see {@link payeeAllowed}): naming none, it allows paying none. It then reads
+ * what the Pay form submits (the funding instrument and the conversion option) and PayPal's funding data for that instrument, which
+ * states what PayPal charges the buyer: the order's total, or its `convertedAmount` in the buyer's
+ * currency (see {@link readFunding}). A converted charge is paid only within the mandate's spread
+ * of the reference rate Keelson fetched when it countersigned, at the rate the charge gives for
+ * the order. Whatever PayPal's data does not state is held; the page's text can only hold: it
+ * must show no larger charge, no other conversion, and rate lines that are PayPal's rate rounded.
+ *
+ * With an {@link Authority}, PayPal's checkout session is only a cross-check: before paying, the
+ * gate asks Keelson what decides the order's amount, PayPal's Orders API or the user's passkey,
+ * and pays only an order that authority decided at the countersigned total, for this page's
+ * order. While the user confirms it on their phone, the action waits.
  */
 export class PayGate {
   readonly #checkoutHosts: readonly string[];
   readonly #convertHosts: readonly string[];
   readonly #cart: (() => Promise<Money | undefined>) | undefined;
-  readonly #payee: string | undefined;
+  readonly #payees: readonly string[];
   readonly #maxSpreadBps: number;
+  readonly #authority: Authority | undefined;
+  readonly #confirmWaitMs: number;
   #total: CheckoutTotal | undefined;
   #reference: FxReference | undefined;
-  /** The orders whose page was switched to English to read a conversion. */
-  readonly #english = new Set<string>();
   /**
-   * What the last pay action let through on PayPal paid: PayPal's order, and its conversion to the
-   * buyer's currency when the page showed one.
+   * What the last pay action let through on PayPal paid: PayPal's order, what PayPal charges the
+   * buyer for it and where that was read, and its conversion to the buyer's currency, if any.
    */
-  paid: { charge: PayPalCharge; conversion?: Conversion } | undefined;
+  paid:
+    | { charge: PayPalCharge; funding: FundingLog; conversion?: Conversion; check?: AmountCheck }
+    | undefined;
   #requote: CheckoutTotal | undefined;
   /** Actions refused so far. */
   refused = 0;
@@ -104,9 +201,16 @@ export class PayGate {
     locale: string | null;
     amounts: string[];
     totals: string[];
+    /**
+     * The amounts under a sign the cart's currency shares with another on the page (`$ 10.236`),
+     * read as the cart's currency; numbers with no sign, which may be the buyer's, are left out.
+     */
+    loose?: string[];
     unsure?: string;
     cart?: string;
     requote?: string;
+    /** What PayPal's own data stated for the payment, as far as it was read. */
+    paypal?: FundingLog;
     seen: Seen[];
   }[] = [];
 
@@ -119,16 +223,22 @@ export class PayGate {
     checkoutHosts: readonly string[];
     cart?: () => Promise<Money | undefined>;
     convertHosts?: readonly string[];
-    /** The PayPal merchant id the mandate allows paying, when it names one. */
-    payee?: string;
+    /** The PayPal merchant ids the mandate allows paying (`allowedPayees`); none by default. */
+    payees?: readonly string[];
     /** The mandate's `fx.max_spread_bps`. */
     maxSpreadBps?: number;
+    /** What decides a PayPal order's amount; without it, PayPal's checkout session does. */
+    authority?: Authority;
+    /** How long a pay action waits on the user confirming its amount. */
+    confirmWaitMs?: number;
   }) {
     this.#checkoutHosts = o.checkoutHosts;
     this.#convertHosts = o.convertHosts ?? PAYPAL_HOSTS;
     this.#cart = o.cart;
-    this.#payee = o.payee;
+    this.#payees = o.payees ?? [];
     this.#maxSpreadBps = o.maxSpreadBps ?? DEFAULT_MAX_SPREAD_BPS;
+    this.#authority = o.authority;
+    this.#confirmWaitMs = o.confirmWaitMs ?? CONFIRM_WAIT_MS;
   }
 
   /**
@@ -222,64 +332,67 @@ export class PayGate {
       );
     }
     const lang = await page.evaluate(() => document.documentElement.lang).catch(() => "");
-    // Every frame's text: a total drawn inside a frame is on the page the buyer sees.
-    const text = (
-      await Promise.all(
-        page
-          .frames()
-          // biome-ignore lint/performance/useDomNodeTextContent: the amounts as the buyer sees them on the page.
-          .map((f) => f.evaluate(() => document.body?.innerText ?? "").catch(() => "")),
-      )
-    ).join("\n");
     const converts = PayGate.#matches(this.#convertHosts, URL.parse(page.url())?.hostname ?? "");
+    // On PayPal, the page is read once its checkout has settled, with the Pay form it submits.
+    const form = converts ? await this.#settle(page, action) : undefined;
+    // What every rendered frame shows, as the buyer sees it; what it draws that is no text holds.
+    const shown = await shownText(page);
     // PayPal's `locale.x` names the locale it was asked for, not always the one it renders in
     // (`es_XC` on a page in English): there the page's own language decides.
     const locales = converts && lang ? pageLocales(lang, "") : pageLocales(lang, page.url());
-    const read = readPage(text, locales, total.currency);
+    const reading = readPage(shown.text, locales, total.currency);
+    const added = addedCharge(reading);
+    const unsure =
+      shown.unreadable ??
+      (added === undefined ? undefined : `it adds "${added}", which Keelson never countersigns`);
+    const read = unsure && !reading.unsure ? { ...reading, unsure } : reading;
     const cart = this.#cart ? await this.#cart().catch(() => undefined) : undefined;
     const digits = minorDigits(total.currency);
     const show = (m: number) => `${total.currency} ${(m / 10 ** digits).toFixed(digits)}`;
     const cartOk =
       !this.#cart ||
       (cart?.currency === total.currency && cart.minor === total.items - total.discount);
-    let paypal: { charge: PayPalCharge; known?: KnownConversion } | undefined;
+    let paypal: { charge: PayPalCharge; funding: Funding; check?: AmountCheck } | undefined;
+    let conversion: Conversion | undefined;
     if (converts) {
-      paypal = await this.#order(page, total, show, read);
-      // Without PayPal's own conversion, the page's text is read in English, where PayPal writes
-      // each amount with its ISO code; once per order, through the page's own locale parameter.
-      const token = orderToken(page.url()) as string;
-      const shows = Object.keys(read.rates).length > 0 || read.conversions.length > 0;
-      if (!paypal.known && shows && !/^en\b/.test(read.locale) && !this.#english.has(token)) {
-        this.#english.add(token);
-        const url = new URL(page.url());
-        url.searchParams.set("locale.x", "en_US");
-        await page.goto(url.href, { waitUntil: "load" }).catch(() => {});
-        this.#refuse(
-          "Keelson switched PayPal's page to English to read its currency conversion. Read the page again, then repeat the action.",
-        );
+      paypal = await this.#order(page, form, total, show, read);
+      const { buyer } = paypal.funding;
+      if (buyer.currency !== total.currency) {
+        const checked = this.#conversion(total, {
+          currency: buyer.currency,
+          rate: rateBetween(decimalText(total.minor, digits), buyer.value),
+          buyer: buyer.value,
+          locale: read.locale || "en",
+        });
+        if (typeof checked === "string") {
+          this.held.push({
+            locale: read.locale || null,
+            amounts: read.minor.map(show),
+            totals: read.totals.map(show),
+            loose: read.shared.filter((a) => a.marks.length > 0).map((a) => show(a.value)),
+            unsure: checked,
+            paypal: fundingLog(total, paypal.funding),
+            seen: sanitize(await rows(page), read.locale || "en", total.currency),
+          });
+          this.#refuse(checked);
+        }
+        conversion = checked;
       }
     }
-    const known = paypal?.known;
+    const quote = paypal?.funding.quote;
     const judged = judge(
       read,
       total.minor,
       total.currency,
       converts,
       !converts,
-      known && { currency: known.currency, rate: known.rate },
+      conversion && {
+        currency: conversion.buyer.currency,
+        rate: conversion.rate,
+        buyer: conversion.buyer.value,
+        ...(quote ? { quote } : {}),
+      },
     );
-    // PayPal's own conversion when it states one; else the one the page writes.
-    const shown = known
-      ? {
-          currency: known.currency,
-          rate: known.rate,
-          buyer: known.buyer,
-          locale: read.locale || "en",
-        }
-      : judged.ok
-        ? judged.conversion
-        : undefined;
-    const conversion = judged.ok && shown ? this.#conversion(total, shown) : undefined;
     if (!judged.ok || !cartOk) {
       // A re-quote is the page's largest amount, which it must label its total, with nothing
       // that may be the currency above it.
@@ -300,9 +413,11 @@ export class PayGate {
         locale: read.locale || null,
         amounts: read.minor.map(show),
         totals: read.totals.map(show),
+        loose: read.shared.filter((a) => a.marks.length > 0).map((a) => show(a.value)),
         ...(read.unsure ? { unsure: read.unsure } : !judged.ok ? { unsure: judged.reason } : {}),
         ...(this.#cart ? { cart: cart ? show(cart.minor) : "unread" } : {}),
         ...(this.#requote ? { requote: show(this.#requote.minor) } : {}),
+        ...(paypal ? { paypal: fundingLog(total, paypal.funding) } : {}),
         seen,
       });
       this.#refuse(
@@ -317,99 +432,172 @@ export class PayGate {
                 : `Keelson countersigned ${show(total.minor)}; this page or the store's cart does not show it as the total. Pay only for the countersigned cart.`,
       );
     }
-    if (paypal) this.paid = { charge: paypal.charge, ...(conversion ? { conversion } : {}) };
+    if (paypal) {
+      this.paid = {
+        charge: paypal.charge,
+        funding: fundingLog(total, paypal.funding),
+        ...(conversion ? { conversion } : {}),
+        ...(paypal.check ? { check: paypal.check } : {}),
+      };
+    }
   }
 
   /**
-   * PayPal's order for the page, read from PayPal right before the action: refused unless it
-   * charges exactly `total`, is a payment, and pays the payee the mandate names. An order whose
-   * breakdown adds tax or shipping to the countersigned items is held with that total as its
-   * re-quote. With it, PayPal's own conversion of the total to the buyer's funding currency, when
-   * the page's GraphQL traffic stated exactly one.
+   * PayPal's order for the page and what PayPal charges the buyer for it, read from PayPal right
+   * before the action, once the checkout has settled: refused unless the order charges exactly
+   * `total`, is a payment, and pays a payee the mandate names, and unless PayPal's funding data
+   * states what the Pay form pays with. An order whose breakdown adds tax or shipping to the
+   * countersigned items is held with that total as its re-quote.
    */
+  /**
+   * Waits for PayPal's checkout to settle and returns the Pay form the action submits, read twice
+   * alike; held while PayPal is still updating it.
+   */
+  async #settle(page: Page, action: PayAction): Promise<PayForm | undefined | false> {
+    const target = "target" in action ? action.target : undefined;
+    if (!target) return false;
+    // PayPal refetches its funding data after a change; the form shows the old one until then.
+    await page.waitForLoadState("networkidle", { timeout: SETTLE_MS }).catch(() => {});
+    const busy = await target
+      .evaluate((node) => {
+        const el = node.closest("button, input, [role=button]") ?? node;
+        return (
+          el.getAttribute("aria-busy") === "true" ||
+          el.getAttribute("aria-disabled") === "true" ||
+          (el instanceof HTMLButtonElement && el.disabled)
+        );
+      })
+      .catch(() => true);
+    const form = await readPayForm(target);
+    await page.waitForTimeout(REREAD_MS);
+    const again = await readPayForm(target);
+    if (busy || JSON.stringify(form) !== JSON.stringify(again)) {
+      this.#refuse(
+        "PayPal's checkout is still updating. Read the page again, then repeat the action.",
+      );
+    }
+    return form;
+  }
+
   async #order(
     page: Page,
+    form: PayForm | undefined | false,
     total: CheckoutTotal,
     show: (m: number) => string,
     read: PageReading,
-  ): Promise<{ charge: PayPalCharge; known?: KnownConversion }> {
-    const answer = await readCharge(page);
+  ): Promise<{ charge: PayPalCharge; funding: Funding; check?: AmountCheck }> {
+    let partial: Partial<Funding> | undefined;
     const fail = async (reason: string): Promise<never> => {
       this.held.push({
         locale: read.locale || null,
         amounts: read.minor.map(show),
         totals: read.totals.map(show),
+        loose: read.shared.filter((a) => a.marks.length > 0).map((a) => show(a.value)),
         unsure: reason,
         ...(this.#requote ? { requote: show(this.#requote.minor) } : {}),
+        ...(partial ? { paypal: fundingLog(total, partial) } : {}),
         seen: sanitize(await rows(page), read.locale || "en", total.currency),
       });
       this.#refuse(reason);
     };
-    if (!answer) return fail("PayPal's order for this page could not be read. Paying waits.");
-    const { charge, conversions } = answer;
-    const problem = chargeProblem(charge, total);
-    if (problem) {
-      const next = requoteOf(charge, total);
-      this.#requote = next;
-      return fail(
-        next
-          ? `this checkout's total is now ${show(next.minor)}, not the ${show(total.minor)} Keelson countersigned. Paying waits for Keelson to countersign the new total.`
-          : `${problem}, not the ${show(total.minor)} Keelson countersigned. Paying waits.`,
-      );
+    const token = orderToken(page.url());
+    if (!token || form === false) {
+      return fail("PayPal's order for this page could not be read. Paying waits.");
     }
-    if (!INTENTS.has(charge.intent))
-      await fail(`PayPal's order is not a payment (${charge.intent}).`);
-    if (this.#payee !== undefined && charge.payee !== this.#payee) {
-      await fail("PayPal's order pays another merchant than the mandate names. Paying waits.");
+    // PayPal's checkout session, read as PayPal's own buttons do: what decides the amount
+    // without an authority, and its cross-check with one. A disagreement always holds.
+    const session = await readCharge(page);
+    if (session) {
+      const problem = chargeProblem(session, total);
+      if (problem) {
+        const next = requoteOf(session, total);
+        this.#requote = next;
+        return fail(
+          next
+            ? `this checkout's total is now ${show(next.minor)}, not the ${show(total.minor)} Keelson countersigned. Paying waits for Keelson to countersign the new total.`
+            : `${problem}, not the ${show(total.minor)} Keelson countersigned. Paying waits.`,
+        );
+      }
+      if (!INTENTS.has(session.intent))
+        await fail(`PayPal's order is not a payment (${session.intent}).`);
+      if (!payeeAllowed(this.#payees, session.payee)) {
+        await fail("PayPal's order pays another merchant than the mandate names. Paying waits.");
+      }
     }
-    const options = [
-      ...new Map(
-        conversions.map((c) => [
-          `${c.from.currency}|${c.from.value}|${c.currency}|${c.buyer}|${c.rate}`,
-          c,
-        ]),
-      ).values(),
-    ];
-    if (options.some((c) => c.from.currency !== charge.currency || c.from.value !== charge.value)) {
-      await fail("PayPal converts another amount than its order's total. Paying waits.");
+    let check: AmountCheck | undefined;
+    if (this.#authority) {
+      const answer = await this.#decide(token, session);
+      if ("refused" in answer) return fail(answer.refused);
+      check = answer.check;
+      if (check.order_id_hash !== orderIdHash(token)) {
+        return fail(
+          "PayPal's checkout shows a different order than PayPal's API returned. Paying waits.",
+        );
+      }
+      const field =
+        check.total.currency !== total.currency
+          ? "currency"
+          : check.total.minor !== total.minor
+            ? "total"
+            : !payeeAllowed(this.#payees, check.payee)
+              ? "payee"
+              : session && session.payee !== check.payee
+                ? "payee"
+                : session && session.intent !== INTENT_OF[check.intent]
+                  ? "intent"
+                  : undefined;
+      if (field) {
+        return fail(
+          `PayPal's order does not match what Keelson countersigned (${field}). Paying waits.`,
+        );
+      }
+    } else if (!session) {
+      return fail("PayPal's order for this page could not be read. Paying waits.");
     }
-    if (options.some((c) => !convertsTo(charge.value, c.rate, c.buyer))) {
-      await fail("PayPal's conversion of the order does not add up. Paying waits.");
+    const charge: PayPalCharge = session ?? chargeOf(check as AmountCheck, total);
+    const funding = await readFunding(page, token, form, charge);
+    if (!funding.ok) {
+      partial = funding.funding;
+      return fail(`${funding.reason}. Paying waits.`);
     }
-    // Whichever funding option the buyer pays with, its conversion is within the mandate's spread.
-    for (const c of options) {
-      this.#conversion(total, { ...c, locale: read.locale || "en" });
+    return { charge, funding: funding.funding, ...(check ? { check } : {}) };
+  }
+
+  /** Keelson's decision on the order's amount, waiting while the user confirms it. */
+  async #decide(
+    token: string,
+    read: PayPalCharge | undefined,
+  ): Promise<{ check: AmountCheck } | { refused: string }> {
+    const authority = this.#authority as Authority;
+    const order = read ? { intent: read.intent, payee: read.payee } : undefined;
+    const until = Date.now() + this.#confirmWaitMs;
+    for (;;) {
+      const answer = await authority(token, read ? "agrees" : "unavailable", order).catch(() => ({
+        refused: "Keelson could not decide this amount. Paying waits.",
+      }));
+      if (!("needs" in answer)) return answer;
+      if (Date.now() + CONFIRM_POLL_MS > until) {
+        return {
+          refused: "Keelson is confirming this amount with you on your phone. Paying waits.",
+        };
+      }
+      await new Promise((r) => setTimeout(r, CONFIRM_POLL_MS));
     }
-    const [only, ...more] = options;
-    if (!only) return { charge };
-    if (more.length === 0) return { charge, known: only };
-    // Several: the page must show which one the buyer pays with, by its rate.
-    const shown = options.filter((c) => Number(read.rates[c.currency]) === Number(c.rate));
-    if (shown.length !== 1) {
-      await fail(
-        "PayPal states several conversions and the page does not show which one it charges. Paying waits.",
-      );
-    }
-    return { charge, known: shown[0] as KnownConversion };
   }
 
   /**
-   * The conversion PayPal shows, checked against the reference rate bound into the countersign's
-   * evidence: refused without a current reference, or over the mandate's spread.
+   * PayPal's conversion of the total, checked against the reference rate bound into the
+   * countersign's evidence; why not, without a current reference or over the mandate's spread.
    */
-  #conversion(total: CheckoutTotal, shown: ShownConversion): Conversion {
+  #conversion(total: CheckoutTotal, shown: ShownConversion): Conversion | string {
     const ref = this.#reference;
     const rate = ref?.base === total.currency ? ref.rates[shown.currency] : undefined;
     if (!ref || rate === undefined || Date.now() - Date.parse(ref.as_of) > REFERENCE_MAX_AGE_MS) {
-      this.#refuse(
-        `PayPal converts this total to ${shown.currency}, and Keelson has no current reference rate from ${total.currency} to ${shown.currency} to check PayPal's rate against. Paying waits.`,
-      );
+      return `PayPal converts this total to ${shown.currency}, and Keelson has no current reference rate from ${total.currency} to ${shown.currency} to check PayPal's rate against. Paying waits.`;
     }
     const spread = spreadBps(shown.rate, rate);
     if (spread > this.#maxSpreadBps) {
-      this.#refuse(
-        `PayPal's rate of ${shown.rate} ${shown.currency} per ${total.currency} is ${spread} basis points from the reference rate of ${rate}, over the mandate's cap of ${this.#maxSpreadBps}. Paying waits.`,
-      );
+      return `PayPal charges ${shown.buyer} ${shown.currency}, ${shown.rate} ${shown.currency} per ${total.currency}, ${spread} basis points from the reference rate of ${rate}, over the mandate's cap of ${this.#maxSpreadBps}. Paying waits.`;
     }
     return {
       v: "keelson.conversion/1",

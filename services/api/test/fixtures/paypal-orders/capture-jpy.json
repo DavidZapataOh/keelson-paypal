@@ -1,0 +1,47 @@
+{
+  "id": "4SD68910GM404491F",
+  "intent": "CAPTURE",
+  "status": "CREATED",
+  "purchase_units": [
+    {
+      "reference_id": "default",
+      "amount": {
+        "currency_code": "JPY",
+        "value": "1500",
+        "breakdown": {
+          "item_total": {
+            "currency_code": "JPY",
+            "value": "1500"
+          }
+        }
+      },
+      "payee": {
+        "email_address": "sb-e6j1d53656743@business.example.com",
+        "merchant_id": "A4WCRYD5EYDF2"
+      }
+    }
+  ],
+  "create_time": "2026-11-12T08:33:46Z",
+  "links": [
+    {
+      "href": "https://api.sandbox.paypal.com/v2/checkout/orders/4SD68910GM404491F",
+      "rel": "self",
+      "method": "GET"
+    },
+    {
+      "href": "https://www.sandbox.paypal.com/checkoutnow?token=4SD68910GM404491F",
+      "rel": "approve",
+      "method": "GET"
+    },
+    {
+      "href": "https://api.sandbox.paypal.com/v2/checkout/orders/4SD68910GM404491F",
+      "rel": "update",
+      "method": "PATCH"
+    },
+    {
+      "href": "https://api.sandbox.paypal.com/v2/checkout/orders/4SD68910GM404491F/capture",
+      "rel": "capture",
+      "method": "POST"
+    }
+  ]
+}

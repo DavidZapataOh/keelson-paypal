@@ -2,13 +2,14 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 import { STATUS_LIST_TYP } from "@keelson/mandate";
 import type { Deps } from "../app.ts";
 import { ProblemSchema, problem } from "../problem.ts";
-import { publishedStatusToken } from "../status-list.ts";
+import { currentStatusToken, publishedStatusToken } from "../status-list.ts";
 
 const MEDIA_TYPE = `application/${STATUS_LIST_TYP}`;
 
 const route = createRoute({
   method: "get",
   path: "/status/v1/mandates/2026-1",
+  operationId: "getMandateStatusList",
   tags: ["mandates"],
   summary: "The mandate status list",
   description:
@@ -25,9 +26,13 @@ const route = createRoute({
   },
 });
 
-export function registerStatusList(app: OpenAPIHono, deps: Pick<Deps, "db">): void {
+export function registerStatusList(app: OpenAPIHono, deps: Pick<Deps, "db" | "log" | "tee">): void {
+  const { tee } = deps;
   app.openapi(route, (async (c: Parameters<Parameters<typeof app.openapi>[1]>[0]) => {
-    const token = await publishedStatusToken(deps.db);
+    // A served token stays inside its 900 s lifetime: one past the refresh age is signed again.
+    const token = tee
+      ? await currentStatusToken({ db: deps.db, log: deps.log, tee })
+      : await publishedStatusToken(deps.db);
     if (!token) return problem(c, 404, "not-found", "Not found", "No status list yet.");
     c.header("Cache-Control", "public, max-age=60");
     return c.body(token, 200, { "Content-Type": MEDIA_TYPE });

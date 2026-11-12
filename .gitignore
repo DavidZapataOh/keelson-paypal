@@ -23,3 +23,6 @@ engine/tee/out/
 packages/interop/conformance/out/
 packages/interop/conformance/.venv/
 packages/interop/conformance/__pycache__/
+engine/tee/phala/rehearsal/state.json
+engine/tee/phala/rehearsal/*.log
+engine/tee/phala/onchain-state.json

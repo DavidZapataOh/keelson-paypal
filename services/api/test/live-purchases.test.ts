@@ -219,6 +219,33 @@ describe("live purchases", () => {
       conversion,
     });
   });
+
+  test("a mandate that names no PayPal merchant, only a placeholder, allows recording none", async () => {
+    const id = await channel3Mandate();
+    const m = parseMandate(demo);
+    m.payment.constraints = m.payment.constraints.map((c) =>
+      c.type === "payment.allowed_payees"
+        ? { ...c, allowed: [{ paypal_merchant_id: "unknown" }] }
+        : c,
+    );
+    const sd = await buildSdPayload(m, () => randomBytes(16));
+    await testDb
+      .update(mandates)
+      .set({ payloadSd: sd.payloadSd, disclosures: sd.disclosures })
+      .where(eq(mandates.id, id));
+    const live = await purchase(id, "LOGGED", STORE);
+    const res = await app.request(`/v1/purchases/${live}/paypal-transaction`, {
+      method: "PUT",
+      headers: { "content-type": "application/json", ...asClient(agent) },
+      body: JSON.stringify({
+        transactionId: "4AB23456CD789012E",
+        order: { intent: "AUTHORIZE", payee: "DZ93UDZC2BKLE" },
+      }),
+    });
+    expect(res.status).toBe(422);
+    const [row] = await testDb.select().from(purchases).where(eq(purchases.id, live));
+    expect(row).toMatchObject({ paypalTransactionId: "4AB23456CD789012E", paypalPayeeId: null });
+  });
 });
 
 const f = fixtures[0];

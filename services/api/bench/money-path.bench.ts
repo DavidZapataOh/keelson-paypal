@@ -1,229 +1,86 @@
-// Tracing starts before anything below loads `pg`.
-import "./spans.ts";
-import { randomBytes } from "node:crypto";
 import { appendFileSync } from "node:fs";
 import { accessToken } from "@keelson/agent";
 import { cartHash } from "@keelson/core";
-import { createDb, eq, events, mandates, operators, purchases } from "@keelson/db";
 import { closeMandate } from "@keelson/mandate";
-import { Render } from "@renderinc/sdk";
-import type { MiddlewareHandler } from "hono";
 import { ulid } from "ulid";
-import { bytesToHex, createPublicClient, type Hex, type PublicClient } from "viem";
-import { arbitrumSepolia } from "viem/chains";
-import { newestAlibi, warmAlibiVerifier } from "../src/alibi/warm.ts";
-import { createApp } from "../src/app.ts";
-import { createAuth } from "../src/auth.ts";
-import { arbitrumSepoliaTransport } from "../src/chain/rpc.ts";
-import { parseEnv } from "../src/env.ts";
-import { eventsChannel } from "../src/events.ts";
-import { createKv } from "../src/kv.ts";
-import { createLogger } from "../src/logger.ts";
-import { authenticate } from "../src/middleware/auth.ts";
-import { relayerFromEnv } from "../src/onchain/relayer.ts";
-import { operatorSigners } from "../src/operators/signer.ts";
-import { call, createPayPalDeps } from "../src/paypal.ts";
+import { bytesToHex } from "viem";
 import { principalChannel } from "../src/principal.ts";
-import { createTee } from "../src/tee/config.ts";
-import { refreshLeg } from "../src/tee/signers.ts";
-import { c1c3Prover } from "../src/zk/c1c3.ts";
-import { c3Prover } from "../src/zk/c3.ts";
+import { parseServerTiming } from "../src/server-timing.ts";
 import { EvidenceUploader } from "../test/evidence.ts";
 import { cartOf, demoOperator } from "../test/pipeline-live.ts";
+import { SoftwarePasskey, signedMandate } from "../test/tee-live.ts";
 import {
-  asUser,
-  headerPrincipal,
-  repeating,
-  SoftwarePasskey,
-  seedUser,
-  signedMandate,
-} from "../test/tee-live.ts";
-import { spans } from "./spans.ts";
+  type Hold,
+  openHold,
+  remaining,
+  remote,
+  revokeMandate,
+  signIn,
+  waitC3Published,
+  watchPurchase,
+} from "./public-client.ts";
 import { stats, waterfall } from "./waterfall.ts";
 
-// PURCHASES purchases of the demo cart at PRICE_MINOR cents (100) spread over CONCURRENCY fresh mandates, each held
-// on PayPal and approved by the sandbox buyer, one at a time per mandate, each naming the last purchase of the
-// cart as the one it repeats. Every DEGRADED_EVERY-th one runs with
-// leg B unreachable. Each is timed from POST /v1/countersign to a terminal state, against the live
-// legs, the deployed log, Arbitrum Sepolia through the relayer and the PayPal sandbox, in-process
-// on the database the log reads. The agent is the operator's own OAuth client (KEELSON_CLIENT_ID,
-// KEELSON_CLIENT_SECRET): its access tokens come from the deployed API's client credentials grant
-// and are verified against that issuer's keys. Prints the per-step waterfall from the purchase
-// spans as JSON and exits 1 if a purchase is not captured or the end-to-end p95 is over budget.
+// PURCHASES purchases of the demo cart at PRICE_MINOR cents (100) spread over CONCURRENCY fresh
+// mandates of the bench account, through Keelson's public API only: the account signs in with its
+// passkey (BENCH_PASSKEY) and each mandate is held with its saved PayPal, with no PayPal window.
+// The agent is the demo operator's own OAuth client (KEELSON_CLIENT_ID, KEELSON_CLIENT_SECRET).
+// Each purchase is timed from POST /v1/countersign until it ended, by its event or its state; its
+// steps come from the purchase's Server-Timing. Two numbers: the steady money path, on mandates
+// whose C3 proof is published, against the budget; and the first purchase on a mandate signed
+// just before it, which also waits for that proof, reported apart. Prints both as JSON and exits 1
+// if a purchase is not captured or the steady end-to-end p95 is over budget.
 const PURCHASES = Number(process.env.PURCHASES ?? 40);
 const CONCURRENCY = Number(process.env.CONCURRENCY ?? 1);
-const DEGRADED_EVERY = Number(process.env.DEGRADED_EVERY ?? 0);
 const BUDGET_P95_MS = 8_000;
 const PRICE_MINOR = Number(process.env.PRICE_MINOR ?? 100);
 /** With DURATION_S set, purchases keep starting until it has passed (PURCHASES at most). */
 const DURATION_S = Number(process.env.DURATION_S ?? 0);
 const TERMINAL_WAIT_MS = 120_000;
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-const env = parseEnv();
+const API = process.env.KEELSON_API_URL ?? "https://api.keelson.finance";
+const APP = process.env.APP_ORIGIN ?? "https://app.keelson.finance";
 const CLIENT_ID = process.env.KEELSON_CLIENT_ID;
 const CLIENT_SECRET = process.env.KEELSON_CLIENT_SECRET;
-if (
-  !env.LOG_URL ||
-  !env.LOG_WRITE_TOKEN ||
-  !env.KEELSON_OPERATOR_KEY ||
-  !env.DEMO_AGENT_ID ||
-  !CLIENT_ID ||
-  !CLIENT_SECRET
-) {
-  throw new Error(
-    "the bench needs LOG_URL, LOG_WRITE_TOKEN, KEELSON_OPERATOR_KEY, DEMO_AGENT_ID, KEELSON_CLIENT_ID and KEELSON_CLIENT_SECRET",
-  );
+const BENCH_PASSKEY = process.env.BENCH_PASSKEY;
+if (!CLIENT_ID || !CLIENT_SECRET || !BENCH_PASSKEY) {
+  throw new Error("the bench needs KEELSON_CLIENT_ID, KEELSON_CLIENT_SECRET and BENCH_PASSKEY");
 }
-const log = createLogger();
-log.level = "warn";
-const { db, pool } = createDb(env.DATABASE_URL);
-const kv = await createKv(env.REDIS_URL, log);
-const listener = kv.duplicate();
-await listener.connect();
-const client = createPublicClient({
-  chain: arbitrumSepolia,
-  transport: arbitrumSepoliaTransport(env.ARBITRUM_SEPOLIA_RPC_URL),
-}) as PublicClient;
-const paypal = createPayPalDeps(env);
-const relayer = await relayerFromEnv(env, db, log);
-if (!relayer) throw new Error("the bench needs the relayer's KMS key");
-const teeEnv = {
-  TEE_A_URL: env.TEE_A_URL as string,
-  TEE_B_URL: env.TEE_B_URL as string,
-  KEELSON_TEE_TOKEN: env.KEELSON_TEE_TOKEN as string,
-  ARBITRUM_SEPOLIA_RPC_URL: env.ARBITRUM_SEPOLIA_RPC_URL,
-};
-const tee = createTee(teeEnv);
-// Each mandate's C3 proof, and each logged purchase's composition with it, is started as the
-// server starts it: on the workflow when there is one.
-const workflow =
-  env.RENDER_API_KEY && env.DISPUTE_WORKFLOW
-    ? { render: new Render({ token: env.RENDER_API_KEY }), slug: env.DISPUTE_WORKFLOW }
-    : undefined;
-const proveAnonymousMandate = c3Prover({ db, kv, log }, workflow);
-const proveAnonymousPurchase = c1c3Prover({ db, log }, workflow);
+const stored = JSON.parse(BENCH_PASSKEY) as { credentialId: string; pkcs8: string };
+const passkey = SoftwarePasskey.fromPkcs8(stored.credentialId, stored.pkcs8);
 const token = accessToken({
-  apiUrl: env.BETTER_AUTH_URL,
+  apiUrl: API,
   clientId: CLIENT_ID,
   clientSecret: CLIENT_SECRET,
   scopes: ["countersign:write", "evidence:write"],
 });
-const asOperator = async () => ({ authorization: `Bearer ${await token()}` });
-// The agent's requests carry its access token; the users this run seeds act through a header.
-const verifyToken = authenticate(createAuth(db, env), env.BETTER_AUTH_URL);
-const principal: MiddlewareHandler = (c, next) =>
-  c.req.header("authorization") ? verifyToken(c, next) : headerPrincipal(c, next);
-const appWith = (t: typeof tee) =>
-  createApp({
-    db,
-    kv,
-    log,
-    appOrigin: env.APP_ORIGIN,
-    authenticate: principal,
-    tee: t,
-    tlog: { url: env.LOG_URL as string, token: env.LOG_WRITE_TOKEN as string },
-    relayer,
-    operators: operatorSigners(env.DEMO_AGENT_ID as bigint, env.KEELSON_OPERATOR_KEY as Hex),
-    chains: { 421614: { client, logs: client } },
-    paypal,
-    proveAnonymousMandate,
-    proveAnonymousPurchase,
-    requestTimeoutMs: 60_000,
-  });
-const app = appWith(tee);
-// Leg B unreachable: the countersign falls back to leg A alone.
-const degraded = appWith(
-  createTee({ ...teeEnv, TEE_B_URL: "http://127.0.0.1:9" }, { a: 10_000, b: 500 }),
-);
-const post = async (path: string, headers: Record<string, string>, body?: unknown) => {
-  const res = await app.request(path, {
-    method: "POST",
-    headers: { "content-type": "application/json", "idempotency-key": ulid(), ...headers },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
-  });
-  return { status: res.status, out: (await res.json()) as Record<string, unknown> };
-};
+const agent = remote(API, async () => ({ authorization: `Bearer ${await token()}` }));
 const evidence = new EvidenceUploader();
-const lag: number[] = [];
-/** Every mandate this run stored, revoked at the end whatever state its hold reached. */
-const opened: { sub: string; mid: string }[] = [];
-
-interface Hold {
-  sub: string;
-  mid: string;
-  openMandate: string;
-  key: CryptoKey;
-  authorizationId: string;
-}
-
-/** A new user's mandate covering `count` purchases, held and approved by the sandbox buyer. */
-async function openHold(count: number): Promise<Hold> {
-  const passkey = await SoftwarePasskey.create();
-  const sub = `kls_usr_${randomBytes(8).toString("hex")}`;
-  await seedUser(db, passkey, sub);
-  const max = count * PRICE_MINOR;
-  const signed = await signedMandate(passkey, sub, demoOperator, (m) => {
-    m.mid = ulid();
-    m.payment.constraints = m.payment.constraints.map((c) =>
-      c.type === "payment.budget" || c.type === "payment.amount_range" ? { ...c, max } : c,
-    );
-  });
-  await passkey.close();
-  const stored = await post("/v1/mandates", asUser(sub), signed.body);
-  if (stored.status !== 201) throw new Error(`mandate not stored: ${JSON.stringify(stored.out)}`);
-  const mid = stored.out.id as string;
-  opened.push({ sub, mid });
-  const held = await post(`/v1/mandates/${mid}/hold`, asUser(sub));
-  const orderId = held.out.orderId as string;
-  try {
-    const { approveOrder, payerActionUrl } = await import("@keelson/paypal/testing");
-    const order = await call(paypal.paypal.orders.getOrder({ id: orderId }));
-    await approveOrder(payerActionUrl(order), `${env.APP_ORIGIN}/mandates/${mid}`);
-  } catch (err) {
-    // Without a browser the run waits for someone to approve, only when asked to.
-    if (process.env.MANUAL_APPROVAL !== "1") throw err;
-    console.error(`APPROVE ${orderId} ${env.APP_ORIGIN}/mandates/${mid}`);
-    for (let i = 0; ; i++) {
-      const order = await call(paypal.paypal.orders.getOrder({ id: orderId }));
-      if (order.status === "APPROVED") break;
-      if (i > 360) throw new Error("the hold was not approved in 30 minutes");
-      await sleep(5_000);
-    }
-  }
-  const authorized = await post(`/v1/mandates/${mid}/hold/authorize`, asUser(sub), { orderId });
-  if (authorized.status !== 200) {
-    throw new Error(`hold not authorized: ${JSON.stringify(authorized.out)}`);
-  }
-  const authorizationId = authorized.out.authorizationId as string;
-  console.error(`mandate ${mid}, order ${orderId}, authorization ${authorizationId}`);
-  return {
-    sub,
-    mid,
-    openMandate: stored.out.openMandate as string,
-    key: signed.key,
-    authorizationId,
-  };
-}
 
 interface Result {
   id: string;
-  mode: "2of2" | "degraded";
   status: number;
   state: string;
   ms: number;
+  timings: Record<string, number>;
   failure?: string;
 }
 
 const results: Result[] = [];
 const holds: Hold[] = [];
+/** The last purchase of the demo cart on each mandate: the next one repeats it on purpose. */
+const last = new Map<string, string>();
 
-async function purchase(h: Hold, mode: Result["mode"], evidenceRoot: string): Promise<Result> {
+async function purchase(h: Hold, evidenceRoot: string): Promise<Result> {
   const cart = cartOf(PRICE_MINOR);
   const requestId = ulid();
-  const channel = principalChannel({ kind: "user", subject: h.sub }, `purchase:${requestId}`);
-  const received = new Map<string, number>();
-  await listener.subscribe(eventsChannel(channel), (id) => received.set(id, Date.now()));
+  const channel = principalChannel(
+    { kind: "client", subject: CLIENT_ID as string },
+    `purchase:${requestId}`,
+  );
+  const watch = watchPurchase(agent, channel, requestId, TERMINAL_WAIT_MS);
+  await watch.ready;
+  const repeatOf = last.get(h.mid);
   const body = {
     authorizationId: h.authorizationId,
     closedMandate: await closeMandate(
@@ -234,124 +91,133 @@ async function purchase(h: Hold, mode: Result["mode"], evidenceRoot: string): Pr
     cart: cart.cart,
     unit: cart.unit,
     evidenceRoot,
-    ...(await repeating(db, h.mid, cart.cart, requestId)),
+    ...(repeatOf ? { repeatOf } : {}),
   };
   const started = Date.now();
-  const res = await (mode === "degraded" ? degraded : app).request("/v1/countersign", {
+  const res = await agent.request("/v1/countersign", {
     method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "idempotency-key": ulid(),
-      ...(await asOperator()),
-    },
+    headers: { "content-type": "application/json", "idempotency-key": ulid() },
     body: JSON.stringify(body),
   });
   const out = (await res.json()) as Record<string, unknown>;
-  let state = (out.state as string | undefined) ?? (res.status === 202 ? "COUNTERSIGNED" : "ERROR");
-  let failure: string | undefined;
-  while (["COUNTERSIGNED", "LOGGED", "COVERED"].includes(state)) {
-    if (Date.now() - started > TERMINAL_WAIT_MS) break;
-    await sleep(50);
-    // Read from the database: polling the API would spend the client's rate limit.
-    const [p] = await db
-      .select({ state: purchases.state, reason: purchases.failureReason })
-      .from(purchases)
-      .where(eq(purchases.id, requestId));
-    state = p?.state ?? state;
-    if (state === "FAILED" && p?.reason) failure = p.reason;
+  if (res.status < 300) {
+    last.set(h.mid, requestId);
+    await watch.ended;
   }
   const ended = Date.now();
-  await sleep(200);
-  await listener.unsubscribe(eventsChannel(channel));
-  const rows = await db
-    .select({ id: events.id, at: events.createdAt })
-    .from(events)
-    .where(eq(events.channel, channel));
-  for (const r of rows) {
-    const got = received.get(String(r.id));
-    if (got !== undefined) lag.push(got - r.at.getTime());
-  }
-  if (res.status >= 400) failure ??= String(out.type ?? res.status);
+  const read = await agent.request(`/v1/purchases/${requestId}`);
+  const view = read.ok
+    ? ((await read.json()) as { state: string; failureReason?: string | null })
+    : undefined;
+  const timings = {
+    ...parseServerTiming(res.headers.get("server-timing") ?? ""),
+    ...parseServerTiming(read.headers.get("server-timing") ?? ""),
+  };
+  const state = view?.state ?? (res.status >= 400 ? "ERROR" : "UNKNOWN");
+  const failure =
+    res.status >= 400 ? String(out.type ?? res.status) : (view?.failureReason ?? undefined);
   return {
     id: requestId,
-    mode,
     status: res.status,
     state,
     ms: ended - started,
+    timings,
     ...(failure ? { failure } : {}),
   };
 }
 
+const user = await signIn(API, passkey, APP);
+/** A mandate of the bench account covering `count` purchases, and when it was signed. */
+const open = async (count: number) => {
+  const signedAt = Date.now();
+  const hold = await openHold(
+    user,
+    (sub, edit) => signedMandate(passkey, sub, demoOperator, edit),
+    (m) => {
+      const max = count * PRICE_MINOR;
+      m.payment.constraints = m.payment.constraints.map((c) =>
+        c.type === "payment.budget" || c.type === "payment.amount_range" ? { ...c, max } : c,
+      );
+    },
+  );
+  holds.push(hold);
+  return { hold, signedAt };
+};
+const cart = cartOf(PRICE_MINOR).cart;
 try {
-  const [operator] = await db
-    .select({ clientId: operators.clientId })
-    .from(operators)
-    .where(eq(operators.agentId, demoOperator.agentId));
-  if (operator?.clientId !== CLIENT_ID) {
-    throw new Error(`operator ${demoOperator.agentId} is not linked to KEELSON_CLIENT_ID`);
-  }
-  await refreshLeg(db, "a", tee);
-  await refreshLeg(db, "b", tee);
-  // As the server does at boot, so the first purchase is timed as one after a deploy's warm-up.
-  await warmAlibiVerifier(() => newestAlibi(db));
+  // Steady state: these mandates are signed first, and bought on once their C3 is published.
   const perHold = Math.ceil(PURCHASES / CONCURRENCY);
-  for (let i = 0; i < CONCURRENCY; i++) holds.push(await openHold(perHold));
+  const steady: { hold: Hold; signedAt: number }[] = [];
+  for (let i = 0; i < CONCURRENCY; i++) steady.push(await open(perHold));
+
+  // The first purchase on a mandate signed just now: it waits for that mandate's C3 proof.
+  const fresh = await open(1);
+  const freshRoot = await evidence.upload(agent, fresh.hold.mid, cart, {});
+  const first = await purchase(fresh.hold, freshRoot);
+  console.error(
+    `first on a fresh mandate ${first.id} ${first.status} ${first.state} ${first.ms} ms`,
+  );
+
+  // From signing to C3 published, for each steady mandate.
+  const c3PublishedMs = await Promise.all(
+    steady.map((s) => waitC3Published(user, s.hold.mid, s.signedAt, 180_000)),
+  );
+
   // The evidence of every purchase is captured first, one browser page at a time, so the
   // concurrent purchases are not also running a browser page each.
   const roots: string[] = [];
-  const cart = cartOf(PRICE_MINOR).cart;
   for (let i = 0; i < PURCHASES; i++) {
-    const hold = holds[i % CONCURRENCY] as Hold;
-    roots.push(await evidence.upload(app, hold.mid, cart, await asOperator()));
+    roots.push(
+      await evidence.upload(agent, (steady[i % CONCURRENCY] as { hold: Hold }).hold.mid, cart, {}),
+    );
   }
   await evidence.close();
 
   const until = DURATION_S > 0 ? Date.now() + DURATION_S * 1000 : Number.POSITIVE_INFINITY;
-  // Worker w buys on holds[w] alone: purchases w, w + CONCURRENCY, ...
+  // Worker w buys on steady[w] alone: purchases w, w + CONCURRENCY, ...
   const worker = async (w: number) => {
     for (let i = w; i < PURCHASES && Date.now() < until; i += CONCURRENCY) {
-      const mode = DEGRADED_EVERY > 0 && (i + 1) % DEGRADED_EVERY === 0 ? "degraded" : "2of2";
-      const r = await purchase(holds[i % CONCURRENCY] as Hold, mode, roots[i] as string);
-      results.push(r);
-      console.error(
-        `${results.length}/${PURCHASES} ${r.id} ${r.mode} ${r.status} ${r.state} ${r.ms} ms`,
+      const r = await purchase(
+        (steady[i % CONCURRENCY] as { hold: Hold }).hold,
+        roots[i] as string,
       );
+      results.push(r);
+      console.error(`${results.length}/${PURCHASES} ${r.id} ${r.status} ${r.state} ${r.ms} ms`);
     }
   };
   await Promise.all(Array.from({ length: CONCURRENCY }, (_, w) => worker(w)));
 
   const captured = results.filter((r) => r.state === "CAPTURED");
   const failures: Record<string, number> = {};
-  for (const r of results.filter((r) => r.state !== "CAPTURED")) {
+  for (const r of [...results, first].filter((r) => r.state !== "CAPTURED")) {
     const k = `${r.status} ${r.state} ${r.failure ?? ""}`.trim();
     failures[k] = (failures[k] ?? 0) + 1;
   }
-  const remaining = await Promise.all(
-    holds.map(async (h) => {
-      const [m] = await db.select().from(mandates).where(eq(mandates.id, h.mid));
-      return `${m?.remainingMinor}/${m?.maxMinor}`;
-    }),
-  );
   const summary = {
     run: {
       PURCHASES,
       CONCURRENCY,
-      DEGRADED_EVERY,
       PRICE_MINOR,
       DURATION_S,
+      api: API,
       commit: process.env.RENDER_GIT_COMMIT,
     },
-    endToEnd: stats(captured.map((r) => r.ms)),
-    endToEnd2of2: stats(captured.filter((r) => r.mode === "2of2").map((r) => r.ms)),
-    endToEndDegraded: stats(captured.filter((r) => r.mode === "degraded").map((r) => r.ms)),
-    sse: stats(lag),
-    ...waterfall(spans.getFinishedSpans()),
-    // The first purchase pays what a fresh process has not opened or loaded yet.
-    first: results[0] && waterfall(spans.getFinishedSpans(), results[0].id),
-    purchases: results.length,
-    captured: captured.length,
+    steady: {
+      budgetP95Ms: BUDGET_P95_MS,
+      endToEnd: stats(captured.map((r) => r.ms)),
+      ...waterfall(captured.map((r) => r.timings)),
+    },
+    firstOnFreshMandate: {
+      id: first.id,
+      state: first.state,
+      ms: first.ms,
+      ...waterfall([first.timings]),
+    },
+    c3PublishedMs: stats(c3PublishedMs),
+    purchases: results.length + 1,
+    captured: captured.length + (first.state === "CAPTURED" ? 1 : 0),
     failures,
-    remaining,
+    remaining: await Promise.all(holds.map((h) => remaining(user, h.mid))),
     authorizations: holds.map((h) => h.authorizationId),
   };
   console.log(JSON.stringify(summary));
@@ -361,17 +227,17 @@ try {
       `### Money path\n\n\`\`\`json\n${JSON.stringify(summary, null, 2)}\n\`\`\`\n`,
     );
   }
-  if (captured.length < results.length || summary.endToEnd.p95 >= BUDGET_P95_MS) {
+  if (
+    captured.length === 0 ||
+    captured.length < results.length ||
+    first.state !== "CAPTURED" ||
+    summary.steady.endToEnd.p95 >= BUDGET_P95_MS
+  ) {
     process.exitCode = 1;
   }
 } finally {
-  for (const m of opened) {
-    await post(`/v1/mandates/${m.mid}/revoke`, asUser(m.sub)).catch((err: unknown) =>
-      console.error(`mandate ${m.mid} not revoked: ${String(err)}`),
-    );
+  for (const h of holds) {
+    await revokeMandate(user, h.mid).catch((err: unknown) => console.error(String(err)));
   }
   await evidence.close().catch(() => {});
-  await listener.close();
-  await kv.close();
-  await pool.end();
 }

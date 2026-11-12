@@ -12,6 +12,8 @@ use common::*;
 use http_body_util::BodyExt;
 use keelson_core::eip712::Checkpoint;
 use keelson_tee::checkpoint::{CheckpointError, ORIGINS, origin, verify_checkpoint};
+use keelson_tee::kms::{APP_ID, KMS_ROOT, verify_chain};
+use keelson_tee::logsign::key_domain;
 use keelson_tee::server::{AppState, router};
 use keelson_tee::wire::{CheckpointRequest, CheckpointSigned};
 use keelson_tee::{EngineError, Signer};
@@ -189,6 +191,54 @@ fn policy(file: &str) -> (String, Vec<String>) {
     (log.unwrap(), witnesses)
 }
 
+/// Whether `vkey` is the Ed25519 log key leg A's app on the on-chain KMS derives for `origin`,
+/// which the engine trusts at boot next to its pinned key once the chain verifies.
+fn issued_to_leg_a(origin: &str, vkey: &str) -> bool {
+    let keys: Vec<Value> =
+        serde_json::from_str(include_str!("fixtures/onchain-kms/getkey-chain.json")).unwrap();
+    let encoded = STANDARD
+        .decode(vkey.splitn(3, '+').nth(2).unwrap())
+        .unwrap();
+    let Some((&0x01, public)) = encoded.split_first() else {
+        return false;
+    };
+    keys.iter().filter(|k| k["origin"] == origin).any(|k| {
+        let chain: Vec<Vec<u8>> = k["chain"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|l| hex_bytes(l.as_str().unwrap()))
+            .collect();
+        verify_chain(
+            "ed25519",
+            &key_domain(origin),
+            public,
+            &chain,
+            &APP_ID,
+            &KMS_ROOT,
+        )
+    })
+}
+
+#[test]
+fn only_leg_a_kms_keys_count_as_issued() {
+    let new =
+        "log.keelson.finance/alibi/2026-1+bdddc67c+AUP8v6W0TKgm6ZGJeE+DLSR4jNCgOetpzwmiLC4egkK/";
+    assert!(issued_to_leg_a("log.keelson.finance/alibi/2026-1", new));
+    assert!(!issued_to_leg_a(
+        "log.keelson.finance/alibi-live/2026-1",
+        new
+    ));
+    assert!(!issued_to_leg_a(
+        "log.keelson.finance/alibi/2026-1",
+        ORIGINS[0].log_key
+    ));
+    assert!(!issued_to_leg_a(
+        "log.keelson.finance/conformance/2026-1",
+        ORIGINS[2].log_key
+    ));
+}
+
 #[test]
 fn the_origins_carry_the_keys_of_the_log_policies() {
     assert_eq!(ORIGINS.len(), 3);
@@ -214,7 +264,10 @@ fn the_origins_carry_the_keys_of_the_log_policies() {
     ] {
         let o = origin(name).unwrap();
         let (log, witnesses) = policy(file);
-        assert_eq!(o.log_key, log, "{name}");
+        assert!(
+            log == o.log_key || issued_to_leg_a(name, &log),
+            "{name}: the engine trusts neither its pinned key nor leg A's KMS key for {log}"
+        );
         assert_eq!(o.chain_id, chain_id, "{name}");
         assert_eq!(o.quorum, quorum, "{name}");
         if quorum > 0 {

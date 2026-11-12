@@ -115,7 +115,7 @@ function attestation(kind: "tdx" | "nitro", step: number): CheckDef {
             engineBuildId: build.engineBuildId,
             measurements: [build[kind]],
             now,
-            issuerJwkThumbprint: (await issuerThumbprint(input)) as `0x${string}`,
+            issuerJwkThumbprints: [(await issuerThumbprint(input)) as `0x${string}`],
             cache,
           });
           expect(

@@ -180,6 +180,14 @@ export async function renderAlibiPdf(input: AlibiBundle | AlibiBundleV2): Promis
         b.paypal.store_order
           ? `Store's PayPal order: ${b.paypal.store_order.intent}, payee ${b.paypal.store_order.payee_id}${b.paypal.store_order.capture_ceiling_minor ? `, capturable up to ${b.paypal.store_order.capture_ceiling_minor} minor units` : ""} (reported by the agent, not signed)`
           : "",
+        b.paypal.amount_authority
+          ? {
+              paypal_order: "Amount confirmed with PayPal's Orders API (read by Keelson's API)",
+              user_confirmed: "Amount the user confirmed with their passkey",
+              merchant_signed_cart: "Amount signed by the store",
+              checkout_page: "Amount read from PayPal's checkout page, not confirmed",
+            }[b.paypal.amount_authority.authority]
+          : "",
         b.conversion
           ? `${describeConversion(b.conversion)}; reference ${b.conversion.reference.rate} from ${b.conversion.reference.provider} as of ${b.conversion.reference.as_of}, spread ${b.conversion.spread_bps} of ${b.conversion.max_spread_bps} bps allowed (reported by the agent, not signed)`
           : "",

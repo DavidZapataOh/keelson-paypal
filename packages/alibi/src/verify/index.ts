@@ -3,6 +3,7 @@ import { type EarStatus, earClaims } from "@keelson/scitt";
 import { fromBase64 } from "../b64.ts";
 import type { AlibiBundle, AlibiBundleV2, AlibiReceipt, AnyAlibi } from "../schema.ts";
 import { type Context, runCheck } from "./check.ts";
+import { amountAuthority } from "./checks/amount.ts";
 import { anchor } from "./checks/anchor.ts";
 import { nitro, tdx } from "./checks/attestation.ts";
 import { card } from "./checks/card.ts";
@@ -97,6 +98,7 @@ const CHECKS = [
   checkout,
   conversion,
   paypal,
+  amountAuthority,
   card,
   cardStatements,
 ];

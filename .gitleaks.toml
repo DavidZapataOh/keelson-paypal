@@ -80,8 +80,10 @@ condition = "AND"
 paths = [
   '''packages/alibi/src/verify/engine-vk\.ts''',
   '''services/api/src/zk/engine\.ts''',
+  '''contracts/test/vectors/engine-program\.json''',
 ]
 regexes = [
+  '''0x00b2289ef8373024486aab72320bbff5f27056aeaf1a9e2c99dffc10ced3ec0c''',
   '''0x00c4587b3359aa358e91653bb21d40ba649a31fcdc3ac0ad51f9aacaac0a615b''',
   '''0x00bff880671bceb9f788e1bec1dc9f238392e7ee9e4bfe6175c75e54b8615fd3''',
   '''0x008eb02e13c538c0b1f2edbbde39d8400956f1aa1e9952de4746106312ec02a0''',

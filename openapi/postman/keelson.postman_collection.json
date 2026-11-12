@@ -1,0 +1,993 @@
+{
+  "item": [
+    {
+      "name": "system",
+      "item": [
+        {
+          "name": "Dependency status",
+          "request": {
+            "name": "Dependency status",
+            "description": {},
+            "url": {
+              "path": [
+                "status"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "GET"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "events",
+      "item": [
+        {
+          "name": "Stream events",
+          "request": {
+            "name": "Stream events",
+            "description": {
+              "content": "Server-sent events for one channel. Send `Last-Event-ID` to replay the events after that id before going live.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "v1",
+                "events"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [
+                {
+                  "disabled": false,
+                  "key": "channel",
+                  "value": "<string>",
+                  "description": "(Required) `public:<name>`, or the caller's own namespace `<base64url(kind:subject)>` with an optional `:<suffix>`."
+                }
+              ],
+              "variable": []
+            },
+            "header": [
+              {
+                "disabled": false,
+                "key": "last-event-id",
+                "value": "<string>",
+                "description": ""
+              },
+              {
+                "key": "Accept",
+                "value": "text/event-stream"
+              }
+            ],
+            "method": "GET"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "connections",
+      "item": [
+        {
+          "name": "Ask the user for a mandate",
+          "request": {
+            "name": "Ask the user for a mandate",
+            "description": {
+              "content": "The agent's operator asks its user for a mandate with these limits, as an RFC 8628 device authorization: the user opens `verification_uri_complete`, compares `user_code` and approves on Keelson's page with a passkey, lowering any limit. Only a client that linked an operator may ask, and the mandate names that operator. The code expires in 15 minutes and is single use.\n\nAn app acting for a user with a token they granted it (`mandates:request`) asks that user only: the request is theirs from the start, so it carries no number to match. The mandate names the app's own operator, or Keelson's hosted operator when the app has none. Through the hosted operator, every app is capped (`hosted-cap`): one user's open mandates and purchases of the last 180 days with apps whose redirect URIs are not a known host's may not pass `HOSTED_CAP_PER_USER_MINOR`, and with all such apps `HOSTED_CAP_KNOWN_PER_USER_MINOR`; every user's funded exposure may not pass `HOSTED_CAP_TOTAL_MINOR`.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "v1",
+                "connections"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"<string>\",\n  \"reason\": \"<string>\",\n  \"limits\": {\n    \"perPurchaseMinor\": \"<integer>\",\n    \"totalMinor\": \"<integer>\",\n    \"until\": \"<dateTime>\",\n    \"currency\": \"USD\",\n    \"merchants\": [\n      \"mrc_runfast\"\n    ],\n    \"askAboveMinor\": \"<integer>\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Poll for the user's answer",
+          "request": {
+            "name": "Poll for the user's answer",
+            "description": {
+              "content": "RFC 8628 §3.4 polling with `grant_type=urn:ietf:params:oauth:grant-type:device_code`. Until the user decides: `authorization_pending`, or `slow_down` (and 5 more seconds to wait) when polled faster than `interval`. Then `access_denied`, `expired_token`, or the approved mandate's id, once: the device code is spent by the answer that carries it.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "v1",
+                "connections",
+                "token"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/x-www-form-urlencoded"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "disabled": false,
+                  "key": "grant_type",
+                  "value": "<string>",
+                  "description": "(Required) "
+                },
+                {
+                  "disabled": false,
+                  "key": "device_code",
+                  "value": "<string>",
+                  "description": "(Required) "
+                }
+              ]
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Read your request's state",
+          "request": {
+            "name": "Read your request's state",
+            "description": {
+              "content": "The state of a request this client made, as often as needed: reading it changes nothing and does not spend the device code. Wait `interval` seconds between reads. An app acting for a user (`mandates:request`) reads only that user's requests.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "v1",
+                "connections",
+                "requests",
+                "{{requestId}}"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "GET"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "mandates",
+      "item": [
+        {
+          "name": "Ask the user to change a mandate",
+          "request": {
+            "name": "Ask the user to change a mandate",
+            "description": {
+              "content": "The agent asks its user for different limits, with a one-line note the user reads verbatim. The user may lower what is asked and approves with a passkey; the new mandate then replaces this one, whose hold is released. Nothing changes until the user signs. Poll `GET /v1/connections/requests/{id}` for the answer. An app acting for a user (`mandates:request`) asks only about a mandate that user approved for it.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "v1",
+                "mandates",
+                "{{mandateId}}",
+                "changes"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"note\": \"<string>\",\n  \"limits\": {\n    \"perPurchaseMinor\": \"<integer>\",\n    \"totalMinor\": \"<integer>\",\n    \"until\": \"<dateTime>\",\n    \"askAboveMinor\": \"<integer>\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Check a cart against a mandate",
+          "request": {
+            "name": "Check a cart against a mandate",
+            "description": {
+              "content": "A dry run: what a countersign of this cart would find, field by field, from the same policy set the TEE legs run, with nothing signed, reserved or logged. The countersign stays the only decision. An app acting for a user (`purchases:write`) checks only under a mandate that user approved for it.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "v1",
+                "mandates",
+                "{{mandateId}}",
+                "check"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cart\": {\n    \"merchant\": \"<string>\",\n    \"currency\": \"<string>\",\n    \"lines\": [\n      {\n        \"sku\": \"<string>\",\n        \"category\": \"<string>\",\n        \"qty\": \"<integer>\",\n        \"unit_minor\": \"<integer>\",\n        \"size\": \"<string,null>\",\n        \"color\": \"<string,null>\"\n      }\n    ],\n    \"return_days\": \"<integer>\",\n    \"returns_free\": \"<boolean>\"\n  }\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "tee",
+      "item": [
+        {
+          "name": "Countersign a cart",
+          "request": {
+            "name": "Countersign a cart",
+            "description": {
+              "content": "Sends the cart to the TEE legs in order and returns the countersignatures only when both agree. A DENY is countersigned too. An app acting for a user (`purchases:write`) countersigns only under a mandate that user approved for it; under a mandate of Keelson's hosted operator it sends `mandateId` and Keelson closes the mandate with that operator's key over the request id and this cart, and nothing else. A cart is bought once per mandate: while a purchase of the same cart is in flight, or for ten minutes after it was captured, another request for it is answered `409 purchase-exists` with that purchase's id, whatever its request id, evidence or `Idempotency-Key`. Retrying after a lost answer is therefore safe; to buy the same cart again on purpose, name that purchase in `repeatOf`.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "v1",
+                "countersign"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"cart\": {\n    \"merchant\": \"<string>\",\n    \"currency\": \"<string>\",\n    \"lines\": [\n      {\n        \"sku\": \"<string>\",\n        \"category\": \"<string>\",\n        \"qty\": \"<integer>\",\n        \"unit_minor\": \"<integer>\",\n        \"size\": \"<string,null>\",\n        \"color\": \"<string,null>\"\n      }\n    ],\n    \"return_days\": \"<integer>\",\n    \"returns_free\": \"<boolean>\"\n  },\n  \"unit\": {},\n  \"evidenceRoot\": \"<string>\",\n  \"authorizationId\": \"<string>\",\n  \"closedMandate\": \"<string>\",\n  \"mandateId\": \"<string>\",\n  \"requestId\": \"<string>\",\n  \"evidence\": {},\n  \"live\": {\n    \"store\": \"<uri>\"\n  },\n  \"repeatOf\": \"<string>\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Attested TEE signers",
+          "request": {
+            "name": "Attested TEE signers",
+            "description": {
+              "content": "The signers whose countersignatures are accepted, each with the attestation it was admitted from, and the measurements the deployment publishes. A verifier checks the attestations itself.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "v1",
+                "tee",
+                "attestations"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "GET"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "purchases",
+      "item": [
+        {
+          "name": "A purchase",
+          "request": {
+            "name": "A purchase",
+            "description": {
+              "content": "The purchase's state: its log index, its coverage and its capture once each is recorded. Readable by the mandate's owner and by the client that asked for the countersign; an app acting for a user, only for that user.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "v1",
+                "purchases",
+                "{{purchaseId}}"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "GET"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "evidence",
+      "item": [
+        {
+          "name": "Store sealed evidence",
+          "request": {
+            "name": "Store sealed evidence",
+            "description": {
+              "content": "Stores what the agent saw at decision time for an active mandate of an operator this client linked or, for an app acting for a user, one that user approved for the app. The manifest is rebuilt from the items and must match, every item has its own salt, no public item may still hold an email address or phone number, and every `.original` must open with the evidence identity. A countersign may only bind a stored root, once.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "v1",
+                "evidence"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"mandateId\": \"<string>\",\n  \"manifest\": {\n    \"v\": \"<string>\",\n    \"root\": \"<string>\",\n    \"items\": [\n      {\n        \"type\": \"<string>\",\n        \"media_type\": \"<string>\",\n        \"leaf\": \"<string>\"\n      }\n    ]\n  },\n  \"items\": [\n    {\n      \"type\": \"<string>\",\n      \"mediaType\": \"<string>\",\n      \"salt\": \"<string>\",\n      \"bytes\": \"<string>\"\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Read an evidence manifest",
+          "request": {
+            "name": "Read an evidence manifest",
+            "description": {
+              "content": "The public manifest of a stored bundle: salted leaves only.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "v1",
+                "evidence",
+                "{{evidenceRoot}}"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "GET"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "timestamps",
+      "item": [
+        {
+          "name": "RFC 3161 timestamps of a hash",
+          "request": {
+            "name": "RFC 3161 timestamps of a hash",
+            "description": {
+              "content": "The RFC 3161 tokens two independent TSAs issued over a log leaf hash (or another stamped hash). Each token's message imprint is the hash itself, so `openssl ts -verify -digest <hash>` checks it.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "v1",
+                "timestamps",
+                "{{hash}}"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "GET"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "alibis",
+      "item": [
+        {
+          "name": "An Alibi as a PDF/A-3b",
+          "request": {
+            "name": "An Alibi as a PDF/A-3b",
+            "description": {
+              "content": "A one-page PDF/A-3b summary of the Alibi with a QR to its verify page and the bundle embedded as `<id>.alibi`. Same readers, and the same public copy, as the bundle.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "v1",
+                "alibis",
+                "{{purchaseId}}.pdf"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/pdf"
+              }
+            ],
+            "method": "GET"
+          },
+          "response": []
+        },
+        {
+          "name": "An Alibi bundle",
+          "request": {
+            "name": "An Alibi bundle",
+            "description": {
+              "content": "The purchase's Alibi: its RFC 8785 bundle, readable by the mandate's user or, with `alibis:read`, by the client that uploaded the purchase's evidence; the Alibi of a live purchase, once its PayPal transaction is recorded, by anyone. Anyone else gets its public copy, whose mandate withholds the user's login id and risk data: their salted digests stay in the signed payload, so the copy verifies the same. It grows as timestamps, the capture and the on-chain anchor arrive; earlier sections never change.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "v1",
+                "alibis",
+                "{{purchaseId}}"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [
+                {
+                  "disabled": false,
+                  "key": "version",
+                  "value": "<string>",
+                  "description": "`2`: the Alibi as an IETF SCITT transparent statement (RFC 9943). A v1 Alibi is served as the bridge statement that carries its countersigned facts, once there is one."
+                }
+              ],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/vnd.keelson.alibi.v1+json"
+              }
+            ],
+            "method": "GET"
+          },
+          "response": []
+        },
+        {
+          "name": "Verify an Alibi",
+          "request": {
+            "name": "Verify an Alibi",
+            "description": {
+              "content": "Runs the browser verifier's algorithm on an Alibi bundle against the pinned trust roots and a public Arbitrum RPC. No authentication; the bundle is not stored.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "v1",
+                "alibis",
+                "verify"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/vnd.keelson.alibi.v1+json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "<binary>",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "The public receipt of an Alibi",
+          "request": {
+            "name": "The public receipt of an Alibi",
+            "description": {
+              "content": "What the public log already publishes about an Alibi: its leaf, inclusion proof, anchor and timestamps. No authentication.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "v1",
+                "alibis",
+                "{{purchaseId}}",
+                "receipt"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "GET"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Disputes",
+      "item": [
+        {
+          "name": "A dispute's attribution",
+          "request": {
+            "name": "A dispute's attribution",
+            "description": {
+              "content": "Where a PayPal dispute over a Keelson purchase stands: the party at fault, the `Verdict` both TEE legs signed, the time from the dispute's arrival to its verdict, and the operator's amber commitment with any conviction of it. No authentication; it holds no personal data, so what the operator attested is left out.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "v1",
+                "disputes",
+                "{{disputeId}}"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "GET"
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "operators",
+      "item": [
+        {
+          "name": "Link an ERC-8004 agent as an operator",
+          "request": {
+            "name": "Link an ERC-8004 agent as an operator",
+            "description": {
+              "content": "Binds the agent's `cnf` key to its ERC-8004 identity once its owner or `agentWallet` signs `OperatorLink`. The owner of an agent that is already linked re-links it, after a transfer for example.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "v1",
+                "operators"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"chainId\": \"<number>\",\n  \"agentId\": \"<string>\",\n  \"name\": \"<string>\",\n  \"cnfJwk\": {\n    \"kty\": \"<string>\",\n    \"crv\": \"<string>\",\n    \"x\": \"<string>\",\n    \"y\": \"<string>\",\n    \"kid\": \"<string>\"\n  },\n  \"deadline\": \"<integer>\",\n  \"signature\": \"<string>\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "The active mandates naming the operator",
+          "request": {
+            "name": "The active mandates naming the operator",
+            "description": {
+              "content": "Lists the active mandates whose operator is `agentId`, with their open mandates and holds, so that the operator's agent can buy under them. Only the OAuth client that linked the operator (`POST /v1/operators`) reads them; any other caller gets 404. An app acting for a user (`mandates:request`) reads only the mandates naming `agentId` that this user approved for it.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "v1",
+                "operators",
+                "{{agentId}}",
+                "mandates"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "GET"
+          },
+          "response": []
+        },
+        {
+          "name": "Announce an agent run under a mandate",
+          "request": {
+            "name": "Announce an agent run under a mandate",
+            "description": {
+              "content": "Tells the mandate's owner that the operator's agent started or ended shopping under the mandate, with the live view of its browser, as an `agent.run` event on the owner's `mandate:<id>` stream. Only the OAuth client that linked the operator announces runs, on its active mandates.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "v1",
+                "operators",
+                "{{agentId}}",
+                "mandates",
+                "{{mandateId}}",
+                "runs"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/problem+json"
+              }
+            ],
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"state\": \"<string>\",\n  \"liveViewUrl\": \"<uri>\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "response": []
+        },
+        {
+          "name": "Trust grade, premium and bond of an operator",
+          "request": {
+            "name": "Trust grade, premium and bond of an operator",
+            "description": {
+              "content": "Recomputed whenever a coverage or a verdict of the operator, or the nightly calibration, changes it. Public.",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "v1",
+                "operators",
+                "{{agentId}}",
+                "grade"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "GET"
+          },
+          "response": []
+        }
+      ]
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "if (pm.request.method === 'POST' && !pm.request.headers.has('Idempotency-Key')) {",
+          "  pm.request.headers.add({ key: 'Idempotency-Key', value: pm.variables.replaceIn('{{$guid}}') });",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://api.keelson.finance",
+      "type": "string"
+    },
+    {
+      "key": "purchaseId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "mandateId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "requestId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "disputeId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "agentId",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "evidenceRoot",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "hash",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "info": {
+    "name": "Keelson API (PayPal sandbox)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "The operations an app or an operator's agent calls on Keelson: ask for a mandate, seal evidence, countersign a cart, and read and verify the Alibi. Sign in with Get New Access Token (OAuth 2.0 with PKCE). Payments run on the PayPal sandbox; no real money moves."
+  },
+  "auth": {
+    "type": "oauth2",
+    "oauth2": [
+      {
+        "key": "grant_type",
+        "value": "authorization_code_with_pkce",
+        "type": "string"
+      },
+      {
+        "key": "challengeAlgorithm",
+        "value": "S256",
+        "type": "string"
+      },
+      {
+        "key": "authUrl",
+        "value": "https://api.keelson.finance/api/auth/oauth2/authorize",
+        "type": "string"
+      },
+      {
+        "key": "accessTokenUrl",
+        "value": "https://api.keelson.finance/api/auth/oauth2/token",
+        "type": "string"
+      },
+      {
+        "key": "clientId",
+        "value": "WkKIPZyGePddfBSbfErTGJbptmYLYFTU",
+        "type": "string"
+      },
+      {
+        "key": "client_authentication",
+        "value": "body",
+        "type": "string"
+      },
+      {
+        "key": "scope",
+        "value": "mandates:request evidence:write purchases:write alibis:read offline_access",
+        "type": "string"
+      },
+      {
+        "key": "redirect_uri",
+        "value": "https://oauth.pstmn.io/v1/callback",
+        "type": "string"
+      },
+      {
+        "key": "useBrowser",
+        "value": "true",
+        "type": "string"
+      },
+      {
+        "key": "tokenName",
+        "value": "Keelson",
+        "type": "string"
+      },
+      {
+        "key": "addTokenTo",
+        "value": "header",
+        "type": "string"
+      },
+      {
+        "key": "authRequestParams",
+        "value": "[{\"key\":\"resource\",\"value\":\"https://api.keelson.finance\",\"send_as\":\"request_url\"}]",
+        "type": "string"
+      },
+      {
+        "key": "tokenRequestParams",
+        "value": "[{\"key\":\"resource\",\"value\":\"https://api.keelson.finance\",\"send_as\":\"request_body\"}]",
+        "type": "string"
+      }
+    ]
+  }
+}

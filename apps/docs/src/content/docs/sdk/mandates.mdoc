@@ -1,0 +1,97 @@
+---
+title: Mandates
+description: Ask the user for limits they sign with a passkey, wait for the PayPal hold, and check a cart before you buy.
+estimate: 4 min
+section: SDK
+order: 3
+---
+
+A mandate is what the user lets your agent spend: an amount per purchase, a total, an end date and, if they want, an amount above which they approve each purchase. The user reads your request on Keelson's page, may lower any limit, and signs it with a passkey. PayPal then holds the total.
+
+## Ask for a mandate
+
+{% languages label="Request a mandate" %}
+```ts
+const req = await keelson.mandates.request({
+  name: "Claude Code",
+  reason:
+    "I buy one pair of Pace Lite running shoes, size 10, at RunFast on the PayPal sandbox, and nothing else.",
+  perPurchase: "$100",
+  total: "$100",
+  until: "1h",
+  askAbove: "$80",
+});
+console.log(`Approve with your passkey: ${req.approvalUrl}`);
+```
+
+```python
+req = keelson.mandates.request(
+    name="Claude Code",
+    reason=why,
+    per_purchase="$100",
+    total="$100",
+    until="1h",
+    ask_above="$80",
+)
+print(f"Approve with your passkey: {req.approval_url}")
+```
+{% /languages %}
+
+| Field | What it is |
+| --- | --- |
+| `name` | How the user knows your agent |
+| `reason` | Why you ask, in 100 to 1,000 characters; the user reads it before approving |
+| `perPurchase`, `total` | `"$120"`, `"120.50 USD"`, or `{ currency, minor }` |
+| `until` | When the mandate ends: an ISO date, a `Date`, or `"30m"`, `"1h"`, `"7d"` from now. Keep it short. |
+| `askAbove` | Optional: above this amount the user approves each purchase |
+
+The answer has the `approvalUrl` to send the user to, a `userCode`, a `matchNumber` to show beside the link (the user picks it out of three on the page), `expiresAt`, and the `interval` in seconds between reads of the request.
+
+## Wait for the approval
+
+{% languages label="Wait for approval" %}
+```ts
+const mandate = await keelson.mandates.waitForApproval(req.id);
+```
+
+```python
+mandate = keelson.mandates.wait_for_approval(req.id)
+```
+{% /languages %}
+
+`waitForApproval` reads the request at its interval until the user approves and PayPal's hold is in place, then returns the mandate. It waits 15 minutes by default (`timeoutMs`) and takes an `AbortSignal`. If the user declines, or the request expires, it raises `MandateRequestClosedError`, with `state` set to `DENIED` or `EXPIRED`: don't ask again unless the user asks you to.
+
+`requests.retrieve(requestId)` reads a request's state without waiting.
+
+## Check a cart before you buy
+
+{% languages label="Check a cart" %}
+```ts
+const check = await keelson.mandates.check(mandate.id, cart);
+if (!check.canAttempt) for (const b of check.blockers) console.log(b.message, b.next);
+```
+
+```python
+check = keelson.mandates.check(mandate.id, cart)
+```
+{% /languages %}
+
+The answer says whether a countersign of the cart would pass the mandate as it stands (`canAttempt`), whether the user must approve it first (`needsApproval`), each field compared (`checks`), and for each problem a `blockers` entry with what to do next. It decides nothing: the two TEEs decide at [countersign](/sdk/purchases/).
+
+## Ask for more room
+
+{% languages label="Change a mandate" %}
+```ts
+const change = await keelson.mandates.requestChange(mandate.id, {
+  note: "The shoes I found cost $120.",
+  perPurchase: "$120",
+  total: "$120",
+});
+```
+
+```python
+change = keelson.mandates.request_change(mandate.id, note="The shoes I found cost $120.", per_purchase="$120", total="$120")
+```
+{% /languages %}
+
+The user approves a change the same way, on the page `change.approvalUrl` names. `mandates.list(agentId)` returns an operator's active mandates, newest first.

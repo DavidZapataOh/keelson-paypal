@@ -56,7 +56,7 @@ describe("custom_id", () => {
 describe("invoice_id", () => {
   it("is 60 characters and round-trips with a 16-byte digest", () => {
     fc.assert(
-      fc.property(ulid, fc.integer({ min: 0, max: 99 }), digest, (id, seq, d) => {
+      fc.property(ulid, fc.integer({ min: 1, max: 99 }), digest, (id, seq, d) => {
         const s = encodeInvoiceId(id, seq, d);
         expect(s).toHaveLength(60);
         expect(s).toMatch(/^[A-Za-z0-9-]{60}$/);
@@ -65,8 +65,9 @@ describe("invoice_id", () => {
     );
   });
 
-  it("rejects a sequence outside 0..99", () => {
+  it("rejects a sequence outside 1..99", () => {
     const d = new Uint8Array(32);
+    expect(() => encodeInvoiceId(newId(), 0, d)).toThrow();
     expect(() => encodeInvoiceId(newId(), 100, d)).toThrow();
     expect(() => encodeInvoiceId(newId(), -1, d)).toThrow();
     expect(() => encodeInvoiceId(newId(), 1.5, d)).toThrow();

@@ -8,6 +8,8 @@ import { type Principal, principalKey } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
 
 const HEARTBEAT_MS = 15_000;
+/** How long a client waits before it reconnects a lost stream (the SSE `retry` field). */
+const RETRY_MS = 3_000;
 const BATCH = 100;
 const MAX_STREAMS_PER_PRINCIPAL = 5;
 const MAX_EVENT_ID = 2n ** 63n - 1n;
@@ -22,6 +24,7 @@ function mayRead(principal: Principal, channel: string): boolean {
 const route = createRoute({
   method: "get",
   path: "/v1/events",
+  operationId: "streamEvents",
   tags: ["events"],
   summary: "Stream events",
   description:
@@ -159,7 +162,8 @@ export function registerEvents(
           cursor ??= BigInt(message) - 1n;
           void drain();
         });
-        await stream.write(": connected\n\n");
+        // A client that loses the stream reconnects after RETRY_MS, sending `Last-Event-ID`.
+        await stream.write(`retry: ${RETRY_MS}\n: connected\n\n`);
         if (cursor !== undefined) await drain();
         await closed;
       } finally {

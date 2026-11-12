@@ -41,6 +41,8 @@ export const mandates = pgTable(
     decoySalts: jsonb().$type<string[]>().notNull().default([]),
     /** The mandate's index in the status list, drawn at random and never reused. */
     statusIdx: integer().unique("mandates_status_idx_unique"),
+    /** The RFC 7638 thumbprint (hex) of the credential issuer key leg A issued the mandate with. */
+    issuerThumbprint: text(),
     /** The WebAuthn assertion over `mandate_hash`. */
     userAuth: jsonb(),
     credentialId: text(),
@@ -71,6 +73,8 @@ export const mandates = pgTable(
       .default("mandate"),
     /** The original authorization; a void must target it, never a reauthorization. */
     paypalParentAuthorizationId: text().unique("mandates_paypal_parent_authorization_id_unique"),
+    /** The saved PayPal the hold was authorized with, when it was not approved in a PayPal popup. */
+    paypalVaultId: text(),
     /** The parent authorization's `create_time`. */
     authorizedAt: timestamp({ withTimezone: true }),
     reauthorizedAt: timestamp({ withTimezone: true }),

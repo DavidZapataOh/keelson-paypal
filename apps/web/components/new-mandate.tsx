@@ -17,7 +17,7 @@ import { ApiError, engineDecoys, get, post } from "../lib/api";
 import { authClient } from "../lib/auth";
 import { deviceId } from "../lib/device";
 import { devicePasskey, type Passkey, rememberPasskey } from "../lib/passkeys";
-import type { Compiled } from "../lib/types";
+import type { Compiled, MandateView } from "../lib/types";
 import { MandateVisual } from "./mandate-visual";
 import { ErrorNotice } from "./notice";
 import { OnboardingFrame } from "./onboarding/frame";
@@ -164,6 +164,7 @@ function Rules() {
   const router = useRouter();
   const session = authClient.useSession();
   const handed = useSearchParams().get("request");
+  const renew = useSearchParams().get("renew");
   const [what, setWhat] = useState(handed ?? "");
   const [budget, setBudget] = useState(100);
   const [anyStore, setAnyStore] = useState<"any" | "one" | "card">("one");
@@ -188,6 +189,26 @@ function Rules() {
       .then((r) => setPasskeys(r.passkeys))
       .catch((e) => setError(message(e)));
   }, [session.isPending, session.data, router]);
+
+  // A renewal starts from the limits of the approval it replaces.
+  useEffect(() => {
+    if (!renew) return;
+    get<MandateView>(`/v1/mandates/${renew}`)
+      .then((v) => {
+        const row = (field: string) => v.card?.rows.find((r) => r.field === field)?.values ?? [];
+        const items = row("items");
+        setWhat(items.length > 0 ? items.join(" or ") : (row("summary")[0] ?? ""));
+        setBudget(Math.min(500, Math.max(5, Math.round(Number(v.budget.maxMinor) / 100))));
+        const stores = row("merchant").map((m) => m.split(" (")[0] ?? m);
+        if (v.rail === "card") setAnyStore("card");
+        else if (stores.length > 1) setAnyStore("any");
+        else if (stores[0]) {
+          setAnyStore("one");
+          setStore(stores[0]);
+        }
+      })
+      .catch((e) => setError(message(e)));
+  }, [renew]);
 
   const until = untilDate(span);
   const request = useMemo(() => {
@@ -245,6 +266,7 @@ function Rules() {
         commitment: s.commitment,
         salt: s.salt,
         assertion,
+        ...(renew ? { renews: renew } : {}),
       });
       rememberPasskey(assertion.credentialId);
       router.replace(`/new/?hold=${created.id}`);
@@ -387,6 +409,11 @@ function Rules() {
       <h1 className="text-balance font-semibold text-[1.75rem] leading-[1.1] tracking-[-0.025em] sm:text-[2rem]">
         {phase === "review" ? "Check it, then sign" : "What may your agent buy?"}
       </h1>
+      {renew && phase !== "review" ? (
+        <p className="mt-2 text-muted-foreground text-sm">
+          Same limits as your approval. Sign it again to keep it working.
+        </p>
+      ) : null}
 
       <fieldset
         disabled={!editing}

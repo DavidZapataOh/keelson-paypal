@@ -37,6 +37,8 @@ export type BridgeOutcome = "bridged" | "v2" | "done" | "legs" | "unissued";
  * Carries a v1 Alibi into v2: leg A checks the v1 leaf against a fresh inclusion proof under its
  * own log key and the v1 countersign, signs the bridge statement, the log registers it, and its
  * v2 bundle is stored beside the v1 one. Running it again changes nothing.
+ *
+ * @internal
  */
 export async function bridgeAlibi(deps: BridgeDeps, purchaseId: string): Promise<BridgeOutcome> {
   const { db, tee, tlog } = deps;

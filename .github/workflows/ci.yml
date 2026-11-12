@@ -31,6 +31,7 @@ jobs:
       rust: ${{ github.event_name != 'pull_request' || steps.filter.outputs.rust == 'true' }}
       contracts: ${{ github.event_name != 'pull_request' || steps.filter.outputs.contracts == 'true' }}
       noir: ${{ github.event_name != 'pull_request' || steps.filter.outputs.noir == 'true' }}
+      docs: ${{ github.event_name != 'pull_request' || steps.filter.outputs.docs == 'true' }}
     steps:
       - uses: actions/checkout@v7
       - id: filter
@@ -59,6 +60,7 @@ jobs:
               - internal/scitt/**
               - services/api/**
               - services/agent/**
+              - services/redteam/**
               - services/mcp/**
               - services/monitor/**
               - apps/**
@@ -94,6 +96,88 @@ jobs:
               - packages/alibi/src/verify/c3-vk.ts
               - packages/alibi/src/verify/c1c3-vk.ts
               - services/api/zk/**
+            docs:
+              - *shared
+              - apps/docs/**
+              - README.md
+              - docs/**
+              - openapi/**
+              - .lychee.toml
+              - apps/verify/src/labels.ts
+              - apps/web/components/judge/tour.tsx
+              - services/log/**
+              - services/api/src/**
+              - services/api/scripts/card-demo.ts
+              - services/mcp/src/**
+              - packages/*/src/**
+              - engine/tee/src/**
+              - engine/tee/measurements.json
+              - engine/policy/**
+              - contracts/src/**
+              - contracts/script/**
+              - internal/**
+              - proofs/**
+
+  docs:
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @keelson/docs exec playwright install --with-deps chromium
+      - name: Build the site (Markdoc validation fails the build)
+        run: pnpm turbo run build --filter=@keelson/docs...
+      - name: Pages, specifications, vectors, hygiene, drift and diagrams
+        run: pnpm --filter @keelson/docs test
+      - name: Layout, tokens, accessibility and the synced code panel
+        run: pnpm --filter @keelson/docs e2e
+      - if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: docs-screens
+          path: apps/docs/test/e2e/__screens__
+          if-no-files-found: ignore
+      - name: Every internal link and anchor of the built site
+        uses: lycheeverse/lychee-action@v2.9.0
+        with:
+          args: --offline --include-fragments=full --index-files index.html --root-dir ${{ github.workspace }}/apps/docs/dist apps/docs/dist
+          fail: true
+      - name: Every link in the sources
+        uses: lycheeverse/lychee-action@v2.9.0
+        with:
+          args: --config .lychee.toml README.md docs apps/docs/src/content
+          fail: true
+
+  docs-live:
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: ./.github/actions/setup-foundry
+        with:
+          version: v1.9.0
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @keelson/docs exec playwright install --with-deps chromium
+      - run: pnpm turbo run build --filter=@keelson/docs...
+      - name: Every documented command, against production
+        run: pnpm --filter @keelson/docs test:live
 
   node:
     needs: changes
@@ -120,14 +204,18 @@ jobs:
           grep -rEn "paypalMockResponse|PayPal-Mock-Response" packages services apps --exclude-dir=node_modules --exclude-dir=dist || status=$?
           test "$status" -eq 1
       - run: pnpm --filter @keelson/timestamp exec playwright install chromium
-      - name: Install the cddl CLI
-        run: |
-          curl -fsSL https://github.com/anweiss/cddl/releases/download/v0.10.7/cddl-linux-amd64.tar.gz -o /tmp/cddl.tar.gz
-          echo "08a68f7aae25d5781c82e64f8926ca4cad491bd5d2d2f47c72a848d3ff858b8a  /tmp/cddl.tar.gz" | sha256sum -c -
-          sudo tar -xzf /tmp/cddl.tar.gz -C /usr/local/bin cddl
+      # The RFC 8610 reference tool validates the SCITT, RATS and CMW encodings against their CDDL.
+      - uses: ruby/setup-ruby@7f797815d8adceb1c412e7abefdd1ab4abc47a5f # v1.335.0
+        with:
+          ruby-version: "3.4"
+      - name: Install the cddl tool
+        run: gem install cddl -v 0.12.14 --no-document
       - env:
           KEELSON_REQUIRE_CDDL: "1"
-        run: pnpm turbo run typecheck test build --filter='!./packages/db' --filter='!./packages/attest' --filter='!./packages/evidence' --filter='!./services/api' --filter='!./apps/store' --filter='!./services/monitor' --filter='!./packages/relayer' --cache-dir=.turbo
+        run: pnpm turbo run typecheck test build --filter='!./packages/db' --filter='!./packages/attest' --filter='!./packages/evidence' --filter='!./services/api' --filter='!./apps/store' --filter='!./services/monitor' --filter='!./packages/relayer' --filter='!./apps/landing' --concurrency=100% --cache-dir=.turbo
+      # On its own, after the fan-out: its e2e times a visitor's tamper flow against a 10 s budget.
+      - name: Landing
+        run: pnpm turbo run typecheck test build --filter=@keelson/landing --cache-dir=.turbo
       - name: The captured timestamp tokens verify with OpenSSL
         working-directory: packages/timestamp
         run: node scripts/openssl-verify.ts
@@ -140,6 +228,38 @@ jobs:
           pnpm --filter @keelson/policy vectors
           pnpm --filter @keelson/log vectors
           test -z "$(git status --porcelain)"
+
+  # Every checkout attack in the corpus against the real pay-click gate in Chromium; any attack the
+  # gate lets through fails the job, and the published scoreboard must match what this run measured.
+  red-team:
+    needs: changes
+    if: needs.changes.outputs.ts == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @keelson/agent exec playwright install --with-deps chromium
+      - run: pnpm turbo run build --filter=@keelson/agent^... --filter=@keelson/redteam^...
+      - name: Checkout-attack corpus
+        env:
+          ATTACK_RESULTS: ${{ runner.temp }}/attacks.jsonl
+        run: pnpm --filter @keelson/agent exec vitest run test/attacks.test.ts
+      - name: The published scoreboard is this run's
+        if: always()
+        run: |
+          node services/redteam/scripts/checkout-scoreboard.ts "$RUNNER_TEMP/attacks.jsonl" > "$RUNNER_TEMP/checkout-attacks.json"
+          { echo "### Checkout attacks"; echo '```json'; jq '{attacks, asr, through, controls, false_blocks, blocked_controls, classes: [.classes[] | {class, attacks, through}]}' "$RUNNER_TEMP/checkout-attacks.json"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          cmp "$RUNNER_TEMP/checkout-attacks.json" apps/web/public/redteam/checkout-attacks.json || {
+            echo "apps/web/public/redteam/checkout-attacks.json is not this run's scoreboard, which is:"
+            cat "$RUNNER_TEMP/checkout-attacks.json"
+            exit 1
+          }
 
   alibi-pdf:
     needs: changes
@@ -195,7 +315,7 @@ jobs:
         with:
           node-version-file: .node-version
           cache: pnpm
-      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+      - uses: astral-sh/setup-uv@v10.3.3
       - id: ucp-schema
         uses: actions/cache@v6
         with:
@@ -224,6 +344,95 @@ jobs:
       - name: veraPDF validates every evidence pack PDF as PDF/A-3b
         shell: bash
         run: packages/alibi/scripts/verapdf.sh "$RUNNER_TEMP"/visa-pdf/*.pdf | tee -a "$GITHUB_STEP_SUMMARY"
+
+  # The SDKs, their types, the Context Plugin and the Postman collection agree with the OpenAPI document.
+  sdk:
+    needs: changes
+    if: needs.changes.outputs.ts == 'true'
+    runs-on: ubuntu-24.04
+    # bash with pipefail, so a failing test piped into the summary fails the step.
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - uses: astral-sh/setup-uv@v10.3.3
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm turbo run build --filter=@keelson-finance/sdk... --filter=@keelson-finance/verifier... --filter=@keelson-finance/context...
+      - name: Types, models, tools and the collection are generated from openapi/keelson.public.json
+        run: |
+          pnpm --filter @keelson-finance/sdk types
+          node services/api/scripts/postman.ts
+          (cd packages/sdk && node scripts/vectors.ts)
+          packages/sdk-python/scripts/models.sh
+          git diff --exit-code packages/sdk/src/schema.d.ts packages/sdk/api-surface.json openapi/postman packages/sdk-python
+      - name: Size, typing and quickstart budgets
+        working-directory: packages/sdk
+        run: pnpm exec vitest run --reporter=verbose test/size.test.ts | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Python
+        working-directory: packages/sdk-python
+        run: |
+          uv sync --all-extras --frozen
+          uv run ruff check .
+          uv run ruff format --check .
+          uv run mypy
+          uv run pytest -q -s tests --ignore=tests/live | tee -a "$GITHUB_STEP_SUMMARY"
+      # Last: it rewrites the verifier's manifest for publishing, as the release does.
+      - name: The verifier package installs and verifies offline
+        run: |
+          node packages/verify/scripts/bundle.mjs
+          (cd packages/verify && pnpm pack --pack-destination "$RUNNER_TEMP/verifier")
+          packages/verify/scripts/check-package.sh "$RUNNER_TEMP"/verifier/*.tgz
+
+  # Both SDKs against the live sandbox: sign-in, mandates, purchases, verification and adapters.
+  sdk-live:
+    needs: changes
+    if: github.event_name != 'pull_request' && needs.changes.outputs.ts == 'true'
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        shell: bash
+    env:
+      KEELSON_LIVE: "1"
+      PAYPAL_SANDBOX_BUYER_EMAIL: ${{ secrets.PAYPAL_SANDBOX_BUYER_EMAIL }}
+      PAYPAL_SANDBOX_BUYER_PASSWORD: ${{ secrets.PAYPAL_SANDBOX_BUYER_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+      - uses: astral-sh/setup-uv@v10.3.3
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm turbo run build --filter=@keelson-finance/sdk... --filter=@keelson-finance/verifier... --filter=@keelson/paypal...
+      - run: pnpm --filter @keelson-finance/sdk exec playwright install --with-deps chromium
+      # One Judge Mode user for the whole run, which makes one purchase; the suite that buys
+      # rotates with the run number, so four runs cover all four.
+      - name: Pick this run's purchase
+        run: |
+          suites=(purchase-ts quickstart-ts purchase-py quickstart-py)
+          echo "KEELSON_LIVE_BUY=${suites[$((GITHUB_RUN_NUMBER % 4))]}" >> "$GITHUB_ENV"
+      - name: TypeScript SDK and verifier
+        run: |
+          pnpm --filter @keelson-finance/sdk exec vitest run --no-file-parallelism --reporter=verbose test/live | tee -a "$GITHUB_STEP_SUMMARY"
+          pnpm --filter @keelson-finance/verifier exec vitest run --reporter=verbose | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Python SDK
+        working-directory: packages/sdk-python
+        env:
+          KEELSON_VERIFY_COMMAND: node ${{ github.workspace }}/packages/verify/dist/cli.js
+        run: |
+          uv sync --all-extras --frozen
+          uv run pytest -q -s tests/live | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: The Postman collection's public reads
+        run: |
+          id=$(curl -s https://api.keelson.finance/v1/live-purchases | jq -r '[.purchases[] | select(.logIndex != null)][0].id')
+          npx -y newman@6.2.3 run openapi/postman/keelson.postman_collection.json --folder system --env-var "purchaseId=$id"
 
   # Every tampering class and every field of the real Alibis, verified against Arbitrum Sepolia.
   alibi-live:
@@ -462,6 +671,10 @@ jobs:
           echo "$HOME/.local/tinygo/tinygo/bin" >> "$GITHUB_PATH"
           echo "$HOME/.local/tinygo/binaryen-version_133/bin" >> "$GITHUB_PATH"
       - run: tinygo version && wasm-opt --version
+      - uses: ./.github/actions/select-rpc
+        with:
+          alchemy-api-key: ${{ secrets.ALCHEMY_API_KEY }}
+          drpc-arbitrum-sepolia-url: ${{ secrets.DRPC_ARBITRUM_SEPOLIA_URL }}
       - run: pnpm install --frozen-lockfile --filter @keelson/monitor
       - run: pnpm --filter @keelson/monitor exec playwright install chromium
       - run: pnpm --filter @keelson/monitor test
@@ -475,6 +688,29 @@ jobs:
             echo "| gzip -9 | $(gzip -9 -c verifier.wasm | wc -c) |"
           } >> "$GITHUB_STEP_SUMMARY"
           test "$(gzip -9 -c verifier.wasm | wc -c)" -lt 1000000
+
+  monitor-fork:
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: ./.github/actions/select-rpc
+        with:
+          alchemy-api-key: ${{ secrets.ALCHEMY_API_KEY }}
+          drpc-arbitrum-sepolia-url: ${{ secrets.DRPC_ARBITRUM_SEPOLIA_URL }}
+      - uses: ./.github/actions/setup-foundry
+        with:
+          version: v1.9.0
+      - name: Monitor against an Arbitrum Sepolia fork
+        run: set -o pipefail; go test -race -tags fork -run 'TestAnchor|TestLiveOriginNotDeployed|TestPinnedAddresses|TestRealLeaves|TestSigner|TestUnknownSigner|TestMeasurementMismatch|TestEquivocated|TestIndexResumes' -v ./services/monitor/ 2>&1 | tee fork.log
+      - name: Chain check timings
+        if: always()
+        run: grep -E 'anchor check|signers:' fork.log >> "$GITHUB_STEP_SUMMARY" || true
 
   monitor-selfhost:
     needs: changes
@@ -490,7 +726,9 @@ jobs:
           docker run -d --name monitor -p 8080:8080 -v keelson-monitor:/data keelson-monitor
           for _ in $(seq 60); do
             if curl -fsS http://localhost:8080/report |
-              jq -e '[.origins[] | select((.cosigners | length) >= 2 and .error == null and .leavesAudited == .size)] | length == 2'; then
+              jq -e '[.origins[] | select((.cosigners | length) >= 2 and .error == null and .leavesAudited == .size
+                and (.anchor.status == "consistent" or .anchor.status == "not-deployed")
+                and (.signers.status == "checked" or .signers.status == "not-deployed"))] | length == 2'; then
               echo "Both origins verified $(( $(date +%s) - start )) s after docker run" | tee -a "$GITHUB_STEP_SUMMARY"
               exit 0
             fi
@@ -825,7 +1063,11 @@ jobs:
       - name: bb proves and verifies the demo mandate
         run: |
           circuits/c1/prove.sh "$RUNNER_TEMP/c1-proof.json"
-          bb gates -b circuits/c1/target/mandate_predicate.json | tee -a "$GITHUB_STEP_SUMMARY"
+          circuits/tamper.sh c1 circuits/c1/target engine/tee/zk/mandate_predicate.vk
+          if TAMPER_SELFTEST=1 circuits/tamper.sh c1 circuits/c1/target engine/tee/zk/mandate_predicate.vk; then
+            echo "tamper.sh passed a proof whose public inputs were left as they are" >&2
+            exit 1
+          fi
       - run: nargo test
         working-directory: circuits/c2a
       - name: The C2a key and Solidity verifiers are what the circuit compiles to
@@ -836,8 +1078,8 @@ jobs:
         run: |
           for class in amount currency category expiry merchant; do
             circuits/c2a/prove.sh "$class" "$RUNNER_TEMP/c2a-$class.json"
+            circuits/tamper.sh "c2a/$class" "circuits/c2a/target/$class" circuits/c2a/mandate_violation.vk
           done
-          bb gates -b circuits/c2a/target/mandate_violation.json | tee -a "$GITHUB_STEP_SUMMARY"
       - run: nargo test
         working-directory: circuits/c3
       - name: The C3 program, key and Solidity verifiers are what the circuit compiles to
@@ -848,8 +1090,8 @@ jobs:
         run: |
           for type in payment webauthn; do
             circuits/c3/prove.sh "$type" "$RUNNER_TEMP/c3-$type.json"
+            circuits/tamper.sh "c3/$type" "circuits/c3/target/$type" circuits/c3/anonymous_mandate.vk
           done
-          bb gates -b circuits/c3/target/anonymous_mandate.json | tee -a "$GITHUB_STEP_SUMMARY"
       - name: The composed program, key and Solidity verifiers are what the circuit compiles to
         run: |
           circuits/c1c3/build.sh
@@ -857,8 +1099,8 @@ jobs:
       - name: bb composes C1 and C3 of the anonymous demo purchase by recursion
         run: |
           circuits/c1c3/prove.sh "$RUNNER_TEMP/c1c3.json"
+          circuits/tamper.sh c1c3 circuits/c1c3/target circuits/c1c3/anonymous_purchase.vk
           circuits/c1c3/refuses.sh
-          bb gates -b circuits/c1c3/target/anonymous_purchase.json | tee -a "$GITHUB_STEP_SUMMARY"
       - run: nargo test
         working-directory: circuits/c2b
       - name: The C2b key and Solidity verifiers are what the circuit compiles to
@@ -869,5 +1111,11 @@ jobs:
         run: |
           for field in size color unitPrice returnsFree; do
             circuits/c2b/prove.sh "$field" "$RUNNER_TEMP/c2b-$field.json"
+            circuits/tamper.sh "c2b/$field" "circuits/c2b/target/$field" circuits/c2b/amber_contradiction.vk
           done
-          bb gates -b circuits/c2b/target/amber_contradiction.json | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Each circuit proves within its time budget
+        shell: bash
+        run: circuits/bench.sh | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: No circuit grows past its gate budget
+        if: ${{ !cancelled() }}
+        run: circuits/gates.sh

@@ -20,7 +20,9 @@
       "!**/test/evidence",
       "!**/test/snapshots",
       "!engine/tee/measurements.json",
+      "!apps/web/public/redteam",
       "!engine/tee/measurements-rotation.json",
+      "!engine/tee/phala/app-compose.json",
       "!engine/tee/zk",
       "!services/api/zk",
       "!**/src/generated",
@@ -29,7 +31,9 @@
       "!contracts/out",
       "!contracts/cache",
       "!contracts/broadcast",
-      "!contracts/snapshots"
+      "!contracts/snapshots",
+      "!packages/sdk-python",
+      "!packages/context/src/corpus.json"
     ]
   },
   "formatter": {
@@ -72,7 +76,11 @@
     },
     {
       "includes": ["apps/verify/src/styles.css"],
-      "css": { "parser": { "tailwindDirectives": true } }
+      "css": {
+        "parser": {
+          "tailwindDirectives": true
+        }
+      }
     },
     {
       "includes": [
@@ -93,7 +101,11 @@
     },
     {
       "includes": ["packages/ui/src/styles/globals.css"],
-      "css": { "parser": { "tailwindDirectives": true } },
+      "css": {
+        "parser": {
+          "tailwindDirectives": true
+        }
+      },
       "linter": {
         "rules": {
           "complexity": {
@@ -110,6 +122,12 @@
             "noImportantStyles": "off"
           }
         }
+      }
+    },
+    {
+      "includes": ["packages/sdk/examples/quickstart.mjs"],
+      "formatter": {
+        "lineWidth": 160
       }
     }
   ]
