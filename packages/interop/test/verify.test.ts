@@ -26,9 +26,14 @@ async function all() {
   return { k, x };
 }
 
-const failed = async (artifact: unknown, issuer: ExportSigner) =>
+const failed = async (artifact: unknown, issuer: ExportSigner, agentKeys: object[] = []) =>
   (
-    await verifyExport(artifact, { now: NOW, issuerKeys: [issuer.jwk], receiptKeys: RECEIPT_KEYS })
+    await verifyExport(artifact, {
+      now: NOW,
+      issuerKeys: [issuer.jwk],
+      receiptKeys: RECEIPT_KEYS,
+      agentKeys,
+    })
   ).checks
     .filter((c) => !c.ok)
     .map((c) => c.id);
@@ -44,7 +49,7 @@ describe("verifyExport", () => {
       // This Alibi does not disclose its cart, so UCP's required subtotal cannot be stated.
       expect(Object.keys(x).sort()).toEqual(["acp", "ap2", "tap", "visa", "vi"].sort());
       for (const [format, artifact] of Object.entries(x)) {
-        expect(await failed(artifact, k.issuer), format).toEqual([]);
+        expect(await failed(artifact, k.issuer, [k.agentHttp.jwk]), format).toEqual([]);
       }
     } finally {
       globalThis.fetch = realFetch;

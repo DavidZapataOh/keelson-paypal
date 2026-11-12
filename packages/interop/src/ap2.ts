@@ -230,8 +230,8 @@ async function receipts(
   f: PurchaseFacts,
   ref: AlibiRef,
   issuer: ExportSigner,
-  closed: { checkout: string; payment: string },
-) {
+  closed: { checkout: string; payment?: string },
+): Promise<{ checkout: string; payment?: string }> {
   const success = f.decision === "allow" && f.confirmationId !== undefined;
   const status = transform("StatusOfDecision", f.decision, statementFacts(f)) as string;
   const base = { status, iss: ISSUER, iat: f.issuedAt };
@@ -250,6 +250,7 @@ async function receipts(
     },
     ref.statement,
   );
+  if (!closed.payment) return { checkout };
   const payment = await issuer.sign(
     JWT,
     {
@@ -297,10 +298,10 @@ export async function exportAp2(
   const closed = await closeAp2(x, k.agent, o);
   const r = await receipts(f, ref, k.issuer, {
     checkout: closed.checkout.closed as string,
-    payment: closed.payment.closed as string,
+    ...(closed.payment.closed ? { payment: closed.payment.closed } : {}),
   });
   closed.checkout.receipt = r.checkout;
-  closed.payment.receipt = r.payment;
+  if (r.payment) closed.payment.receipt = r.payment;
   return closed;
 }
 
@@ -314,6 +315,20 @@ export async function closeAp2(
   const facts = (openPayload(x.checkout.open).keelson as { facts: StatementFacts }).facts;
   const nonce = o.nonce ?? nonceOf(facts);
   const { pending_close: pending, ...rest } = x;
+  // A refused purchase authorizes no payment: only its checkout is closed.
+  if (facts.decision !== "allow") {
+    return {
+      ...rest,
+      checkout: {
+        ...x.checkout,
+        closed: await closeHop(x.checkout.open, pending.checkout, agent, {
+          now: o.now,
+          aud: o.aud?.checkout ?? "merchant",
+          nonce,
+        }),
+      },
+    };
+  }
   return {
     ...rest,
     checkout: {
@@ -335,16 +350,17 @@ export async function closeAp2(
   };
 }
 
-/** The disclosed delegate payload of an SD-JWT segment `jwt~d~`. */
-function delegateOf(segment: string): Record<string, unknown> | undefined {
-  const d = segment.split("~")[1];
-  if (!d) return undefined;
-  const value = JSON.parse(new TextDecoder().decode(base64UrlDecode(d))) as unknown[];
-  return value.at(-1) as Record<string, unknown>;
-}
-
 const base64UrlDecode = (s: string) =>
   Uint8Array.from(atob(s.replaceAll("-", "+").replaceAll("_", "/")), (c) => c.charCodeAt(0));
+
+/** The delegate payload of an SD-JWT segment `jwt~d~`, only when its digest is one the JWT signed. */
+function delegateOf(segment: string): Record<string, unknown> | undefined {
+  try {
+    return disclosedDelegates(segment.endsWith("~") ? segment : `${segment}~`)[0];
+  } catch {
+    return undefined;
+  }
+}
 
 /** Checks one closed chain `open~d~~closed~d~` and returns its delegate payload. */
 async function closedChain(
@@ -403,20 +419,37 @@ export async function verifyAp2(
     sdHash(x.checkout.open);
   let nonceOk = true;
   let references = true;
-  if (x.checkout.closed && x.payment.closed) {
+  // An allowed purchase closes both mandates or neither; a refused one closes only its checkout.
+  const allowed = facts.decision === "allow";
+  const closedShape = allowed
+    ? Boolean(x.checkout.closed) === Boolean(x.payment.closed)
+    : x.payment.closed === undefined && x.payment.receipt === undefined;
+  const receiptsNeedClosed =
+    (x.checkout.receipt === undefined || x.checkout.closed !== undefined) &&
+    (x.payment.receipt === undefined || x.payment.closed !== undefined);
+  binding &&= closedShape && receiptsNeedClosed && delegateOf(x.checkout.open) !== undefined;
+  if (x.checkout.closed) {
     const c = await closedChain(x.checkout.closed, "merchant", nonce);
-    const p = await closedChain(x.payment.closed, "paypal", nonce);
-    binding &&= c.binding && p.binding;
-    nonceOk = c.nonce && p.nonce;
+    binding &&= c.binding;
+    nonceOk &&= c.nonce;
     const checkoutHash = b64uSha256(x.checkout.checkout_jwt);
     references =
       c.leaf?.checkout_jwt === x.checkout.checkout_jwt &&
       c.leaf?.checkout_hash === checkoutHash &&
-      p.leaf?.transaction_id === checkoutHash &&
       (x.checkout.receipt === undefined ||
-        jwtPayload(x.checkout.receipt).reference === receiptReference(x.checkout.closed)) &&
-      (x.payment.receipt === undefined ||
-        jwtPayload(x.payment.receipt).reference === receiptReference(x.payment.closed));
+        jwtPayload(x.checkout.receipt).reference === receiptReference(x.checkout.closed));
+    if (x.payment.closed) {
+      const p = await closedChain(x.payment.closed, "paypal", nonce);
+      binding &&= p.binding;
+      nonceOk &&= p.nonce;
+      const amount = p.leaf?.payment_amount as { amount?: unknown; currency?: unknown } | undefined;
+      references &&=
+        p.leaf?.transaction_id === checkoutHash &&
+        String(amount?.amount) === facts.amount_minor &&
+        amount?.currency === transform("UpperCurrency", facts.currency, facts) &&
+        (x.payment.receipt === undefined ||
+          jwtPayload(x.payment.receipt).reference === receiptReference(x.payment.closed));
+    }
   }
   checks.push({ id: "chain_binding", ok: binding });
   checks.push({ id: "nonce", ok: nonceOk });

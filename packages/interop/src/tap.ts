@@ -394,14 +394,20 @@ export async function exportTap(
   return { type: "keelson.tap/1", request, directory: { keys: [k.agentHttp.jwk] }, alibi: ref };
 }
 
-/** Verifies a TAP export offline: its signature, tag and window, and the header's statement. */
-export async function verifyTap(x: TapExport, o: { now: number }): Promise<ExportReport> {
+/**
+ * Verifies a TAP export offline: its signature under one of the trusted agent keys (never a key
+ * the export carries), its tag and window, and the header's statement.
+ */
+export async function verifyTap(
+  x: TapExport,
+  o: { now: number; agentKeys: object[] },
+): Promise<ExportReport> {
   const started = performance.now();
   let code: AgentSignatureError["code"] | undefined;
   let leaf: string | undefined;
   try {
     const out = await verifyAgentRequest(x.request, {
-      keys: x.directory,
+      keys: { keys: o.agentKeys },
       now: o.now,
       tags: ["agent-payer-auth"],
       nonces: new NonceCache(),

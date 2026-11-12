@@ -403,7 +403,7 @@ describe("exportTap", () => {
     expect(x.directory).toEqual({ keys: [s.jwk] });
     expect(x.request.headers["signature-input"]).toContain('tag="agent-payer-auth"');
 
-    const report = await verifyTap(x, { now: NOW + 5 });
+    const report = await verifyTap(x, { now: NOW + 5, agentKeys: [s.jwk] });
     expect(report.format).toBe("tap");
     expect(report.checks.map((c) => c.id)).toEqual(["signatures", "tag", "window", "facts"]);
     expect(report.ok).toBe(true);
@@ -417,16 +417,21 @@ describe("exportTap", () => {
   });
 
   test("verifyTap fails facts when the export names another statement", async () => {
+    const agentHttp = await freshSigner();
     const x = await exportTap(
       purchaseFacts(alibi(ALLOW_PAYPAL)),
       refFor(ALLOW_PAYPAL),
-      { agentHttp: await freshSigner() },
+      { agentHttp },
       { now: NOW },
     );
-    const report = await verifyTap({ ...x, alibi: refFor(ALLOW_CARD) }, { now: NOW + 5 });
+    const agentKeys = [agentHttp.jwk];
+    const report = await verifyTap(
+      { ...x, alibi: refFor(ALLOW_CARD) },
+      { now: NOW + 5, agentKeys },
+    );
     expect(report.ok).toBe(false);
     expect(report.checks.filter((c) => !c.ok).map((c) => c.id)).toEqual(["facts"]);
-    const late = await verifyTap(x, { now: NOW + 481 });
+    const late = await verifyTap(x, { now: NOW + 481, agentKeys });
     expect(late.checks.filter((c) => !c.ok).map((c) => c.id)).toEqual([
       "signatures",
       "window",

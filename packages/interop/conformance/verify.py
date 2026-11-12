@@ -5,7 +5,8 @@ Every export must pass the signature, chain and receipt checks. Then:
 - an allowed purchase whose Alibi discloses its cart has no constraint violation;
 - an allowed purchase whose Alibi does not disclose its cart violates only `line_items`, since
   the verifier cannot see the items;
-- a refused purchase has violations, and its AP2 payment receipt says `Error`.
+- a refused purchase closes no payment mandate, has violations, and its AP2 checkout receipt says
+  `Error`.
 """
 
 import base64
@@ -52,6 +53,12 @@ def ap2(e: dict) -> list[str]:
     violations = CheckoutMandateChain.parse(checkout).verify(
         expected_checkout_hash=compute_sha256_b64url(checkout_jwt), checkout_jwt=checkout_jwt
     )
+    # A refused purchase closes no payment mandate.
+    if e["decision"] == "deny" and "closed" in x["payment"]:
+        raise AssertionError("a refused purchase carries a closed payment mandate")
+    kinds = ("checkout", "payment") if "closed" in x["payment"] else ("checkout",)
+    if "closed" not in x["payment"]:
+        return violations + _receipts(x, issuer, kinds)
     payment = client.verify(
         x["payment"]["closed"],
         lambda _t: issuer,
@@ -64,7 +71,11 @@ def ap2(e: dict) -> list[str]:
         expected_open_checkout_hash=compute_sd_hash(parse_token(x["checkout"]["open"])),
         mandate_context=MandateContext(),
     )
-    for kind in ("checkout", "payment"):
+    return violations + _receipts(x, issuer, kinds)
+
+
+def _receipts(x: dict, issuer: JWK, kinds: tuple[str, ...]) -> list[str]:
+    for kind in kinds:
         chain = x[kind]["closed"]
         final = chain.rsplit("~~", 1)[-1]
         reference = compute_sd_hash(parse_token(final))
@@ -78,7 +89,7 @@ def ap2(e: dict) -> list[str]:
         )
         if "error" in result:
             raise AssertionError(f"{kind} receipt: {result}")
-    return violations
+    return []
 
 
 def _jwt_payload(jwt: str) -> dict:
@@ -102,10 +113,12 @@ def vi(e: dict) -> list[str]:
     results = {}
     # The reference reads the wall clock; the exports are checked at the time they were made.
     with patch.object(chain.time, "time", return_value=e["now"]):
-        for view, l3, expected in (
-            ("payment", "l3_payment", "expected_l3_payment"),
-            ("checkout", "l3_checkout", "expected_l3_checkout"),
-        ):
+        views = [("checkout", "l3_checkout", "expected_l3_checkout")]
+        if x.get("l3_payment"):
+            views.insert(0, ("payment", "l3_payment", "expected_l3_payment"))
+        elif e["decision"] == "allow":
+            raise AssertionError("an allowed purchase lacks its L3 payment mandate")
+        for view, l3, expected in views:
             l2 = decode_sd_jwt(x[f"l2_{view}"])
             result = verify_chain(
                 l1,
@@ -125,13 +138,15 @@ def vi(e: dict) -> list[str]:
                 raise AssertionError(f"VI {view} chain: {result.errors}")
             results[view] = (l2, result)
 
-    l2, network = results["payment"]
-    constraints = _mandate(network.l2_claims, "mandate.payment.open.1")["constraints"]
-    fulfillment = dict(_mandate(network.l3_payment_claims, "mandate.payment.1"))
-    for c in constraints:
-        if c["type"] == "mandate.payment.allowed_payees":
-            fulfillment["allowed_merchants"] = _resolve(l2, c["allowed"])
-    violations = check_constraints(constraints, fulfillment, mode=StrictnessMode.STRICT).violations
+    violations = []
+    if "payment" in results:
+        l2, network = results["payment"]
+        constraints = _mandate(network.l2_claims, "mandate.payment.open.1")["constraints"]
+        fulfillment = dict(_mandate(network.l3_payment_claims, "mandate.payment.1"))
+        for c in constraints:
+            if c["type"] == "mandate.payment.allowed_payees":
+                fulfillment["allowed_merchants"] = _resolve(l2, c["allowed"])
+        violations = check_constraints(constraints, fulfillment, mode=StrictnessMode.STRICT).violations
 
     l2, merchant = results["checkout"]
     constraints = copy.deepcopy(_mandate(merchant.l2_claims, "mandate.checkout.open.1")["constraints"])
@@ -156,7 +171,7 @@ def main() -> int:
         violations = ap2(e)
         status = json.loads(
             __import__("base64").urlsafe_b64decode(
-                e["ap2"]["payment"]["receipt"].split(".")[1] + "=="
+                e["ap2"]["checkout"]["receipt"].split(".")[1] + "=="
             )
         )["status"]
         if e["decision"] == "deny":

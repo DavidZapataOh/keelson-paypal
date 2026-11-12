@@ -43,14 +43,16 @@ describe("AP2 v0.2 closed mandates and receipts", () => {
     async (id) => {
       const { x } = await exported(id);
       expect(errors(`${AP2}/checkout_mandate.json`, leaf(x.checkout.closed as string))).toEqual([]);
-      expect(errors(`${AP2}/payment_mandate.json`, leaf(x.payment.closed as string))).toEqual([]);
+      if (x.payment.closed) {
+        expect(errors(`${AP2}/payment_mandate.json`, leaf(x.payment.closed))).toEqual([]);
+      }
       expect(errors(`${AP2}/types/checkout.json`, jwtPayload(x.checkout.checkout_jwt))).toEqual([]);
       expect(
         errors(`${AP2}/checkout_receipt.json`, jwtPayload(x.checkout.receipt as string)),
       ).toEqual([]);
-      expect(
-        errors(`${AP2}/payment_receipt.json`, jwtPayload(x.payment.receipt as string)),
-      ).toEqual([]);
+      if (x.payment.receipt) {
+        expect(errors(`${AP2}/payment_receipt.json`, jwtPayload(x.payment.receipt))).toEqual([]);
+      }
     },
   );
 
@@ -88,17 +90,19 @@ describe("AP2 v0.2 closed mandates and receipts", () => {
     expect(await failed(issuer, stranger)).toContain("chain_binding");
   });
 
-  test("a refused cart gets an Error payment receipt, and the issuer will not sign Success", async () => {
+  test("a refused cart gets an Error checkout receipt and no payment, and the issuer will not sign Success", async () => {
     const { x, f } = await exported(DENY_PAYPAL);
-    expect(jwtPayload(x.payment.receipt as string)).toMatchObject({
+    expect(jwtPayload(x.checkout.receipt as string)).toMatchObject({
       status: "Error",
       error: "declined",
     });
+    expect(x.payment.closed).toBeUndefined();
+    expect(x.payment.receipt).toBeUndefined();
     const issuer = await testIssuer(DENY_PAYPAL);
     await expect(
       issuer.sign(
         "JWT",
-        { ...jwtPayload(x.payment.receipt as string), status: "Success" },
+        { ...jwtPayload(x.checkout.receipt as string), status: "Success" },
         refFor(DENY_PAYPAL).statement,
       ),
     ).rejects.toBeInstanceOf(BindingError);

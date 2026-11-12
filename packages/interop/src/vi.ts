@@ -247,14 +247,24 @@ export async function closeVi(
 ): Promise<ViExport> {
   if (!x.pending_close) throw new RangeError("the export has no pending L3 mandates");
   const { pending_close: p, ...rest } = x;
+  const facts = (
+    jwtPayload(parts(x.l2).jwt).keelson as { facts?: { decision?: string } } | undefined
+  )?.facts;
+  // A refused purchase authorizes no payment: only its checkout is closed.
+  const payment =
+    facts?.decision === "allow"
+      ? {
+          l3_payment: await l3([p.merchant, p.payment], agent, {
+            nonce: x.nonce,
+            aud: x.network_aud,
+            l2: x.l2_payment,
+            now: o.now,
+          }),
+        }
+      : {};
   return {
     ...rest,
-    l3_payment: await l3([p.merchant, p.payment], agent, {
-      nonce: x.nonce,
-      aud: x.network_aud,
-      l2: x.l2_payment,
-      now: o.now,
-    }),
+    ...payment,
     l3_checkout: await l3([p.checkout], agent, {
       nonce: x.nonce,
       aud: x.merchant_aud,
@@ -361,17 +371,27 @@ export async function verifyVi(
     view(x.l2_payment, paymentDisc);
 
   let nonce = true;
-  if (x.l3_payment && x.l3_checkout && cnf) {
+  const facts = (l2p.keelson as { facts?: StatementFacts } | undefined)?.facts;
+  // An allowed purchase closes both L3s or neither; a refused one closes only its checkout.
+  binding &&=
+    facts?.decision === "allow"
+      ? Boolean(x.l3_payment) === Boolean(x.l3_checkout)
+      : x.l3_payment === undefined;
+  if (x.l3_checkout && cnf && facts) {
     binding &&=
-      (await l3Binds(x.l3_payment, cnf, x.l2_payment, x.network_aud, PAYMENT_FINAL)) &&
       (await l3Binds(x.l3_checkout, cnf, x.l2_checkout, x.merchant_aud, CHECKOUT_FINAL)) &&
-      finalMandate(x.l3_payment, PAYMENT_FINAL)?.transaction_id === checkoutL3?.checkout_hash &&
       checkoutL3?.checkout_hash === b64uSha256(checkoutJwt as string);
-    const facts = (l2p.keelson as { facts: StatementFacts }).facts;
+    if (x.l3_payment) {
+      binding &&=
+        (await l3Binds(x.l3_payment, cnf, x.l2_payment, x.network_aud, PAYMENT_FINAL)) &&
+        finalMandate(x.l3_payment, PAYMENT_FINAL)?.transaction_id === checkoutL3?.checkout_hash;
+    }
     const expected = nonceOf(facts);
     nonce =
       x.nonce === expected &&
-      [x.l3_payment, x.l3_checkout].every((s) => jwtPayload(parts(s).jwt).nonce === expected);
+      [x.l3_payment, x.l3_checkout]
+        .filter((s): s is string => s !== undefined)
+        .every((s) => jwtPayload(parts(s).jwt).nonce === expected);
   }
   checks.push({ id: "chain_binding", ok: binding });
   checks.push({ id: "nonce", ok: nonce });
