@@ -6,7 +6,8 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /// @title ILogBond
 /// @notice A bond on one transparency log's key: two checkpoints of the log, both signed by its Ed25519 key, that state
-/// different roots for the same tree size slash the whole bond. The log showed two histories. A bounty goes to whoever
+/// different roots for the same tree size, or hold different leaves at one index at any two sizes, slash the whole bond.
+/// The log showed two histories. A bounty goes to whoever
 /// proves it and the rest to a beneficiary fixed at construction, so the key's holder gains nothing by proving it.
 interface ILogBond {
     struct Withdrawal {
@@ -27,6 +28,12 @@ interface ILogBond {
         uint64 l2Block;
         bytes32 rootA;
         bytes32 rootB;
+    }
+
+    /// @notice An RFC 6962 inclusion proof of the leaf hash `leaf`.
+    struct Inclusion {
+        bytes32 leaf;
+        bytes32[] proof;
     }
 
     event Deposited(address indexed from, uint256 amount);
@@ -53,6 +60,8 @@ interface ILogBond {
     error InvalidNote(uint8 which);
     /// @notice The two checkpoints do not state different roots for the same size.
     error NotEquivocation();
+    /// @notice The two checkpoints do not provably hold different leaves at the index both cover.
+    error NotInconsistent();
     /// @notice The bond was already paid out for an equivocation.
     error AlreadySlashed();
     error ZeroAmount();
@@ -100,4 +109,16 @@ interface ILogBond {
     /// signed by its key, stating different roots for the same size: `bountyBps` of it to the caller, the rest to the
     /// beneficiary.
     function proveEquivocation(bytes calldata noteA, bytes calldata noteB) external;
+
+    /// @notice Slashes the whole bond, as `proveEquivocation` does, if `noteA` and `noteB` are signed checkpoints of the
+    /// origin, of any sizes, whose trees hold different leaves at `index`: `a` proves one leaf at `index` in `noteA`'s
+    /// tree, `b` a different one in `noteB`'s, and `index` is below both sizes. No append-only log can sign both,
+    /// whatever the sizes. The recorded size is the smaller one.
+    function proveInconsistency(
+        bytes calldata noteA,
+        bytes calldata noteB,
+        uint64 index,
+        Inclusion calldata a,
+        Inclusion calldata b
+    ) external;
 }

@@ -7,8 +7,8 @@ import {ILogBond} from "../src/interfaces/ILogBond.sol";
 import {ForkTest} from "./utils/Fork.sol";
 import {stdJson} from "forge-std/StdJson.sol";
 
-/// @notice The deployed `Ed25519Verifier` and log bonds on Arbitrum Sepolia are this build, and the conformance bond was
-/// slashed by the drill: the conformance tree and its fork at size 8 of `vectors/checkpoints.json`.
+/// @notice The deployed `Ed25519Verifier` and the log bonds at the current release's salts on Arbitrum Sepolia are this
+/// build, bonds of the first release stay at their own salts, and the conformance bond was slashed by the drill: the conformance tree and its fork at size 8 of `vectors/checkpoints.json`.
 contract LogBondLiveTest is ForkTest {
     using stdJson for string;
 
@@ -30,10 +30,11 @@ contract LogBondLiveTest is ForkTest {
         for (uint256 i; i < names.length; ++i) {
             if (!vm.contains(names[i], "LogBond")) continue;
             LogBond bond = LogBond(json.readAddress(string.concat(".contracts.", names[i])));
-            assertEq(address(bond), script.predict(names[i]));
+            assertEq(address(bond.verifier()), verifier);
+            if (address(bond) == script.predict(names[i])) continue;
+            assertEq(address(bond), script.predict(string.concat(names[i], "@2")));
             bytes memory args = json.readBytes(string.concat(".constructorArgs.", names[i]));
             assertEq(address(bond).code, _fresh(abi.encodePacked(type(LogBond).creationCode, args)).code);
-            assertEq(address(bond.verifier()), verifier);
         }
     }
 

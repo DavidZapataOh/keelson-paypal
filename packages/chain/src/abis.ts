@@ -2612,6 +2612,35 @@ export const iLogBondAbi = [
     outputs: [],
     stateMutability: "nonpayable",
   },
+  {
+    type: "function",
+    name: "proveInconsistency",
+    inputs: [
+      { name: "noteA", type: "bytes", internalType: "bytes" },
+      { name: "noteB", type: "bytes", internalType: "bytes" },
+      { name: "index", type: "uint64", internalType: "uint64" },
+      {
+        name: "a",
+        type: "tuple",
+        internalType: "struct ILogBond.Inclusion",
+        components: [
+          { name: "leaf", type: "bytes32", internalType: "bytes32" },
+          { name: "proof", type: "bytes32[]", internalType: "bytes32[]" },
+        ],
+      },
+      {
+        name: "b",
+        type: "tuple",
+        internalType: "struct ILogBond.Inclusion",
+        components: [
+          { name: "leaf", type: "bytes32", internalType: "bytes32" },
+          { name: "proof", type: "bytes32[]", internalType: "bytes32[]" },
+        ],
+      },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
   { type: "function", name: "release", inputs: [], outputs: [], stateMutability: "nonpayable" },
   {
     type: "function",
@@ -2721,6 +2750,7 @@ export const iLogBondAbi = [
     inputs: [{ name: "which", type: "uint8", internalType: "uint8" }],
   },
   { type: "error", name: "NotEquivocation", inputs: [] },
+  { type: "error", name: "NotInconsistent", inputs: [] },
   { type: "error", name: "NotOwner", inputs: [] },
   { type: "error", name: "NotReady", inputs: [] },
   { type: "error", name: "ZeroAmount", inputs: [] },
@@ -5351,6 +5381,35 @@ export const logBondAbi = [
     outputs: [],
     stateMutability: "nonpayable",
   },
+  {
+    type: "function",
+    name: "proveInconsistency",
+    inputs: [
+      { name: "noteA", type: "bytes", internalType: "bytes" },
+      { name: "noteB", type: "bytes", internalType: "bytes" },
+      { name: "index", type: "uint64", internalType: "uint64" },
+      {
+        name: "a",
+        type: "tuple",
+        internalType: "struct ILogBond.Inclusion",
+        components: [
+          { name: "leaf", type: "bytes32", internalType: "bytes32" },
+          { name: "proof", type: "bytes32[]", internalType: "bytes32[]" },
+        ],
+      },
+      {
+        name: "b",
+        type: "tuple",
+        internalType: "struct ILogBond.Inclusion",
+        components: [
+          { name: "leaf", type: "bytes32", internalType: "bytes32" },
+          { name: "proof", type: "bytes32[]", internalType: "bytes32[]" },
+        ],
+      },
+    ],
+    outputs: [],
+    stateMutability: "nonpayable",
+  },
   { type: "function", name: "release", inputs: [], outputs: [], stateMutability: "nonpayable" },
   {
     type: "function",
@@ -5460,6 +5519,7 @@ export const logBondAbi = [
     inputs: [{ name: "which", type: "uint8", internalType: "uint8" }],
   },
   { type: "error", name: "NotEquivocation", inputs: [] },
+  { type: "error", name: "NotInconsistent", inputs: [] },
   { type: "error", name: "NotOwner", inputs: [] },
   { type: "error", name: "NotReady", inputs: [] },
   { type: "error", name: "ReentrancyGuardReentrantCall", inputs: [] },
