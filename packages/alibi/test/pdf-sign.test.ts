@@ -60,7 +60,12 @@ describe("the signed Alibi PDF (PAdES B-T)", () => {
     // An incremental update: the rendered file is its prefix, so its attachment is the same.
     expect(Buffer.from(signed.subarray(0, pdf.length)).equals(Buffer.from(pdf))).toBe(true);
     expect(await extractAlibi(signed)).toEqual(await extractAlibi(pdf));
-    expect(Buffer.from(signed).toString("latin1")).toContain("/SubFilter /ETSI.CAdES.detached");
+    const text = Buffer.from(signed).toString("latin1");
+    expect(text).toContain("/SubFilter /ETSI.CAdES.detached");
+    // PDF/A: the update's trailer names the same file identifier as the rendered file's.
+    const ids = [...text.matchAll(/\/ID\s*\[<([0-9a-f]+)>/g)].map((m) => m[1]);
+    expect(ids).toHaveLength(2);
+    expect(ids[1]).toBe(ids[0]);
 
     const { signedBytes, cms } = signatureOf(signed);
     const content = pkijs.ContentInfo.fromBER(cms);

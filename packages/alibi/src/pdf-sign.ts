@@ -122,6 +122,24 @@ class CadesSigner extends Signer {
 }
 
 /**
+ * Carries the rendered file's `/ID` into the update's trailer, which the placeholder writes
+ * without one: PDF/A requires it in every trailer (ISO 19005-3 §6.1.3). The trailer follows the
+ * update's cross-reference section, so no offset moves.
+ */
+function withFileId(rendered: Uint8Array, placed: Buffer): Buffer {
+  const id = /\/ID\s*(\[[^\]]*\])/.exec(Buffer.from(rendered).toString("latin1"))?.[1];
+  if (!id) throw new Error("the rendered PDF has no file identifier");
+  const text = placed.toString("latin1");
+  const at = text.lastIndexOf("trailer");
+  const open = text.indexOf("<<", at) + 2;
+  return Buffer.concat([
+    placed.subarray(0, open),
+    Buffer.from(`\n/ID ${id}`),
+    placed.subarray(open),
+  ]);
+}
+
+/**
  * Signs a rendered Alibi PDF with PAdES baseline B-T (ETSI EN 319 142-1): an incremental update
  * adds a `/ETSI.CAdES.detached` signature over the whole file as rendered, whose signature value
  * an RFC 3161 TSA timestamps. The embedded `.alibi` and the PDF/A-3 rendering are untouched.
@@ -141,5 +159,7 @@ export async function signAlibiPdf(
     subFilter: SUBFILTER_ETSI_CADES_DETACHED,
     signatureLength: 16_384,
   });
-  return new Uint8Array(await new SignPdf().sign(placed, new CadesSigner(signer, o.tsa)));
+  return new Uint8Array(
+    await new SignPdf().sign(withFileId(pdf, placed), new CadesSigner(signer, o.tsa)),
+  );
 }
