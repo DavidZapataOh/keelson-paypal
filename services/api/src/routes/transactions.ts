@@ -6,6 +6,7 @@ import { ProblemSchema, problem } from "../problem.ts";
 const route = createRoute({
   method: "get",
   path: "/v1/transactions/{id}",
+  operationId: "getTransaction",
   tags: ["transactions"],
   summary: "A relayed transaction",
   description:

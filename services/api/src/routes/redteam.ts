@@ -26,6 +26,7 @@ const notFound = {
 const list = createRoute({
   method: "get",
   path: "/v1/redteam/campaigns",
+  operationId: "listRedTeamCampaigns",
   tags: ["red team"],
   summary: "Red-team campaigns",
   description: "The latest red-team campaigns, newest first. Public.",
@@ -53,6 +54,7 @@ const list = createRoute({
 const ledger = createRoute({
   method: "get",
   path: "/v1/redteam/campaigns/{id}/ledger",
+  operationId: "getRedTeamLedger",
   tags: ["red team"],
   summary: "A campaign's ledger",
   description:
@@ -70,6 +72,7 @@ const ledger = createRoute({
 const scoreboard = createRoute({
   method: "get",
   path: "/v1/redteam/campaigns/{id}/scoreboard",
+  operationId: "getRedTeamScoreboard",
   tags: ["red team"],
   summary: "A campaign's scoreboard",
   description:
@@ -87,6 +90,7 @@ const scoreboard = createRoute({
 const stream = createRoute({
   method: "get",
   path: "/v1/redteam/campaigns/{id}/scoreboard/stream",
+  operationId: "streamRedTeamScoreboard",
   tags: ["red team"],
   summary: "Follow a campaign's scoreboard",
   description:

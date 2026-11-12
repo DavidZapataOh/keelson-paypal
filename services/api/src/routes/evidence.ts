@@ -102,6 +102,7 @@ const RootParam = z.object({ root: Hex32.openapi({ param: { name: "root", in: "p
 const upload = createRoute({
   method: "post",
   path: "/v1/evidence",
+  operationId: "storeEvidence",
   tags: ["evidence"],
   summary: "Store sealed evidence",
   description:
@@ -138,6 +139,7 @@ const upload = createRoute({
 const manifestRoute = createRoute({
   method: "get",
   path: "/v1/evidence/{root}",
+  operationId: "getEvidenceManifest",
   tags: ["evidence"],
   summary: "Read an evidence manifest",
   description: "The public manifest of a stored bundle: salted leaves only.",
@@ -154,6 +156,7 @@ const manifestRoute = createRoute({
 const itemRoute = createRoute({
   method: "get",
   path: "/v1/evidence/{root}/items/{index}",
+  operationId: "discloseEvidenceItem",
   tags: ["evidence"],
   summary: "Disclose one evidence item",
   description:

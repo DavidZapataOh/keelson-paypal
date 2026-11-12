@@ -3,6 +3,7 @@ import { createRoute, type OpenAPIHono, z } from "@hono/zod-openapi";
 const route = createRoute({
   method: "get",
   path: "/health",
+  operationId: "getHealth",
   tags: ["system"],
   summary: "Liveness probe",
   responses: {

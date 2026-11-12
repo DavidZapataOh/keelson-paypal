@@ -45,6 +45,7 @@ const Chargeback = z
 const route = createRoute({
   method: "post",
   path: "/v1/purchases/{id}/chargeback",
+  operationId: "chargeBackPurchase",
   tags: ["purchases"],
   summary: "Charge back a card purchase",
   description:

@@ -244,6 +244,7 @@ const problemContent = { "application/problem+json": { schema: ProblemSchema } }
 const route = createRoute({
   method: "post",
   path: "/v1/countersign",
+  operationId: "countersign",
   tags: ["tee"],
   summary: "Countersign a cart",
   description:

@@ -66,6 +66,7 @@ const PendingHold = z
 const client = createRoute({
   method: "get",
   path: "/v1/paypal/client",
+  operationId: "getPayPalClient",
   tags: ["paypal"],
   summary: "Get the PayPal client ID",
   description:
@@ -82,6 +83,7 @@ const client = createRoute({
 const hold = createRoute({
   method: "post",
   path: "/v1/mandates/{id}/hold",
+  operationId: "holdMandate",
   tags: ["mandates"],
   summary: "Hold a mandate's budget",
   description:
@@ -111,6 +113,7 @@ const hold = createRoute({
 const authorize = createRoute({
   method: "post",
   path: "/v1/mandates/{id}/hold/authorize",
+  operationId: "authorizeMandateHold",
   tags: ["mandates"],
   summary: "Authorize an approved hold",
   description:
