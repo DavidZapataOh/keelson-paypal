@@ -57,6 +57,7 @@ jobs:
             ts:
               - *shared
               - packages/**
+              - internal/scitt/**
               - services/api/**
               - services/agent/**
               - services/redteam/**
@@ -203,7 +204,15 @@ jobs:
           grep -rEn "paypalMockResponse|PayPal-Mock-Response" packages services apps --exclude-dir=node_modules --exclude-dir=dist || status=$?
           test "$status" -eq 1
       - run: pnpm --filter @keelson/timestamp exec playwright install chromium
-      - run: pnpm turbo run typecheck test build --filter='!./packages/db' --filter='!./packages/attest' --filter='!./packages/evidence' --filter='!./services/api' --filter='!./apps/store' --filter='!./services/monitor' --filter='!./packages/relayer' --filter='!./apps/landing' --concurrency=100% --cache-dir=.turbo
+      - name: Install the cddl CLI
+        run: |
+          curl -fsSL https://github.com/anweiss/cddl/releases/download/v0.10.7/cddl-linux-amd64.tar.gz -o /tmp/cddl.tar.gz
+          echo "08a68f7aae25d5781c82e64f8926ca4cad491bd5d2d2f47c72a848d3ff858b8a  /tmp/cddl.tar.gz" | sha256sum -c -
+          tar -xzf /tmp/cddl.tar.gz -C /tmp cddl-linux-amd64
+          sudo install -m 0755 /tmp/cddl-linux-amd64 /usr/local/bin/cddl
+      - env:
+          KEELSON_REQUIRE_CDDL: "1"
+        run: pnpm turbo run typecheck test build --filter='!./packages/db' --filter='!./packages/attest' --filter='!./packages/evidence' --filter='!./services/api' --filter='!./apps/store' --filter='!./services/monitor' --filter='!./packages/relayer' --filter='!./apps/landing' --concurrency=100% --cache-dir=.turbo
       # On its own, after the fan-out: its e2e times a visitor's tamper flow against a 10 s budget.
       - name: Landing
         run: pnpm turbo run typecheck test build --filter=@keelson/landing --cache-dir=.turbo

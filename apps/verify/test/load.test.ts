@@ -86,3 +86,24 @@ test("the deployed site serves the policy previews are tested under", async () =
   const yaml = readFileSync(new URL("../../../render.yaml", import.meta.url), "utf8");
   expect(yaml).toContain(`value: "${CSP}"`);
 });
+
+describe("a dropped .cose", () => {
+  test("loads as a v2 statement without its log proof", async () => {
+    const { statementOf } = await import("@keelson/alibi");
+    const { v2Bundle } = await import("../../../packages/alibi/test/v2.ts");
+    const { fromFile } = await import("../src/load.ts");
+    const b = v2Bundle();
+    const cose = statementOf(b);
+    const loaded = await fromFile(new Blob([cose as Uint8Array<ArrayBuffer>]));
+    expect(loaded.alibi.alibi_id).toBe(b.alibi_id);
+    expect("statement" in loaded.alibi && !("tlog_proof" in loaded.alibi)).toBe(true);
+    expect(loaded.bytes).toEqual(cose);
+  });
+
+  test("a COSE file that is not an Alibi's statement is refused", async () => {
+    const { fromFile } = await import("../src/load.ts");
+    await expect(
+      fromFile(new Blob([Uint8Array.of(0xd2, 0x84, 0x40, 0xa0, 0xf6, 0x40)])),
+    ).rejects.toThrow("not an Alibi's SCITT statement");
+  });
+});

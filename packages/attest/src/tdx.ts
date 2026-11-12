@@ -4,6 +4,7 @@ import { type Collateral, verify } from "@phala/dcap-qvl";
 import { bytesToHex, type Hex, hexToBytes, hexToString } from "viem";
 import { AttestError } from "./errors.ts";
 import { type DstackEvent, replayRtmr3, runtimePayload } from "./eventlog.ts";
+import { ppidOf } from "./policy.ts";
 import { intersect, type Validity } from "./validity.ts";
 
 export type { Collateral };
@@ -19,6 +20,14 @@ export interface TdxResult {
   osImageHash: Hex | null;
   keyProvider: string | null;
   validity: Validity;
+  /** The TD's own configuration, as the quote states it (hex of the quote's bytes). */
+  tdAttributes: Hex;
+  xfam: Hex;
+  mrConfigId: Hex;
+  mrOwner: Hex;
+  mrOwnerConfig: Hex;
+  /** The platform's PPID, from the PCK certificate the quote carries. */
+  ppid: Hex;
 }
 
 /** `SWHardeningNeeded` passes only when Intel names the advisories, so they can be recorded. */
@@ -106,6 +115,15 @@ function collateralValidity(
   return intersect(bounds);
 }
 
+/** The PPID of the PCK certificate that leads the quote's certification chain. */
+function quotePpid(quote: Uint8Array): Hex {
+  const pem = new TextDecoder("latin1").decode(quote).match(PEM)?.[0];
+  const der = pem ? PemConverter.decode(pem)[0] : undefined;
+  const ext = der ? new X509Certificate(der).getExtension("1.2.840.113741.1.13.1") : null;
+  if (!ext) throw new AttestError("cert_chain", "the quote carries no PCK certificate");
+  return bytesToHex(ppidOf(new Uint8Array(ext.value)));
+}
+
 function required(events: readonly DstackEvent[], name: string): Hex {
   const payload = runtimePayload(events, name);
   if (!payload) throw new AttestError("rtmr3_mismatch", `the event log has no ${name} event`);
@@ -154,5 +172,11 @@ export async function verifyTdx(
     osImageHash: runtimePayload(att.eventLog, "os-image-hash"),
     keyProvider: provider ? hexToString(provider) : null,
     validity: collateralValidity(att.quote, att.collateral),
+    tdAttributes: bytesToHex(td.tdAttributes),
+    xfam: bytesToHex(td.xfam),
+    mrConfigId: bytesToHex(td.mrConfigId),
+    mrOwner: bytesToHex(td.mrOwner),
+    mrOwnerConfig: bytesToHex(td.mrOwnerConfig),
+    ppid: quotePpid(att.quote),
   };
 }

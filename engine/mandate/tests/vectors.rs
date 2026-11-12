@@ -1,8 +1,8 @@
 use keelson_core::AcirField;
 use keelson_mandate::{
     Error, Fr, Jwk, LeafPreimage, MembershipProof, NonMembershipProof, OpenMandateVerifyOptions,
-    VerifiedCredential, category_mask, decode_disclosed, decode_mandate, h_sd, is_merchant_id,
-    mandate_challenge, mandate_commitment, merchant_leaf, merchant_membership,
+    VerifiedCredential, category_mask, decode_disclosed, decode_mandate_with_decoys, h_sd,
+    is_merchant_id, mandate_challenge, mandate_commitment, merchant_leaf, merchant_membership,
     merchant_non_membership, merchant_root, merchant_tree, parse_mandate, user_key_hash,
     verify_credential, verify_merchant_membership, verify_merchant_non_membership,
 };
@@ -70,12 +70,19 @@ fn sd_vectors() {
     let vectors = load(include_str!(
         "../../../packages/mandate/test/vectors/sd.json"
     ));
-    assert_eq!(vectors.len(), 106);
+    assert_eq!(vectors.len(), 110);
     for v in vectors {
         let disclosures = strings(&v.input["disclosures"]);
+        let decoys = if v.input["decoySalts"].is_null() {
+            vec![]
+        } else {
+            strings(&v.input["decoySalts"])
+        };
         let result = match v.input["op"].as_str() {
             None => decode_disclosed(&v.input["payloadSd"], &disclosures),
-            Some("decodeMandate") => decode_mandate(&v.input["payloadSd"], &disclosures),
+            Some("decodeMandate") => {
+                decode_mandate_with_decoys(&v.input["payloadSd"], &disclosures, &decoys)
+            }
             Some(op) => panic!("unknown op {op}"),
         };
         assert_outcome(&v.name, result, &v.expected, |m| m);
@@ -275,6 +282,7 @@ fn options(v: &Value) -> Option<OpenMandateVerifyOptions> {
         expected_nonce: o["expectedNonce"].as_str().unwrap().into(),
         now: o["now"].as_i64().unwrap(),
         max_skew_sec: o["maxSkewSec"].as_i64().unwrap(),
+        decoy_salts: vec![],
     })
 }
 

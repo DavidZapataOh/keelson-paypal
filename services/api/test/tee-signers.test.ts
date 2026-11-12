@@ -14,7 +14,9 @@ describe.skipIf(!live)("tee signers (live legs)", { timeout: 60_000 }, () => {
     TEE_B_URL: process.env.TEE_B_URL as string,
     KEELSON_TEE_TOKEN: process.env.KEELSON_TEE_TOKEN as string,
     ARBITRUM_SEPOLIA_RPC_URL: process.env.ARBITRUM_SEPOLIA_RPC_URL,
-    KEELSON_ISSUER_THUMBPRINT: process.env.KEELSON_ISSUER_THUMBPRINT as `0x${string}`,
+    KEELSON_ISSUER_THUMBPRINTS: process.env.KEELSON_ISSUER_THUMBPRINTS?.split(",") as
+      | `0x${string}`[]
+      | undefined,
   };
   // The legs are reached from a laptop here, not from the API's region.
   const tee = createTee(env, { a: 10_000, b: 10_000 });
@@ -68,7 +70,7 @@ describe.skipIf(!live)("tee signers (live legs)", { timeout: 60_000 }, () => {
   });
 
   test("leg b is not admitted when no issuer pin is available", async () => {
-    const { issuerJwkThumbprint: _pin, ...unpinned } = tee.expect.b;
+    const { issuerJwkThumbprints: _pin, ...unpinned } = tee.expect.b;
     const [a] = await testDb.select().from(teeSigners).where(eq(teeSigners.teeKind, 1));
     if (!a) throw new Error("leg a has no signer");
     const before = (await testDb.select().from(teeSigners)).length;
@@ -88,13 +90,13 @@ describe.skipIf(!live)("tee signers (live legs)", { timeout: 60_000 }, () => {
   });
 
   test("the configured issuer pin is checked on both legs", async () => {
-    const pin = tee.expect.a.issuerJwkThumbprint;
-    expect(pin).toBe(process.env.KEELSON_ISSUER_THUMBPRINT);
-    const other = { ...tee.expect.a, issuerJwkThumbprint: `0x${"00".repeat(32)}` } as const;
+    const pins = tee.expect.a.issuerJwkThumbprints;
+    expect(pins?.join(",")).toBe(process.env.KEELSON_ISSUER_THUMBPRINTS);
+    const other = { ...tee.expect.a, issuerJwkThumbprints: [`0x${"00".repeat(32)}`] } as const;
     await expect(registerLeg(testDb, "a", tee.client.a, other)).rejects.toMatchObject({
       code: "binding_mismatch",
     });
-    const wrongB = { ...tee.expect.b, issuerJwkThumbprint: `0x${"00".repeat(32)}` } as const;
+    const wrongB = { ...tee.expect.b, issuerJwkThumbprints: [`0x${"00".repeat(32)}`] } as const;
     await expect(registerLeg(testDb, "b", tee.client.b, wrongB)).rejects.toMatchObject({
       code: "binding_mismatch",
     });

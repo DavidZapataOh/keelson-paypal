@@ -9,7 +9,7 @@
  */
 import "../src/tee/attest.ts";
 import { randomBytes } from "node:crypto";
-import { encodeAlibi, toBase64 } from "@keelson/alibi";
+import { encodeAny, toBase64 } from "@keelson/alibi";
 import { verifyAlibi } from "@keelson/alibi/verify";
 import { cartHash } from "@keelson/core";
 import { createDb } from "@keelson/db";
@@ -158,12 +158,12 @@ try {
     console.log(`${mode} ${requestId} ${res.status} ${state}`);
     for (let i = 0; i < 120; i++) {
       const b = await loadAlibi(db, requestId);
-      if (b && b.timestamps.length >= 2 && b.paypal?.capture_id) {
+      if (b && (b.timestamps?.length ?? 0) >= 2 && b.paypal?.capture_id) {
         const report = await verifyAlibi(b);
         const failed = report.checks.filter((c) => c.status === "fail");
         console.log(`${requestId} ${report.verdict} ${JSON.stringify(failed)}`);
         // Log lines are cut at a few kilobytes, so the bundle goes out in numbered chunks.
-        const text = toBase64(encodeAlibi(b));
+        const text = toBase64(encodeAny(b));
         const n = Math.ceil(text.length / 3000);
         for (let k = 0; k < n; k++) {
           console.log(`ALIBI ${requestId} ${k + 1}/${n} ${text.slice(k * 3000, (k + 1) * 3000)}`);

@@ -1,4 +1,4 @@
-import type { AlibiBundle, AlibiReceipt } from "../schema.ts";
+import type { AnyAlibi } from "../schema.ts";
 import type { ChainReader } from "./chain.ts";
 import type { FieldRow } from "./fields.ts";
 
@@ -30,7 +30,11 @@ export type CheckId =
   | "evidence.checkout"
   | "evidence.conversion"
   | "paypal.ids"
-  | "card.authorizations";
+  | "card.authorizations"
+  | "card.statements"
+  | "scitt.statement"
+  | "scitt.receipt"
+  | "rats.cmw";
 
 export interface Check {
   id: CheckId;
@@ -54,7 +58,9 @@ export interface VerifyOptions {
   /** What a QR link states about the Alibi; drives `qr.leaf`. */
   expect?: { leafHash: string; anchoredSize?: bigint; chainId?: number };
   /** The Alibi before an edit, so the report says which pointers changed and which checks read them. */
-  original?: AlibiBundle | AlibiReceipt;
+  original?: AnyAlibi;
+  /** The RFC 9942 receipt keys to trust, by hex key id; the pinned ones by default. */
+  receiptKeys?: ReadonlyMap<string, Uint8Array>;
   /** Called with each check as it completes, before the report. */
   onCheck?: (check: Check) => void;
 }

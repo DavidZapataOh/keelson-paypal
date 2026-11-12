@@ -1,3 +1,4 @@
+import { statementImprint } from "@keelson/scitt";
 import { TimestampError, type TsaId, verifyTimestamp } from "@keelson/timestamp";
 import { fromBase64 } from "../../b64.ts";
 import { leafHashOf } from "../../codec.ts";
@@ -6,23 +7,26 @@ import { OFFLINE } from "../report.ts";
 import { c1Statement, c3Statement, verifyC1, verifyC3 } from "../zk.ts";
 import { isBundle } from "./util.ts";
 
-/** Every RFC 3161 token stamps the leaf hash under a pinned TSA root; pending while none has. */
+/**
+ * Every RFC 3161 token stamps, under a pinned TSA root, the leaf hash (v1) or the statement's
+ * signature (v2, RFC 9921 `3161-ctt`); pending while none has.
+ */
 export const timestamps: CheckDef = {
   id: "timestamps",
   step: 8,
   reads: ["/timestamps"],
-  async run(input, { now }) {
+  async run(input, { now, view }) {
     if (input.timestamps.length === 0) return { status: "pending", reads: ["/timestamps"] };
-    const imprint = leafHashOf(input);
+    const imprint = view ? statementImprint(view.transparent.signature) : leafHashOf(input);
     const detail: Record<string, string> = {};
     for (const [i, t] of input.timestamps.entries()) {
       const at = [`/timestamps/${i}/token`, `/timestamps/${i}/tsa`];
       try {
         const v = await verifyTimestamp(fromBase64(t.token), imprint, {
-          expectedTsa: t.tsa as TsaId,
+          ...(t.tsa ? { expectedTsa: t.tsa as TsaId } : {}),
           now,
         });
-        detail[t.tsa] = v.genTime;
+        detail[v.tsa] = v.genTime;
       } catch (err) {
         const imprintError = err instanceof TimestampError && err.code === "tsa-imprint";
         expect(false, imprintError ? "imprint" : (err as Error).message, at);

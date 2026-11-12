@@ -119,7 +119,7 @@ fn eip712_vectors() {
     let vectors = load(include_str!(
         "../../../packages/core/test/vectors/eip712.json"
     ));
-    assert_eq!(vectors.len(), 22);
+    assert_eq!(vectors.len(), 24);
     for v in vectors {
         let chain_id = v.input["chainId"].as_u64().unwrap();
         let contract: Address = v.input["verifyingContract"]
@@ -273,6 +273,20 @@ fn eip712_vectors() {
                     decision: u,
                     failedMask: u,
                     issuedAt: u,
+                },
+                m,
+                &d
+            ),
+            "CardSettlement" => typed_hash!(
+                CardSettlement {
+                    requestId: b32,
+                    cardRef: b32,
+                    transactionHash: b32,
+                    settledMinor: u,
+                    currency: u,
+                    status: u,
+                    settledAt: u,
+                    observedAt: u,
                 },
                 m,
                 &d

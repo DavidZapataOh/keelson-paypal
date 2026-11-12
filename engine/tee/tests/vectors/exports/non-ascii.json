@@ -1,0 +1,14 @@
+{
+  "input": {
+    "amount": "94.00",
+    "keelson": {
+      "facts": {
+        "currency": "840"
+      },
+      "profile": "keelson.export/1"
+    },
+    "merchant": "Café Ñandú 東京 𝄞",
+    "note": "line\nbreak \"quoted\" \\ /slash  del \u0001 ctl"
+  },
+  "python_json_dumps_ensure_ascii": "{\"amount\":\"94.00\",\"keelson\":{\"facts\":{\"currency\":\"840\"},\"profile\":\"keelson.export/1\"},\"merchant\":\"Caf\\u00e9 \\u00d1and\\u00fa \\u6771\\u4eac \\ud834\\udd1e\",\"note\":\"line\\nbreak \\\"quoted\\\" \\\\ /slash \\u007f del \\u0001 ctl\"}"
+}

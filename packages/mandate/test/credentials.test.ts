@@ -9,12 +9,23 @@ import {
   issueUserCredential,
   OPEN_MANDATE_TYP,
   type OpenMandateVerifyOptions,
+  readOpenMandate,
   USER_CREDENTIAL_TYP,
   type UserAuth,
   verifyCredential,
 } from "../src/credentials.ts";
 import { type Mandate, parseMandate } from "../src/schema.ts";
 import { buildSdPayload, withholdPersonal } from "../src/sd.ts";
+import {
+  checkMandateStatus,
+  decodeStatusList,
+  encodeStatusList,
+  STATUS_LIST_TYP,
+  STATUS_SIZE,
+  STATUS_URI,
+  statusBits,
+  statusOf,
+} from "../src/status.ts";
 import demo from "./fixtures/demo-mandate.json" with { type: "json" };
 
 const ES256 = { name: "ECDSA", namedCurve: "P-256" } as const;
@@ -589,3 +600,94 @@ function isLogin(d: string): boolean {
   const parts = JSON.parse(Buffer.from(d, "base64url").toString());
   return parts[1] === "app_login_id";
 }
+
+describe("open mandate with decoy digests", () => {
+  it("verifies only with its decoy salts", async () => {
+    const m = await liveMandate();
+    const { payloadSd, disclosures, decoySalts } = await buildSdPayload(m, randomSalt, {
+      decoys: true,
+    });
+    const token = await issueOpenMandate(
+      {
+        userCredential: l1,
+        payloadSd,
+        disclosures,
+        userAuth: await assertion(passkey, randomSalt()),
+        aud: AUD,
+        nonce: m.nonce,
+      },
+      holder.privateKey,
+    );
+    const opts = {
+      expectedAud: AUD,
+      expectedNonce: m.nonce,
+      now: Math.floor(Date.now() / 1000),
+      maxSkewSec: 60,
+    };
+    const verified = await verifyCredential(token, OPEN_MANDATE_TYP, issuer.publicKey, {
+      ...opts,
+      decoySalts,
+    });
+    expect((verified as { mandate: unknown }).mandate).toEqual(m);
+    await rejects(token, opts).toThrow(/digest/);
+    await rejects(token, {
+      ...opts,
+      decoySalts: [...decoySalts, "AAAAAAAAAAAAAAAAAAAAAA"],
+    }).toThrow("decoy");
+    expect(readOpenMandate(token, decoySalts)).toEqual(m);
+    // An agent reads its grant without the salts: the decoys are skipped.
+    expect(readOpenMandate(token)).toEqual(m);
+  });
+});
+
+describe("status list", () => {
+  const sign = async (lst: string, now: number) =>
+    new CompactSign(
+      new TextEncoder().encode(
+        JSON.stringify({
+          sub: STATUS_URI,
+          iat: now,
+          exp: now + 900,
+          ttl: 300,
+          status_list: { bits: 1, lst },
+        }),
+      ),
+    )
+      .setProtectedHeader({ alg: "ES256", typ: STATUS_LIST_TYP })
+      .sign(issuer.privateKey);
+
+  it("a list round-trips and stays under a kilobyte when nothing is revoked", async () => {
+    const bits = statusBits([0, 9, STATUS_SIZE - 1]);
+    const lst = await encodeStatusList(bits);
+    expect(await decodeStatusList(lst)).toEqual(bits);
+    expect((await encodeStatusList(statusBits([]))).length).toBeLessThan(1024);
+    expect(() => statusBits([STATUS_SIZE])).toThrow("status index");
+  });
+
+  it("an open mandate's bit says whether it is revoked", async () => {
+    const { token, payloadSd, disclosures, m } = await openMandate();
+    const listed = await issueOpenMandate(
+      {
+        userCredential: l1,
+        payloadSd,
+        disclosures,
+        userAuth: await assertion(passkey, randomSalt()),
+        aud: AUD,
+        nonce: m.nonce,
+        status: { idx: 77, uri: STATUS_URI },
+      },
+      holder.privateKey,
+    );
+    expect(statusOf(listed)).toEqual({ idx: 77, uri: STATUS_URI });
+    expect(statusOf(token)).toBeNull();
+    const now = Math.floor(Date.now() / 1000);
+    const valid = await sign(await encodeStatusList(statusBits([76, 78])), now);
+    const revoked = await sign(await encodeStatusList(statusBits([77])), now);
+    expect(await checkMandateStatus(listed, valid, issuer.publicKey, now)).toBe("valid");
+    expect(await checkMandateStatus(listed, revoked, issuer.publicKey, now)).toBe("revoked");
+    await expect(checkMandateStatus(listed, revoked, issuer.publicKey, now + 901)).rejects.toThrow(
+      "expired",
+    );
+    await expect(checkMandateStatus(listed, revoked, holder.publicKey, now)).rejects.toThrow();
+  });
+});

@@ -4,6 +4,7 @@ import {
   char,
   check,
   index,
+  integer,
   jsonb,
   numeric,
   pgTable,
@@ -36,6 +37,12 @@ export const mandates = pgTable(
     /** The SD-JWT payload with its `_sd` digests, as signed. */
     payloadSd: jsonb(),
     disclosures: jsonb().$type<string[]>(),
+    /** The salts of the payload's decoy digests (RFC 9901 section 4.2.5); empty without decoys. */
+    decoySalts: jsonb().$type<string[]>().notNull().default([]),
+    /** The mandate's index in the status list, drawn at random and never reused. */
+    statusIdx: integer().unique("mandates_status_idx_unique"),
+    /** The RFC 7638 thumbprint (hex) of the credential issuer key leg A issued the mandate with. */
+    issuerThumbprint: text(),
     /** The WebAuthn assertion over `mandate_hash`. */
     userAuth: jsonb(),
     credentialId: text(),

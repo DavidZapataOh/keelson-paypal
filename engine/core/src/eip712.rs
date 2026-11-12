@@ -124,6 +124,20 @@ sol! {
     }
 }
 
+#[cfg(feature = "statement")]
+sol! {
+    struct CardSettlement {
+        bytes32 requestId;
+        bytes32 cardRef;
+        bytes32 transactionHash;
+        uint64 settledMinor;
+        uint16 currency;
+        uint8 status;
+        uint40 settledAt;
+        uint40 observedAt;
+    }
+}
+
 /// Builds the Keelson EIP-712 domain; only Arbitrum Sepolia and Arbitrum One are accepted.
 pub fn domain(chain_id: u64, verifying_contract: Address) -> Result<Eip712Domain, Error> {
     if chain_id != ARBITRUM_SEPOLIA && chain_id != ARBITRUM_ONE {

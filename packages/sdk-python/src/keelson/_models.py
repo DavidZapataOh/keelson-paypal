@@ -22,6 +22,10 @@ class AgentRun(BaseModel):
     ] = None
 
 
+class AlibiEar(RootModel[dict[str, Any]]):
+    root: dict[str, Any]
+
+
 class Timestamp(BaseModel):
     tsa: str
     token: str

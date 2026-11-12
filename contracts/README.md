@@ -82,6 +82,8 @@ The EVM has no Ed25519 precompile. `Ed25519Verifier` checks RFC 8032 signatures 
 
 Governance: the TimelockController (5 min delay on testnets, 48 h on Arbitrum One) is the only admin of the AccessManager. The Guardian Safe (2-of-3) holds `GUARDIAN_ROLE` and can cancel timelock operations. Signer rotation (`SIGNERS_ROLE`) waits for the timelock and then the AccessManager's execution delay. The deployer holds no role. Keelson's relayer holds `PUBLISHER_ROLE`, which only publishes registered-user roots.
 
+The TDX leg's keys come from dstack's on-chain KMS on Base, through the leg's own `DstackApp`, which allows the compose hashes and devices it may boot with. That app is owned by a Base `TimelockController` with the same proposer and the same 48 h delay, and the Base guardian Safe can cancel (`script/DeployBaseKmsGovernance.s.sol`, `script/BootstrapDstackApp.s.sol`). A new compose is therefore public and delayed on chain before any key is released to it. `test/fork/BaseKmsGovernance.t.sol` runs against a Base fork with `BASE_RPC_URL` and `KMS_AUTH`.
+
 Deploy and verify a chain:
 
 ```sh
