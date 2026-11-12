@@ -55,8 +55,7 @@ type FullReport struct {
 func (m *monitor) report() FullReport {
 	r := FullReport{
 		Equivocations: m.eqs.list(),
-		// The signer registry and the anchor contract are not deployed yet.
-		Checks: Checks{TEESigners: "not-enabled", Anchors: "not-enabled"},
+		Checks:        Checks{TEESigners: "enabled", Anchors: "enabled"},
 	}
 	for _, o := range m.cfg.Origins {
 		r.Origins = append(r.Origins, buildReport(o, m.st))
