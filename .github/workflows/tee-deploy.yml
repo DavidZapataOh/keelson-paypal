@@ -26,8 +26,10 @@ jobs:
       DIGEST: ${{ inputs.digest }}
       PHALA_CLOUD_API_KEY: ${{ secrets.PHALA_CLOUD_API_KEY }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
       - name: Pin the image digest in the compose file
@@ -72,7 +74,9 @@ jobs:
           echo "app_id=$app_id" >> "$GITHUB_OUTPUT"
       - name: Fetch the compose file the CVM booted with
         working-directory: engine/tee/phala
-        run: npx --yes "$PHALA_CLI" api "/cvms/${{ steps.deploy.outputs.app_id }}/compose_file" > app-compose.json
+        env:
+          APP_ID: ${{ steps.deploy.outputs.app_id }}
+        run: npx --yes "$PHALA_CLI" api "/cvms/$APP_ID/compose_file" > app-compose.json
       - name: Files to commit so that make measure keeps matching the CVM
         run: |
           {
@@ -82,7 +86,7 @@ jobs:
             echo '- `engine/tee/phala/app-compose.json`'
             echo '- `engine/tee/phala/docker-compose.yml`'
           } >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v7
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: deployment
           path: |
@@ -92,7 +96,9 @@ jobs:
 
   verify:
     needs: deploy
-    uses: ./.github/workflows/tee-verify.yml
+    uses: $/.github/workflows/tee-verify.yml
     with:
       app_id: ${{ needs.deploy.outputs.app_id }}
-    secrets: inherit
+    secrets:
+      PHALA_CLOUD_API_KEY: ${{ secrets.PHALA_CLOUD_API_KEY }}
+      KEELSON_TEE_TOKEN: ${{ secrets.KEELSON_TEE_TOKEN }}

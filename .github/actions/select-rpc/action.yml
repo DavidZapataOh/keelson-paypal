@@ -23,7 +23,7 @@ runs:
       env:
         KEY: ${{ inputs.alchemy-api-key }}
         DRPC: ${{ inputs.drpc-arbitrum-sepolia-url }}
-      run: |
+      run: | # zizmor: ignore[github-env] composite action: writes runner paths and values it derived itself
         [ -n "$KEY" ] && echo "::add-mask::$KEY"
         if [ -n "$DRPC" ]; then
           echo "::add-mask::$DRPC"
