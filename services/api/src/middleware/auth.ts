@@ -1,8 +1,12 @@
 import type { Db } from "@keelson/db";
 import { isAPIError } from "better-auth/api";
-import { requestToResourceInput, verifyAccessTokenRequest } from "better-auth/oauth2";
+import {
+  createDpopReplayStore,
+  requestToResourceInput,
+  verifyAccessTokenRequest,
+} from "better-auth/oauth2";
 import type { Context, MiddlewareHandler } from "hono";
-import { type Auth, apiAudience, delegatedUser, tokenScopes } from "../auth.ts";
+import { type Auth, apiAudience, DPOP_ALGORITHMS, delegatedUser, tokenScopes } from "../auth.ts";
 import { judgeExpired } from "../judge.ts";
 import { problem } from "../problem.ts";
 import { tokenStopped } from "../stopped.ts";
@@ -11,6 +15,8 @@ declare module "hono" {
   interface ContextVariableMap {
     invalidToken: boolean | undefined;
     resourceMetadata: string | undefined;
+    /** The request presented its token under the DPoP scheme (RFC 9449 §7.1). */
+    dpopScheme: boolean | undefined;
   }
 }
 
@@ -22,7 +28,13 @@ export function challenge(c: Context, params?: string): void {
   const metadata = c.var.resourceMetadata;
   const parts = [metadata === undefined ? undefined : `resource_metadata="${metadata}"`, params];
   const value = parts.filter((p) => p !== undefined).join(", ");
-  c.header("WWW-Authenticate", value === "" ? "Bearer" : `Bearer ${value}`);
+  // A request that used DPoP is answered in its scheme, with the algorithms a proof may use.
+  const scheme = c.var.dpopScheme
+    ? `DPoP ${[value, `algs="${DPOP_ALGORITHMS.join(" ")}"`].filter(Boolean).join(", ")}`
+    : value === ""
+      ? "Bearer"
+      : `Bearer ${value}`;
+  c.header("WWW-Authenticate", scheme);
 }
 
 /**
@@ -38,13 +50,22 @@ export function authenticate(
   const issuer = `${baseURL.replace(/\/$/, "")}/api/auth`;
   const jwksUrl = `${issuer}/jwks`;
   const resourceMetadata = `${baseURL.replace(/\/$/, "")}/.well-known/oauth-protected-resource`;
+  // Proof ids are reserved in Postgres, so a proof is single-use across every API instance.
+  const replayStore = auth.$context.then((ctx) => createDpopReplayStore(ctx.internalAdapter));
   return async (c, next) => {
     c.set("resourceMetadata", resourceMetadata);
-    if (c.req.header("authorization")) {
+    const authorization = c.req.header("authorization");
+    if (authorization) {
+      c.set("dpopScheme", /^dpop\s/i.test(authorization));
       try {
         const payload = await verifyAccessTokenRequest(requestToResourceInput(c.req.raw), {
           jwksUrl,
           verifyOptions: { issuer, audience: apiAudience, typ: "at+jwt", requiredClaims: ["azp"] },
+          dpop: {
+            replayStore: await replayStore,
+            signingAlgorithms: [...DPOP_ALGORITHMS],
+            proofMaxAgeSeconds: 60,
+          },
         });
         const user = delegatedUser(payload);
         // A token the user granted before stopping every agent, or disconnecting this app, is
