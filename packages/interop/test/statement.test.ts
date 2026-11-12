@@ -28,6 +28,12 @@ describe("verifyStatement", () => {
     );
   });
 
+  test("a v1 Alibi's bridge statement yields the same countersigned facts", () => {
+    expect(verifyStatement(v2Ref("bridge-2of2"), { receiptKeys: RECEIPT_KEYS })).toEqual(
+      statementFacts(purchaseFacts(alibi(ALLOW_PAYPAL))),
+    );
+  });
+
   test("an unknown receipt key fails the receipt", () => {
     expect(codeOf(() => verifyStatement(v2Ref("allow-2of2"), { receiptKeys: new Map() }))).toBe(
       "receipt",

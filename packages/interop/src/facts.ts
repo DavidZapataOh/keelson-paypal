@@ -144,7 +144,8 @@ function countersignOf(b: AlibiBundle | AlibiBundleV2) {
     return { cs: v1.tee.countersign, chainId: v1.tee.domain.chain_id, version: 1 as const };
   }
   const parsed = parseStatementLeaf(registeredOf(b as AlibiBundleV2));
-  if (parsed.kind !== "purchase") throw new ExportRefused("not_a_purchase");
+  if (parsed.kind !== "purchase" && parsed.kind !== "bridge")
+    throw new ExportRefused("not_a_purchase");
   const c = parsed.claims.countersign;
   const cs = Object.fromEntries(
     Object.entries(c).map(([k, v]) => [k, typeof v === "string" ? v.toLowerCase() : String(v)]),

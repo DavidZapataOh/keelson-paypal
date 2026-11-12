@@ -23,6 +23,7 @@ import { renderEvidencePackPdf } from "@keelson/interop/visa-pdf";
 import { parseStatementLeaf } from "@keelson/log";
 import type { Context } from "hono";
 import { calculateJwkThumbprint, type JWK } from "jose";
+import { loadBridge } from "../alibi/bridge.ts";
 import { loadAlibi, publicCopy } from "../alibi/issue.ts";
 import type { Deps } from "../app.ts";
 import { ProblemSchema, problem } from "../problem.ts";
@@ -68,7 +69,8 @@ const isV2 = (b: AlibiBundle | AlibiBundleV2): b is AlibiBundleV2 => b.type === 
 /** Whether a v2 Alibi's statement is a purchase's, the only kind an export states. */
 function isPurchase(b: AlibiBundleV2): boolean {
   try {
-    return parseStatementLeaf(registeredOf(b)).kind === "purchase";
+    const kind = parseStatementLeaf(registeredOf(b)).kind;
+    return kind === "purchase" || kind === "bridge";
   } catch {
     return false;
   }
@@ -94,9 +96,9 @@ export function registerExports(app: OpenAPIHono, deps: Deps): void {
     const level = stored && (await access(deps, c.get("principal"), stored));
     if (!stored || !level)
       return problem(c, 404, "alibi-not-found", "Not found", "No alibi with this id.");
-    // Leg A signs only over a purchase statement; a v1 Alibi's bridge statement is not one.
-    if (!isV2(stored)) return refused(c, "v1_alibi");
-    const v2 = stored;
+    // A v1 Alibi is exported over its bridge statement, once there is one.
+    const v2 = isV2(stored) ? stored : await loadBridge(deps.db, id);
+    if (!v2) return refused(c, "v1_alibi");
     const issuer = await issuerOf(deps);
     if (!issuer) return refused(c, "signer_unavailable", 503);
     const served = level === "full" ? stored : publicCopy(stored);

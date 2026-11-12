@@ -53,7 +53,10 @@ export function verifyStatement(
   } catch (e) {
     throw new StatementError("statement", (e as Error).message);
   }
-  if (parsed.kind !== "purchase") throw new StatementError("statement", "not a purchase statement");
+  // A v1 Alibi's bridge statement carries the same countersigned facts as a purchase's.
+  if (parsed.kind !== "purchase" && parsed.kind !== "bridge") {
+    throw new StatementError("statement", "not a purchase statement");
+  }
   if (!Array.isArray(receipts) || receipts.length !== 1 || !(receipts[0] instanceof Uint8Array)) {
     throw new StatementError("receipt", "expected exactly one receipt");
   }

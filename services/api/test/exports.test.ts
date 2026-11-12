@@ -10,7 +10,7 @@ import { beforeAll, describe, expect, test } from "vitest";
 import { fixtures } from "../../../packages/alibi/test/fixtures.ts";
 import { receiptKeys, v2Bundle } from "../../../packages/alibi/test/v2.ts";
 import { ALLOW_PAYPAL } from "../../../packages/interop/test/fixtures.ts";
-import { v2Of } from "../../../packages/interop/test/v2.ts";
+import { RECEIPT_KEYS as INTEROP_RECEIPT_KEYS, v2Of } from "../../../packages/interop/test/v2.ts";
 import { createApp } from "../src/app.ts";
 import { channel3Mandate } from "./channel3.ts";
 import { testDb, testKv } from "./setup.ts";
@@ -88,6 +88,29 @@ describe("Alibi exports", () => {
     expect(await ucp.json()).toMatchObject({ reason: "no_cart" });
     const tap = await app.request(`/v1/alibis/${id}/exports/tap`, { headers: as });
     expect(await tap.json()).toMatchObject({ reason: "no_http_key" });
+  });
+
+  test("a v1 Alibi with a bridge statement is exported over it", async () => {
+    const v1 = fixtures[0]?.bundle;
+    if (!v1) throw new Error("no v1 fixture");
+    const bridged = v2Of(ALLOW_PAYPAL, "bridge-2of2");
+    const v1Id = ulid();
+    const owner = await purchase(v1Id);
+    await testDb.insert(alibis).values({
+      purchaseId: v1Id,
+      leafHash: randomBytes(32),
+      bundle: { ...v1, alibi_id: v1Id },
+      bridgeBundle: { ...bridged, alibi_id: v1Id },
+    });
+    const res = await app.request(`/v1/alibis/${v1Id}/exports/acp`, { headers: owner });
+    expect(res.status).toBe(200);
+    // The bridge statement's receipt is signed by the interop tests' receipt key.
+    const r = await verifyExport(await res.json(), {
+      now,
+      issuerKeys: [issuer.jwk],
+      receiptKeys: INTEROP_RECEIPT_KEYS,
+    });
+    expect(r.checks.filter((c) => !c.ok)).toEqual([]);
   });
 
   test("a v1 Alibi without a bridge statement is not exported", async () => {

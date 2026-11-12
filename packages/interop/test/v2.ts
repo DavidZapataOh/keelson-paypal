@@ -72,7 +72,14 @@ function decodeAlibiId(statement: Uint8Array): string {
   return inputs.alibi_id;
 }
 
-const readdirVectors = () => ["allow-2of2", "deny-2of2", "card-2of2", "allow-degraded"];
+const readdirVectors = () => [
+  "allow-2of2",
+  "deny-2of2",
+  "card-2of2",
+  "allow-degraded",
+  "bridge-2of2",
+  "card-auth-approve",
+];
 
 /**
  * A v2 bundle around a production v1 Alibi: its sections as they are, with the golden statement
