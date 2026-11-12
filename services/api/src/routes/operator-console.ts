@@ -834,7 +834,7 @@ export function registerOperatorConsole(
             ? {}
             : { betas: ["server-side-fallback-2026-07-01"], fallbacks: "default" as const }),
         },
-        { signal: c.req.raw.signal },
+        { ...GRID_LIMITS, signal: c.req.raw.signal },
       );
     } catch (err) {
       await settle(deps.kv, budgetKey, turn, 0);
@@ -863,6 +863,13 @@ export function registerOperatorConsole(
     return c.json({ ...answer, model: message.model, costMicros: cost }, 200);
   }) as never);
 }
+
+/**
+ * The grid query's model call: one attempt (the server-side fallback answers an overloaded
+ * model), timed out before the 30 s handler, so the turn settles and answers `model-error`.
+ * @internal
+ */
+export const GRID_LIMITS = { timeout: 25_000, maxRetries: 0 } as const;
 
 /** The wallets of a session that may act for an agent, or none: the deposit route's operator check. */
 export function operatorWallets(

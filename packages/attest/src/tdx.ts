@@ -2,6 +2,7 @@ import "@abraham/reflection";
 import { PemConverter, X509Certificate, X509Crl } from "@peculiar/x509";
 import { type Collateral, verify } from "@phala/dcap-qvl";
 import { bytesToHex, type Hex, hexToBytes, hexToString } from "viem";
+import { ACCEPTED_ADVISORIES } from "./advisories.ts";
 import { AttestError } from "./errors.ts";
 import { type DstackEvent, replayRtmr3, runtimePayload } from "./eventlog.ts";
 import { ppidOf } from "./policy.ts";
@@ -30,11 +31,14 @@ export interface TdxResult {
   ppid: Hex;
 }
 
-/** `SWHardeningNeeded` passes only when Intel names the advisories, so they can be recorded. */
+/** `SWHardeningNeeded` passes only when Intel names the advisories and every one was reviewed. */
 export function acceptTcbStatus(status: string, advisoryIds: readonly string[]): void {
   if (status === "UpToDate") return;
-  if (status === "SWHardeningNeeded" && advisoryIds.length > 0) return;
-  throw new AttestError("tcb_status", `the TCB status is ${status}`);
+  if (status !== "SWHardeningNeeded" || advisoryIds.length === 0) {
+    throw new AttestError("tcb_status", `the TCB status is ${status}`);
+  }
+  const unknown = advisoryIds.find((id) => !Object.hasOwn(ACCEPTED_ADVISORIES, id));
+  if (unknown) throw new AttestError("advisory_not_allowed", `advisory ${unknown} is not reviewed`);
 }
 
 /** Maps a failure of the DCAP verifier to the reason a caller can act on. */
