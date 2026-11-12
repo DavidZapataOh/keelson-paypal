@@ -20,8 +20,8 @@ export interface RequestOptions {
   idempotencyKey?: string;
   headers?: Record<string, string>;
   signal?: AbortSignal;
-  /** `false` sends no token: the operation is public. */
-  auth?: boolean;
+  /** `false` sends no token; `"optional"` sends one when the client has credentials. */
+  auth?: boolean | "optional";
   /** How to read the answer: JSON (default), raw bytes, the open response (a stream), or none. */
   as?: "json" | "bytes" | "stream" | "none";
 }
@@ -112,7 +112,18 @@ export async function send<T>(
       : opts.body instanceof Uint8Array
         ? (opts.body as Uint8Array<ArrayBuffer>)
         : JSON.stringify(opts.body);
-  const provider = opts.auth === false ? undefined : o.auth();
+  const provider =
+    opts.auth === false
+      ? undefined
+      : opts.auth === "optional"
+        ? (() => {
+            try {
+              return o.auth();
+            } catch {
+              return undefined;
+            }
+          })()
+        : o.auth();
   let refreshed = false;
   let force = false;
 

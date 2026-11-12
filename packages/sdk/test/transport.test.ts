@@ -190,3 +190,12 @@ describe("streams", () => {
     expect(first.value).toMatchObject({ id: "1", data: "hello" });
   });
 });
+
+describe("Alibis", () => {
+  test("your own Alibi is read with your token; a public one needs none", async () => {
+    s.script(json(200, {}), json(200, {}));
+    await keelson.alibis.retrieve("01M75ZQSJDFE8K76ZKZT08X1B2");
+    await new Keelson({ baseUrl: s.url, auth: null }).alibis.retrieve("01M75ZQSJDFE8K76ZKZT08X1B2");
+    expect(s.seen.map((r) => r.headers.authorization)).toEqual(["Bearer t0", undefined]);
+  });
+});

@@ -136,3 +136,10 @@ def test_closing_the_blocking_client_stops_its_thread(server: Scripted) -> None:
     k.close()
     time.sleep(0.2)
     assert threading.active_count() <= before
+
+
+async def test_your_own_alibi_is_read_with_your_token_a_public_one_needs_none(server: Scripted) -> None:
+    server.script(json_reply(200, {}), json_reply(200, {}))
+    await client(server).alibis.retrieve("01M75ZQSJDFE8K76ZKZT08X1B2")
+    await AsyncKeelson(None, base_url=server.url).alibis.retrieve("01M75ZQSJDFE8K76ZKZT08X1B2")
+    assert [r["headers"].get("authorization") for r in server.seen] == ["Bearer t0", None]

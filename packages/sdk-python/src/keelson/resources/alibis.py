@@ -8,8 +8,11 @@ from ._base import Resource
 
 class Alibis(Resource):
     async def retrieve(self, purchase_id: str) -> bytes:
-        """The purchase's Alibi as issued: RFC 8785 JSON bytes, ready for ``verify_alibi``."""
-        r = await self._call("GET", f"/v1/alibis/{quote(purchase_id, safe='')}", as_="bytes", auth=False)
+        """The purchase's Alibi as issued: RFC 8785 JSON bytes, ready for ``verify_alibi``.
+
+        Your own purchases' Alibis need your credentials; a live purchase's Alibi is public.
+        """
+        r = await self._call("GET", f"/v1/alibis/{quote(purchase_id, safe='')}", as_="bytes", auth="optional")
         data: bytes = r.data
         return data
 
@@ -20,7 +23,7 @@ class Alibis(Resource):
 
     async def pdf(self, purchase_id: str) -> bytes:
         """The Alibi as a PDF/A-3 with the bundle attached."""
-        r = await self._call("GET", f"/v1/alibis/{quote(purchase_id, safe='')}.pdf", as_="bytes", auth=False)
+        r = await self._call("GET", f"/v1/alibis/{quote(purchase_id, safe='')}.pdf", as_="bytes", auth="optional")
         data: bytes = r.data
         return data
 

@@ -88,7 +88,7 @@ async def send(
     query: dict[str, str | int | None] | None = None,
     idempotency_key: str | None = None,
     headers: dict[str, str] | None = None,
-    auth: bool = True,
+    auth: bool | Literal["optional"] = True,
     as_: Literal["json", "bytes", "none", "stream"] = "json",
 ) -> APIResponse:
     """One call to Keelson's API: auth, idempotency, retries, a timeout per attempt, typed errors."""
@@ -103,7 +103,14 @@ async def send(
     if method == "POST":
         h["idempotency-key"] = idempotency_key or str(uuid.uuid4())
     params = {k: str(v) for k, v in (query or {}).items() if v is not None}
-    provider = t.auth() if auth else None
+    provider: AuthProvider | None = None
+    if auth == "optional":
+        try:
+            provider = t.auth()
+        except KeelsonError:
+            provider = None
+    elif auth:
+        provider = t.auth()
     refreshed = False
     force = False
     attempt = 0

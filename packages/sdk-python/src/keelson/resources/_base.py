@@ -20,7 +20,7 @@ class Resource:
         body: Any = None,
         query: dict[str, str | int | None] | None = None,
         headers: dict[str, str] | None = None,
-        auth: bool = True,
+        auth: bool | Literal["optional"] = True,
         as_: Literal["json", "bytes", "none", "stream"] = "json",
     ) -> APIResponse:
         return await send(

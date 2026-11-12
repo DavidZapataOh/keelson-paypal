@@ -10,10 +10,14 @@ export class Alibis {
     this.keelson = keelson;
   }
 
-  /** The purchase's Alibi as issued: RFC 8785 JSON bytes, ready for `verifyAlibi`. */
+  /**
+   * The purchase's Alibi as issued: RFC 8785 JSON bytes, ready for `verifyAlibi`. Your own
+   * purchases' Alibis need your credentials; a live purchase's Alibi is public.
+   */
   async retrieve(purchaseId: string): Promise<Uint8Array> {
     const path = `/v1/alibis/${encodeURIComponent(purchaseId)}`;
-    return (await this.keelson.request<Uint8Array>("GET", path, { as: "bytes", auth: false })).data;
+    return (await this.keelson.request<Uint8Array>("GET", path, { as: "bytes", auth: "optional" }))
+      .data;
   }
 
   /** What the public log already publishes about the Alibi: leaf, inclusion proof, anchor. */
@@ -25,7 +29,8 @@ export class Alibis {
   /** The Alibi as a PDF/A-3 with the bundle attached. */
   async pdf(purchaseId: string): Promise<Uint8Array> {
     const path = `/v1/alibis/${encodeURIComponent(purchaseId)}.pdf`;
-    return (await this.keelson.request<Uint8Array>("GET", path, { as: "bytes", auth: false })).data;
+    return (await this.keelson.request<Uint8Array>("GET", path, { as: "bytes", auth: "optional" }))
+      .data;
   }
 
   /** Keelson's own check of an Alibi. To trust no one, use `verifyAlibi` from `@keelson/verifier`. */
