@@ -31,6 +31,7 @@ export function pushTopic(subject: string): string {
  * The payload as a Declarative Web Push message, which Safari shows with no service worker code;
  * the service worker shows the same `notification` elsewhere.
  * @see https://webkit.org/blog/16535/meet-declarative-web-push/
+ * @internal
  */
 export function declarativePush(payload: PushPayload, silent = false) {
   return {

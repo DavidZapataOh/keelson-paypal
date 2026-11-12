@@ -139,8 +139,7 @@ function revocationUnknown(c: Context): Response {
   );
 }
 
-/** The 401 for a token that does not verify, or that was revoked. */
-export function invalidToken(c: Context): Response {
+function invalidToken(c: Context): Response {
   challenge(c, 'error="invalid_token"');
   return problem(
     c,
