@@ -1,6 +1,4 @@
 ---
-import "@fontsource-variable/instrument-sans";
-import "@fontsource-variable/geist-mono";
 import geistMono from "@fontsource-variable/geist-mono/files/geist-mono-latin-wght-normal.woff2?url";
 import instrumentSans from "@fontsource-variable/instrument-sans/files/instrument-sans-latin-wght-normal.woff2?url";
 import "../styles/base.css";
@@ -21,6 +19,18 @@ const { title, description, current, home = false, sidebar } = Astro.props;
 const sections = await nav();
 const side = sidebar ?? sections;
 const operational = live.available && live.status === "ok";
+// `optional` with the preload above never swaps a late font in, so text never reflows.
+const latin =
+  "U+0000-00FF,U+0131,U+0152-0153,U+02BB-02BC,U+02C6,U+02DA,U+02DC,U+0304,U+0308,U+0329,U+2000-206F,U+20AC,U+2122,U+2191,U+2193,U+2212,U+2215,U+FEFF,U+FFFD";
+const fontFaces = [
+  ["Instrument Sans Variable", "400 700", instrumentSans],
+  ["Geist Mono Variable", "100 900", geistMono],
+]
+  .map(
+    ([family, weight, src]) =>
+      `@font-face{font-family:"${family}";font-style:normal;font-display:optional;font-weight:${weight};src:url(${src}) format("woff2-variations");unicode-range:${latin}}`,
+  )
+  .join("");
 ---
 <!doctype html>
 <html lang="en">
@@ -31,6 +41,7 @@ const operational = live.available && live.status === "ok";
     <meta name="description" content={description} />
     <link rel="preload" href={instrumentSans} as="font" type="font/woff2" crossorigin />
     <link rel="preload" href={geistMono} as="font" type="font/woff2" crossorigin />
+    <style is:inline set:html={fontFaces} />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <link rel="alternate" type="text/plain" href="/llms.txt" title="llms.txt" />
     <script is:inline>
