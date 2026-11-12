@@ -9,6 +9,7 @@ import {
   publishStatusList,
   type StatusListDeps,
 } from "../src/status-list.ts";
+import { stopAgents } from "../src/stop.ts";
 import { channel3Mandate } from "./channel3.ts";
 import { testDb, testKv } from "./setup.ts";
 
@@ -94,5 +95,17 @@ describe("the mandate status list", () => {
     expect(res.status).toBe(200);
     expect(signed.length).toBe(before + 1);
     expect(await res.text()).toBe(`token-${signed.length}`);
+  });
+
+  test("stopping every agent lists each stopped mandate and says how many", async () => {
+    const idx = await listed(false);
+    const [m] = await testDb.select().from(mandates).where(eq(mandates.statusIdx, idx));
+    const stop = await stopAgents(
+      { db: testDb, kv: testKv, log, tee: tee as never },
+      m?.userId as string,
+    );
+    expect(stop.statusListed).toBeGreaterThanOrEqual(1);
+    const bits = await decodeStatusList(signed.at(-1)?.lst as string);
+    expect(bit(bits, idx)).toBe(1);
   });
 });

@@ -146,6 +146,10 @@ const StopSchema = z
     }),
     logged: z.boolean(),
     createdAt: z.string(),
+    statusListed: z.int().optional().openapi({
+      description:
+        "On the stop's own answer: how many of the stopped mandates the public status list (`GET /status/v1/mandates/2026-1`) now marks revoked.",
+    }),
   })
   .openapi("AgentStop");
 

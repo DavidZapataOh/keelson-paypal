@@ -1,5 +1,6 @@
 "use client";
 
+import { STATUS_URI } from "@keelson/mandate/browser";
 import { Button } from "@keelson/ui/components/button";
 import { Skeleton } from "@keelson/ui/components/skeleton";
 import { Bot, EllipsisVertical, OctagonX, Plus } from "lucide-react";
@@ -33,6 +34,7 @@ interface Stop {
   released: { currency: string; minor: string }[];
   releasing: { currency: string; minor: string }[];
   logIndexes: Record<string, string>;
+  statusListed?: number;
 }
 
 /** What the stop did, with the money PayPal releases and where the log records it. */
@@ -63,6 +65,17 @@ function Stopped({ stop }: { stop: Stop }) {
           ? `Recorded in the public log at entry #${index}.`
           : "It is recorded in the public log once those purchases are logged."}
       </p>
+      {stop.statusListed ? (
+        <a
+          href={STATUS_URI}
+          target="_blank"
+          rel="noopener"
+          className="text-bone/75 text-sm underline underline-offset-4 hover:text-bone"
+        >
+          {stop.statusListed} {stop.statusListed === 1 ? "approval" : "approvals"} revoked in the
+          public status list
+        </a>
+      ) : null}
     </section>
   );
 }
