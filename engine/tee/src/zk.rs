@@ -234,6 +234,38 @@ impl Prover {
         })
     }
 
+    #[doc(hidden)]
+    pub fn prove_sequential(
+        &self,
+        statement: &Statement,
+        opening: &MandateOpening,
+        merchant: &MembershipProof,
+    ) -> Result<(), ProverError> {
+        let witness = self.solve(witness_inputs(statement, opening, merchant))?;
+        let stack = WitnessStack::from(witness)
+            .serialize()
+            .map_err(|e| ProverError::Backend(e.to_string()))?;
+        let mut witness = Vec::new();
+        GzDecoder::new(stack.as_slice())
+            .read_to_end(&mut witness)
+            .map_err(|e| ProverError::Backend(e.to_string()))?;
+        let circuit = |vk: &[u8]| CircuitInput {
+            name: "mandate_predicate".into(),
+            bytecode: self.bytecode.clone(),
+            verification_key: vk.to_vec(),
+        };
+        let (a, b) = (
+            circuit(VERIFICATION_KEY),
+            circuit(RECURSIVE_VERIFICATION_KEY),
+        );
+        let w2 = witness.clone();
+        self.call(&self.evm, move |api| api.circuit_prove(a, &witness, evm()))?;
+        self.call(&self.evm, move |api| {
+            api.circuit_prove(b, &w2, noir_recursive())
+        })?;
+        Ok(())
+    }
+
     /// Verifies `proof` against the embedded verification key with the same `bb`.
     pub fn verify(&self, proof: &C1Proof) -> Result<bool, ProverError> {
         let inputs = proof.public_inputs.iter().map(|f| f.to_vec()).collect();
