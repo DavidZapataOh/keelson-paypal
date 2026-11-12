@@ -182,7 +182,7 @@ describe("MCP authorization (OAuth 2.1, RFC 7591, RFC 7636, RFC 9728, RFC 9396)"
     const read = await consentRead(oauthQuery);
     expect(read.status).toBe(200);
     expect(await read.json()).toMatchObject({
-      client: { id, name: "Inspector", verified: false },
+      client: { id, name: "Inspector", verified: false, identity: { kind: "unverified" } },
       agent: null,
       scopes: ["alibis:read"],
       spending: null,
@@ -301,7 +301,10 @@ describe("MCP authorization (OAuth 2.1, RFC 7591, RFC 7636, RFC 9728, RFC 9396)"
     const oauthQuery = (await authorize(params)).search.slice(1);
     const linked = await consentRead(oauthQuery);
     expect(await linked.json()).toMatchObject({
-      client: { verified: true },
+      client: {
+        verified: true,
+        identity: { kind: "operator", agentId: agentId.toString(), operator: "Inspector Labs" },
+      },
       agent: { agentId: agentId.toString(), operator: "Inspector Labs" },
       spending: { name: "Inspector", reason: REASON, limits: { perPurchaseMinor: 5_000 } },
       spendingError: null,

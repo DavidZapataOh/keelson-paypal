@@ -1130,6 +1130,8 @@ components:
             - agentId
             - operator
             - bond
+        identity:
+          $ref: "#/components/schemas/ClientIdentity"
         limits:
           type: object
           properties:
@@ -1296,6 +1298,7 @@ components:
         - name
         - reason
         - agent
+        - identity
         - limits
         - parent
         - mandateId
@@ -1304,6 +1307,61 @@ components:
         - match
         - expiresAt
         - createdAt
+    ClientIdentity:
+      oneOf:
+        - type: object
+          properties:
+            kind:
+              type: string
+              enum:
+                - cimd
+            host:
+              type: string
+            clientUri:
+              type:
+                - string
+                - "null"
+          required:
+            - kind
+            - host
+            - clientUri
+        - type: object
+          properties:
+            kind:
+              type: string
+              enum:
+                - operator
+            agentId:
+              type: string
+            operator:
+              type: string
+            registry:
+              type: string
+          required:
+            - kind
+            - agentId
+            - operator
+            - registry
+        - type: object
+          properties:
+            kind:
+              type: string
+              enum:
+                - hosted
+          required:
+            - kind
+        - type: object
+          properties:
+            kind:
+              type: string
+              enum:
+                - unverified
+          required:
+            - kind
+      description: "Who stands behind the app. `cimd`: the host of the metadata
+        document the authorization server fetched. `operator`: the ERC-8004
+        registered agent that linked it. `hosted`: Keelson's hosted operator.
+        `unverified`: an app that registered itself; its name is its own claim."
     ConnectionRequestState:
       type: object
       properties:

@@ -542,8 +542,11 @@ anchoring are off the path, and `purchase.captured` is published before any of t
 
 ## Apps acting for a user
 
-An MCP host such as claude.ai, ChatGPT, Cursor or Claude Code connects over OAuth 2.1: it registers
-itself (RFC 7591, public client, PKCE with S256), the user signs in and consents at
+An MCP host such as claude.ai, ChatGPT, Cursor or Claude Code connects over OAuth 2.1 as a public
+client with PKCE (S256). It names itself by a Client ID Metadata Document (its `client_id` is an
+HTTPS URL; the server fetches the document itself, resolving the host once, pinning the address and
+following no redirect, and advertises `client_id_metadata_document_supported`), or else registers
+itself (RFC 7591). The user signs in and consents at
 `/consent`, and the host gets a JWT access token (RFC 9068) whose `sub` is the user and `azp`
 the host. Such a token carries at most these scopes, whatever the host's registration holds; the
 API never grants it `countersign:write` or any operator scope.
@@ -571,12 +574,23 @@ that operator's private `cnf` key, `KEELSON_AGENT_KEY`, over the request id and 
 cart in the same request, the cart the TEE legs then countersign. That key signs nothing else, and
 only once every check of the countersign has passed. Without it those countersigns answer `503`.
 
-**What the hosted bond backs.** Every app that registered itself (RFC 7591) and acts through the
+**Spending in the token (RFC 9396).** The authorization server advertises
+`authorization_details_types_supported: ["keelson_mandate"]`, the type an app asks for spending
+limits with. An access token issued to an app for a user carries, as `authorization_details`, each
+mandate that user approved for it and has not ended, with its id and limits, so a resource reads
+the grant from the token itself.
+
+**Who stands behind an app.** The consent and approval pages show it as `identity`
+(`src/oauth/cimd-trust.ts`): `cimd`, the host of the metadata document the server fetched; `operator`,
+the registered agent that linked the client; or `unverified`, an app that registered itself, whose
+name is its own claim. A name that mixes alphabets (UTS #39 confusables and restriction levels) is
+flagged on both pages.
+
+**What the hosted bond backs.** Every app without an operator of its own that acts through the
 hosted operator asks in USD only and is capped (`src/hosted-caps.ts`). Its exposure is what its
 live mandates have left plus what was captured under them in the last 180 days, while a buyer can
-still dispute it. A redirect URI says where codes go, not who registered, so a host whose every
-redirect URI is a known host's (Claude, ChatGPT, Cursor; never a loopback URI) only earns the
-higher tier: one user's exposure to apps Keelson does not know may not pass
+still dispute it. A name or a redirect URI proves nothing, so only an app named by a metadata
+document on a known host (claude.ai, claude.com, chatgpt.com, cursor.com) earns the higher tier: one user's exposure to apps Keelson does not know may not pass
 `HOSTED_CAP_PER_USER_MINOR` (default `10000`), and to all such apps `HOSTED_CAP_KNOWN_PER_USER_MINOR`
 (default `50000`). All users' funded exposure, counting only holds that completed, may not pass
 `HOSTED_CAP_TOTAL_MINOR` (default `100000`); a hold is measured again when it starts, counting the

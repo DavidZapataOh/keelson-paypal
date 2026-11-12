@@ -19,6 +19,7 @@ import { buildSdPayload, parseMandate } from "@keelson/mandate";
 import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
 import { betterAuth } from "better-auth";
 import { testUtils } from "better-auth/plugins";
+import { decodeJwt } from "jose";
 import { pino } from "pino";
 import { ulid } from "ulid";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
@@ -516,7 +517,7 @@ test("the consent page shows the hosted operator answering for a host with none,
     });
   const read = await consent("/v1/oauth/consent");
   expect(await read.json()).toMatchObject({
-    client: { id: host, verified: false },
+    client: { id: host, verified: false, identity: { kind: "unverified" } },
     agent: { agentId: HOSTED.toString(), operator: "Keelson", hosted: true },
     scopes: [...DELEGATED, "offline_access"],
     // A loopback redirect URI names no host, so it gets the lower tier.
@@ -531,6 +532,26 @@ test("the consent page shows the hosted operator answering for a host with none,
     .from(agentConnections)
     .where(eq(agentConnections.userCode, userCode));
   expect(row).toMatchObject({ clientId: host, userId: user.id, operatorAgentId: HOSTED });
+});
+
+test("tokens carry the spending the user granted as RFC 9396 authorization_details", async () => {
+  const as = await (await app.request("/.well-known/oauth-authorization-server/api/auth")).json();
+  expect(as.authorization_details_types_supported).toEqual(["keelson_mandate"]);
+  const host = await registerHost();
+  const user = await newUser();
+  const tokens = await grant(host, user);
+  expect(decodeJwt(tokens.access_token).authorization_details).toBeUndefined();
+  const asked = await ask(tokens.access_token);
+  const { request_id } = (await asked.json()) as { request_id: string };
+  const mandateId = await approve(request_id, user.id);
+  const next = (await (await refresh(host, tokens.refresh_token as string)).json()) as Tokens;
+  expect(decodeJwt(next.access_token).authorization_details).toEqual([
+    expect.objectContaining({
+      type: "keelson_mandate",
+      mandate_id: mandateId,
+      limits: expect.objectContaining({ currency: "USD" }),
+    }),
+  ]);
 });
 
 describe("revocation", () => {
@@ -582,7 +603,8 @@ test("the consent page shows the cap on Keelson's bond for the host's tier, and 
   const UNKNOWN = "https://unknown-host.example/oauth/callback";
   const CLAUDE = "https://claude.ai/api/mcp/auth_callback";
   const unknownHost = await registerHost(UNKNOWN);
-  const claudeHost = await registerHost(CLAUDE);
+  // Claude names itself by the metadata document claude.ai publishes, which the server fetches.
+  const claudeHost = "https://claude.ai/oauth/mcp-oauth-client-metadata";
   const user = await newUser();
   const consentFor = async (totalMinor: number, redirect = UNKNOWN) => {
     const host = redirect === UNKNOWN ? unknownHost : claudeHost;
@@ -641,6 +663,11 @@ test("the consent page shows the cap on Keelson's bond for the host's tier, and 
   // A known host is capped too, at the higher tier.
   const known = await consentFor(60_000, CLAUDE);
   expect(await (await known("/v1/oauth/consent")).json()).toMatchObject({
+    client: {
+      name: "Claude",
+      verified: true,
+      identity: { kind: "cimd", host: "claude.ai", clientUri: "https://claude.ai" },
+    },
     hostedCap: { perUserMinor: "60000", currency: "USD", knownHost: true },
     spendingError: null,
   });
