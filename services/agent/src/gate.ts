@@ -20,6 +20,7 @@ import {
   type ShownConversion,
 } from "./amounts.ts";
 import { rows, type Seen, sanitize } from "./capture.ts";
+import { addedCharge } from "./fees.ts";
 import { type Funding, type PayForm, readFunding, readPayForm } from "./paypal-funding.ts";
 import {
   chargeProblem,
@@ -29,13 +30,14 @@ import {
   requoteOf,
 } from "./paypal-order.ts";
 import { requote } from "./requote.ts";
+import { shownText } from "./visible.ts";
 
 /** Names of the controls that commit a payment, on a store's checkout or on PayPal. */
 const PAY =
-  /\b(pay(?: now| with paypal| \$?[\d.,]+)?|complete (?:purchase|order|payment)|place (?:your )?order|submit order|buy now|agree (?:and|&) (?:pay|continue)|continue to review(?: order)?|confirm (?:and|&) pay)\b/i;
+  /(?<![\p{L}\d])(pay(?: now| with paypal| \$?[\d.,]+)?|complete (?:purchase|order|payment)|place (?:my |your )?order|submit order|buy (?:it )?now|agree (?:and|&) (?:pay|continue)|continue to review(?: order)?|confirm (?:and|&) pay|confirm (?:purchase|order|payment)|pagar(?: ahora| agora)?|comprar(?: ahora| agora)?|realizar (?:el )?pedido|finalizar (?:la )?(?:compra|pedido)|jetzt (?:bezahlen|kaufen)|(?:zahlungs|kosten)pflichtig bestellen|payer(?: maintenant)?|valider (?:la |ma )?commande|paga(?: ora)?|acquista(?: ora)?)(?![\p{L}\d])|支払|購入する|注文を確定|确认付款|立即支付|결제/iu;
 /** Offers the buyer never takes: saving a payment method, installments or credit. */
 const NEVER =
-  /\b(save (?:paypal|my|your|card|this|payment)|for (?:future|faster)|remember (?:me|this)|pay (?:in \d|later|monthly|over time)|paypal credit|installments?)\b/i;
+  /(?<![\p{L}\d])(save (?:paypal|my|your|card|this|payment)|for (?:future|faster)|remember (?:me|this)|default payment|pay (?:in \d|later|monthly|over time)|paypal credit|installments?|buy now,? pay later|klarna|afterpay|affirm|guardar (?:paypal|mi|tu|la|esta|el|tarjeta)|recordar (?:mi|esta|tarjeta)|cuotas|mensualidades|meses sin intereses|paga (?:después|despues|luego|en \d)|salvar (?:o paypal|paypal|meu|minha|cart[aã]o|este)|parcelas|parcelado|pague depois|speichern|später bezahlen|raten(?:zahlung|kauf)?|enregistrer (?:paypal|ma|mon|votre|cette)|payer (?:en \d|plus tard)|\d (?:rate|fois)|paga dopo|salva (?:paypal|la|questa))(?![\p{L}\d])|保存|あと払い|後払い|分割|分期/iu;
 /**
  * PayPal's hosts, whose review page may show the total converted to the buyer's currency at the
  * rate PayPal writes on it.
@@ -272,22 +274,17 @@ export class PayGate {
     const converts = PayGate.#matches(this.#convertHosts, URL.parse(page.url())?.hostname ?? "");
     // On PayPal, the page is read once its checkout has settled, with the Pay form it submits.
     const form = converts ? await this.#settle(page, action) : undefined;
-    // Every rendered frame's text: a total drawn inside a frame is on the page the buyer sees. A
-    // frame that is not rendered (`display: none`) is not: its `innerText` is its whole source.
-    const text = (
-      await Promise.all(
-        page.frames().map((f) =>
-          f
-            // biome-ignore lint/performance/useDomNodeTextContent: the amounts as the buyer sees them on the page.
-            .evaluate(() => (document.body?.checkVisibility() ? document.body.innerText : ""))
-            .catch(() => ""),
-        ),
-      )
-    ).join("\n");
+    // What every rendered frame shows, as the buyer sees it; what it draws that is no text holds.
+    const shown = await shownText(page);
     // PayPal's `locale.x` names the locale it was asked for, not always the one it renders in
     // (`es_XC` on a page in English): there the page's own language decides.
     const locales = converts && lang ? pageLocales(lang, "") : pageLocales(lang, page.url());
-    const read = readPage(text, locales, total.currency);
+    const reading = readPage(shown.text, locales, total.currency);
+    const added = addedCharge(reading);
+    const unsure =
+      shown.unreadable ??
+      (added === undefined ? undefined : `it adds "${added}", which Keelson never countersigns`);
+    const read = unsure && !reading.unsure ? { ...reading, unsure } : reading;
     const cart = this.#cart ? await this.#cart().catch(() => undefined) : undefined;
     const digits = minorDigits(total.currency);
     const show = (m: number) => `${total.currency} ${(m / 10 ** digits).toFixed(digits)}`;
