@@ -126,7 +126,9 @@ test("a token without the scope gets 403 insufficient-scope", async () => {
 test("a request without a token gets 401 with a bearer challenge", async () => {
   const res = await app.request("/v1/test/alibis");
   expect(res.status).toBe(401);
-  expect(res.headers.get("www-authenticate")).toBe(`Bearer resource_metadata="${resourceMetadata}"`);
+  expect(res.headers.get("www-authenticate")).toBe(
+    `Bearer resource_metadata="${resourceMetadata}"`,
+  );
   expect((await res.json()).type).toBe("https://api.keelson.finance/problems/unauthorized");
 });
 
