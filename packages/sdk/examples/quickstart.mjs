@@ -1,7 +1,7 @@
 import { Keelson, quote } from "@keelson-finance/sdk";
 import { verifyAlibi } from "@keelson-finance/verifier";
 
-const keelson = new Keelson(); // signed in with `npx keelson login`
+const keelson = new Keelson(); // signed in with `npx @keelson-finance/sdk login`
 const why = "I buy one pair of Pace Lite running shoes, size 10, at RunFast on the PayPal sandbox, and nothing else.";
 const req = await keelson.mandates.request({ name: "Quickstart", reason: why, perPurchase: "$100", total: "$100", until: "1h" });
 console.log(`Approve with your passkey: ${req.approvalUrl}`);
