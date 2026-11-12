@@ -1,9 +1,10 @@
+import { randomUUID } from "node:crypto";
 import { cimd } from "@better-auth/cimd";
 import { fetchClientMetadataResource } from "@better-auth/cimd/node";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { oauthProvider } from "@better-auth/oauth-provider";
 import { passkey } from "@better-auth/passkey";
-import { type Db, passkey as passkeyTable, sql } from "@keelson/db";
+import { type Db, oauthClientResource, passkey as passkeyTable, sql } from "@keelson/db";
 import { RP_ID } from "@keelson/mandate";
 import type { PayPalEnv } from "@keelson/paypal";
 import type { AuthenticationExtensionsClientInputs } from "@simplewebauthn/server";
@@ -277,8 +278,6 @@ export function createAuth(
         clientRegistrationDefaultScopes: [...DELEGATED_SCOPES, "offline_access"],
         clientRegistrationDefaultApplicationType: "infer",
         clientRegistrationAllowedResources: [apiAudience],
-        // A client a metadata document names requests no resource, so every client gets the API.
-        clientRegistrationDefaultResources: [apiAudience],
         resources: [apiAudience],
         clientPrivileges: ({ user }) => user?.role === "admin",
         extensions: [rarExtension(db)],
@@ -290,6 +289,19 @@ export function createAuth(
         metadataProfile: "mcp-2026-07-28",
         metadataRevalidationInterval: "60m",
         isMetadataDocumentUrlAllowed: (url) => !isOwnHost(new URL(url).hostname),
+        // A metadata document names no resource: the client is linked to the API, as a
+        // registration that asks for it is.
+        onClientCreated: async ({ client }) => {
+          await db
+            .insert(oauthClientResource)
+            .values({
+              id: randomUUID(),
+              clientId: client.clientId,
+              resourceId: apiAudience,
+              createdAt: new Date(),
+            })
+            .onConflictDoNothing();
+        },
       }),
       // The app origin is a subdomain of the RP ID, so WebAuthn accepts it without a
       // Related Origins `/.well-known/webauthn` document. Any authenticator may register; a
