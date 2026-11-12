@@ -18,5 +18,11 @@ export {
   verifyLegs,
   verifySigner,
 } from "./signer.ts";
-export { acceptTcbStatus, type Collateral, type TdxResult, verifyTdx } from "./tdx.ts";
+export {
+  acceptTcbStatus,
+  acceptTdPolicy,
+  type Collateral,
+  type TdxResult,
+  verifyTdx,
+} from "./tdx.ts";
 export type { Validity } from "./validity.ts";

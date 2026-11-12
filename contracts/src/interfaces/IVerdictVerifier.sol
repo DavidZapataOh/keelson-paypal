@@ -35,6 +35,8 @@ interface IVerdictVerifier {
     error AttestationFailed(string reason);
     error QuoteNotTdx();
     error TdDebug();
+    /// @notice The TD was launched with attributes other than SEPT_VE_DISABLE alone, or with an owner.
+    error TdPolicy();
     error Rtmr3Mismatch();
     error NitroDocumentStale();
     error NitroKeyMismatch();

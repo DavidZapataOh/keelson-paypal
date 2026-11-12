@@ -28,6 +28,26 @@ export function acceptTcbStatus(status: string, advisoryIds: readonly string[]):
   throw new AttestError("tcb_status", `the TCB status is ${status}`);
 }
 
+/** `TDATTRIBUTES` (little-endian) with only SEPT_VE_DISABLE (bit 28) set, as `VerdictVerifier` pins it. */
+const TD_ATTRIBUTES: Hex = "0x0000001000000000";
+
+/**
+ * The TD policy `VerdictVerifier` enforces on chain: TDATTRIBUTES is SEPT_VE_DISABLE alone (no
+ * DEBUG, PKS, KL or PERFMON), and MROWNER and MROWNERCONFIG are zero. MRTD covers none of them.
+ */
+export function acceptTdPolicy(td: {
+  tdAttributes: Uint8Array;
+  mrOwner: Uint8Array;
+  mrOwnerConfig: Uint8Array;
+}): void {
+  if (bytesToHex(td.tdAttributes) !== TD_ATTRIBUTES) {
+    throw new AttestError("td_policy", `the TD attributes are ${bytesToHex(td.tdAttributes)}`);
+  }
+  if ([...td.mrOwner, ...td.mrOwnerConfig].some((b) => b !== 0)) {
+    throw new AttestError("td_policy", "the TD was launched with an owner");
+  }
+}
+
 /** Maps a failure of the DCAP verifier to the reason a caller can act on. */
 function classify(error: Error): AttestError {
   const message = error.message;
@@ -110,6 +130,7 @@ export async function verifyTdx(
 
   const td = verified.report.asTd10() ?? verified.report.asTd15()?.base;
   if (!td) throw new AttestError("signature", "the quote is not a TDX quote");
+  acceptTdPolicy(td);
   const rtmr = [td.rtMr0, td.rtMr1, td.rtMr2, td.rtMr3].map((r) => bytesToHex(r)) as [
     Hex,
     Hex,

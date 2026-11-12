@@ -12,6 +12,10 @@ library TdxOutput {
         bool hasAdvisories;
         /// @dev `TDATTRIBUTES.DEBUG`: the host can read and change the TD's memory.
         bool debug;
+        /// @dev `TDATTRIBUTES` as the report stores it (little-endian).
+        bytes8 tdAttributes;
+        /// @dev Whether `MROWNER` and `MROWNERCONFIG`, which the host sets at launch and MRTD does not cover, are zero.
+        bool ownerRegistersZero;
         bytes mrtd;
         bytes rtmr0;
         bytes rtmr1;
@@ -35,6 +39,10 @@ library TdxOutput {
         td.hasAdvisories = output.length > BODY + TD10_LENGTH;
         // TDATTRIBUTES is little-endian; DEBUG is bit 0.
         td.debug = uint8(output[BODY + 120]) & 1 == 1;
+        // The slice is exactly 8 bytes.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        td.tdAttributes = bytes8(_slice(output, BODY + 120, 8));
+        td.ownerRegistersZero = keccak256(_slice(output, BODY + 232, 96)) == keccak256(new bytes(96));
         td.mrtd = _slice(output, BODY + 136, 48);
         td.rtmr0 = _slice(output, BODY + 328, 48);
         td.rtmr1 = _slice(output, BODY + 376, 48);

@@ -95,6 +95,8 @@ contract TdxOutputTest is Test {
         assertEq(td.rtmr2, json.readBytes(".rtmr2"));
         assertEq(td.rtmr3, json.readBytes(".rtmr3"));
         assertEq(td.reportData, json.readBytes(".reportData"));
+        assertEq(td.tdAttributes, bytes8(0x0000001000000000), "SEPT_VE_DISABLE only");
+        assertTrue(td.ownerRegistersZero, "MROWNER and MROWNERCONFIG");
     }
 
     function test_AdvisoriesAreAppended() public view {
@@ -141,6 +143,39 @@ contract TdxOutputTest is Test {
         IVerdictVerifier.SignerBinding memory b = _binding();
         vm.expectRevert(IVerdictVerifier.TdDebug.selector);
         registrar.registerTdx(output, events, b, 0);
+    }
+
+    /// @dev Every TDATTRIBUTES bit but SEPT_VE_DISABLE (bit 28) is refused, and SEPT_VE_DISABLE is required: PKS
+    /// (bit 30), PERFMON (bit 63), KL (bit 31) and a cleared SEPT_VE_DISABLE.
+    function test_RevertWhen_TdAttributesAreNotThePinnedOnes() public {
+        VerdictVerifierTdxHarness registrar = _registrar();
+        RuntimeEvent[] memory events = _events();
+        IVerdictVerifier.SignerBinding memory b = _binding();
+        uint8[4] memory offsets = [uint8(123), 123, 127, 123];
+        uint8[4] memory masks = [uint8(0x40), 0x80, 0x80, 0x10];
+        for (uint256 i; i < offsets.length; ++i) {
+            bytes1 saved = body[offsets[i]];
+            body[offsets[i]] ^= bytes1(masks[i]);
+            bytes memory output = _output(4, 2, 0, "");
+            vm.expectRevert(IVerdictVerifier.TdPolicy.selector);
+            registrar.registerTdx(output, events, b, 0);
+            body[offsets[i]] = saved;
+        }
+    }
+
+    /// @dev A TD launched with an owner (MROWNER) or owner configuration (MROWNERCONFIG) is not the dstack launch.
+    function test_RevertWhen_OwnerRegistersAreSet() public {
+        VerdictVerifierTdxHarness registrar = _registrar();
+        RuntimeEvent[] memory events = _events();
+        IVerdictVerifier.SignerBinding memory b = _binding();
+        uint16[2] memory offsets = [uint16(232), 280 + 47];
+        for (uint256 i; i < offsets.length; ++i) {
+            body[offsets[i]] = 0x01;
+            bytes memory output = _output(4, 2, 0, "");
+            vm.expectRevert(IVerdictVerifier.TdPolicy.selector);
+            registrar.registerTdx(output, events, b, 0);
+            body[offsets[i]] = 0x00;
+        }
     }
 
     function test_RevertWhen_EventLogDoesNotReplay() public {
