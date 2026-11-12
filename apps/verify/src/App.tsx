@@ -126,7 +126,7 @@ export function App() {
 
   const onFile = async (file: File) => {
     try {
-      const { fromFile, isImage, qrTextOf } = await loader;
+      const { fromFile, isImage, MAX_INPUT_BYTES, qrTextOf } = await loader;
       if (isImage(file)) {
         const text = await qrTextOf(file);
         const next = verifyLinkOf(text, [VERIFY_ORIGIN, location.origin]);
@@ -138,8 +138,14 @@ export function App() {
         setRoute(parseRoute(location));
         return;
       }
-      if (file.type === "application/json" || file.name.endsWith(".json")) {
-        const value = JSON.parse(await file.text()) as unknown;
+      const json = file.type === "application/json" || file.name.endsWith(".json");
+      if (json && file.size <= MAX_INPUT_BYTES) {
+        let value: unknown;
+        try {
+          value = JSON.parse(await file.text());
+        } catch {
+          value = undefined;
+        }
         const kind = exportOf(value);
         if (kind) {
           setExported({
