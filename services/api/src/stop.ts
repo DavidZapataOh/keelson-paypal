@@ -3,6 +3,7 @@ import {
   agentConnections,
   agentStops,
   and,
+  cardAuthorizations,
   type Db,
   eq,
   inArray,
@@ -12,6 +13,7 @@ import {
   ne,
   oauthConsent,
   oauthRefreshToken,
+  purchaseCards,
   purchaseHolds,
   purchases,
   sql,
@@ -28,6 +30,7 @@ import type { Logger } from "pino";
 import type { RedisClientType } from "redis";
 import { ulid } from "ulid";
 import type { Auth } from "./auth.ts";
+import type { CardIssuer } from "./cards/issuer.ts";
 import { publishEvent } from "./events.ts";
 import type { LogConfig } from "./log/append.ts";
 import { type Notifier, notify, stopAlert } from "./notify/notifier.ts";
@@ -47,6 +50,7 @@ export interface StopDeps {
   /** Signs the Shared Signals events connected apps poll; none are queued without it. */
   auth?: Auth | undefined;
   authBaseUrl?: string | undefined;
+  cards?: { issuer: CardIssuer } | undefined;
   tee?: TeeConfig;
 }
 
@@ -55,6 +59,8 @@ type Money = { currency: string; minor: string }[];
 export interface StopRecord {
   id: string;
   revoked: number;
+  /** Single-use cards closed at the issuer before any authorization of theirs was approved. */
+  cardsClosed: number;
   /** What PayPal released when the stop voided the holds, per currency. */
   released: Money;
   /** Holds still backing a countersigned purchase: released once it is captured. */
@@ -74,6 +80,7 @@ type Row = typeof agentStops.$inferSelect;
 const toRecord = (row: Row): StopRecord => ({
   id: row.id,
   revoked: row.revoked,
+  cardsClosed: row.cardsClosed,
   released: row.released,
   releasing: row.releasing,
   mandateHashes: row.mandateHashes,
@@ -132,6 +139,7 @@ export async function stopAgents(deps: StopDeps, userId: string): Promise<StopRe
     .set({ state: "DENIED", decidedAt: new Date() })
     .where(and(eq(agentConnections.userId, userId), eq(agentConnections.state, "PENDING")));
 
+  const cardsClosed = await closeCards(deps, userId);
   const released = new Map<string, bigint>();
   const releasing = new Map<string, bigint>();
   for (const m of rows) {
@@ -164,6 +172,7 @@ export async function stopAgents(deps: StopDeps, userId: string): Promise<StopRe
     .set({
       mandateHashes,
       revoked: rows.length,
+      cardsClosed,
       released: money(released),
       releasing: money(releasing),
       leaf,
@@ -178,6 +187,7 @@ export async function stopAgents(deps: StopDeps, userId: string): Promise<StopRe
     type: "agents.stopped",
     stopId: id,
     revoked: rows.length,
+    cardsClosed,
     released: done.released,
     releasing: done.releasing,
     logIndexes: done.logIndexes,
@@ -188,6 +198,44 @@ export async function stopAgents(deps: StopDeps, userId: string): Promise<StopRe
     { userId, at: row.createdAt, reason: "The user stopped every agent." },
   ).catch((err: unknown) => deps.log.warn({ err, stopId: id }, "stop signal not queued"));
   return { ...done, statusListed: rows.filter((m) => m.statusIdx !== null).length };
+}
+
+/**
+ * Closes at the issuer every single-use card of the user's purchases that no authorization was
+ * approved on yet; one already approved is left to settle. Resolves to how many were closed. Until
+ * the issuer has closed a card, its authorizations are declined as stopped (see cards/authorize.ts).
+ */
+async function closeCards(deps: StopDeps, userId: string): Promise<number> {
+  const issuer = deps.cards?.issuer;
+  if (!issuer) return 0;
+  const open = await deps.db
+    .select({ purchaseId: purchaseCards.purchaseId, token: purchaseCards.cardToken })
+    .from(purchaseCards)
+    .innerJoin(purchases, eq(purchases.id, purchaseCards.purchaseId))
+    .innerJoin(mandates, eq(mandates.id, purchases.mandateId))
+    .where(
+      and(
+        eq(mandates.userId, userId),
+        inArray(purchaseCards.state, ["OPEN", "PAUSED"]),
+        sql`not exists (select 1 from ${cardAuthorizations} where ${cardAuthorizations.purchaseId} = ${purchaseCards.purchaseId} and ${cardAuthorizations.approved})`,
+      ),
+    );
+  const closed = await Promise.all(
+    open.map(async (card) => {
+      try {
+        await issuer.close(card.token);
+      } catch (err) {
+        deps.log.warn({ err, purchaseId: card.purchaseId }, "card not closed on stop");
+        return 0;
+      }
+      await deps.db
+        .update(purchaseCards)
+        .set({ state: "CLOSED" })
+        .where(eq(purchaseCards.purchaseId, card.purchaseId));
+      return 1;
+    }),
+  );
+  return closed.reduce<number>((a, b) => a + b, 0);
 }
 
 /** Flags every live mandate of the user; a second pass catches one stored while the first ran. */

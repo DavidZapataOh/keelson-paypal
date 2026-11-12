@@ -138,6 +138,10 @@ const StopSchema = z
   .object({
     id: z.string(),
     revoked: z.int().openapi({ description: "Mandates ended." }),
+    cardsClosed: z.int().openapi({
+      description:
+        "Single-use cards closed at the issuer, none of whose authorizations was approved yet. Any authorization still reaching one is declined.",
+    }),
     released: z
       .array(z.object({ currency: z.string(), minor: z.string() }))
       .openapi({ description: "What PayPal held for them, per currency, now released." }),
@@ -211,6 +215,7 @@ export function registerAgents(
     | "tee"
     | "auth"
     | "authBaseUrl"
+    | "cards"
   >,
 ): void {
   const { db } = deps;
