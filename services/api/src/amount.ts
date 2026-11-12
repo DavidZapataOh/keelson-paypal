@@ -35,8 +35,10 @@ export type MismatchField =
 
 export class AmountMismatch extends Error {
   override name = "AmountMismatch";
-  constructor(readonly field: MismatchField) {
+  readonly field: MismatchField;
+  constructor(field: MismatchField) {
     super(field);
+    this.field = field;
   }
 }
 
