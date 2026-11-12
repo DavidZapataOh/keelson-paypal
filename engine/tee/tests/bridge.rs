@@ -163,3 +163,74 @@ fn leg_b_cannot_bridge() {
 }
 
 use coset::TaggedCborSerializable as _;
+
+/// The bridge statement of `fixture` with a receipt from a checkpoint of this leg's log key: a
+/// tree of the statement and one neighbour.
+fn receipted_bridge(engine: &Engine, signer: &LogSigner, root: &Root, fixture: &str) -> Vec<u8> {
+    use keelson_core::statement::{build_receipt, receipt_protected, with_receipts};
+    let r = request(fixture, String::new());
+    let r = BridgeRequest {
+        tlog_proof: proof(signer, root, &r.leaf.0),
+        ..r
+    };
+    let statement = engine.bridge(&r).unwrap().statement.0;
+    let (h0, h1) = (leaf_hash(&statement), leaf_hash(b"neighbour"));
+    let receipts = LogSigner::new(
+        vec![LogKey::new(ORIGIN, &Zeroizing::new([9; 32]), vec![])],
+        Arc::new(Records::default()),
+    );
+    let signed = receipts
+        .sign(
+            root,
+            Some((0, [0; 32])),
+            &SignRequest {
+                checkpoint: format!("{ORIGIN}\n2\n{}\n", STANDARD.encode(node(&h0, &h1))),
+                from_size: None,
+                consistency: vec![],
+            },
+        )
+        .unwrap();
+    let key = receipts.keys()[0].receipt_public_key();
+    let sig: [u8; 64] = STANDARD
+        .decode(&signed.receipt_signature)
+        .unwrap()
+        .try_into()
+        .unwrap();
+    let receipt = build_receipt(&receipt_protected(&key, ORIGIN), sig, 2, 0, &[h1]);
+    with_receipts(&statement, &[receipt]).unwrap()
+}
+
+#[test]
+fn signs_an_export_of_a_bridged_alibi() {
+    use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+    use keelson_tee::wire::ExportRequest;
+    let (engine, signer, root) = leg(Arc::new(Records::default()));
+    let statement = receipted_bridge(&engine, &signer, &root, FIXTURES[0]);
+    let b: Value = serde_json::from_str(FIXTURES[0]).unwrap();
+    let c = &b["tee"]["countersign"];
+    let lower = |k: &str| c[k].as_str().unwrap().to_lowercase();
+    let facts = serde_json::json!({
+        "agent_id": c["agentId"],
+        "amount_minor": c["amount"],
+        "cart_hash": lower("cartHash"),
+        "currency": c["currency"],
+        "decision": if c["decision"] == "1" { "allow" } else { "deny" },
+        "issued_at": c["issuedAt"].as_str().unwrap().parse::<u64>().unwrap(),
+        "mandate_hash": lower("mandateHash"),
+        "merchant_id": lower("merchantId"),
+        "request_id": b["alibi_id"],
+    });
+    let r = ExportRequest {
+        typ: "JWT".into(),
+        payload: serde_json::json!({
+            "keelson": {
+                "facts": facts,
+                "profile": "keelson.export/1",
+                "statement": URL_SAFE_NO_PAD.encode(&statement),
+            },
+        }),
+        statement: Base64(statement),
+    };
+    let jws = engine.sign_export(&r).unwrap().jws;
+    assert_eq!(jws.split('.').count(), 3);
+}

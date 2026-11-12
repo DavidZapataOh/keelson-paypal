@@ -6,7 +6,7 @@ use p256::ecdsa::{Signature, VerifyingKey};
 use serde_json::{Map, Value, json};
 use sha2::{Digest, Sha256};
 
-use crate::sd::{Disclosure, assert_digests_resolved, assert_sd_alg, digest, unpack};
+use crate::sd::{Disclosure, assert_resolved_with_decoys, assert_sd_alg, digest, unpack};
 use crate::{Error, b64, parse_mandate};
 
 /// `typ` of the user credential, an SD-JWT VC.
@@ -419,7 +419,7 @@ fn verify_open_mandate(
         .transpose()?
         .ok_or_else(|| invalid("delegate payload is not disclosed"))?;
     let decoys: Vec<&str> = opts.decoy_salts.iter().map(String::as_str).collect();
-    assert_digests_resolved(&Value::Object(signed.clone()), disclosures, &decoys)?;
+    assert_resolved_with_decoys(&Value::Object(signed.clone()), disclosures, &decoys)?;
     let Value::Object(delegate) = delegates else {
         return Err(invalid("delegate payload is not an object"));
     };

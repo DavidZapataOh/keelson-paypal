@@ -559,18 +559,23 @@ pub struct ReadStatement {
     pub mode: Mode,
     pub legs: Vec<LegSignature>,
     pub pay_ref: Option<[u8; 32]>,
+    /// A bridge statement's v1 leaf hash: its facts are that v1 Alibi's countersign.
+    pub predecessor: Option<[u8; 32]>,
 }
 
-/// Reads a purchase statement, registered or transparent, without checking any signature; the
-/// caller checks them. `None` unless every claim has the shape [`claims_bytes`] writes.
+/// Reads a purchase or bridge statement, registered or transparent, without checking any
+/// signature; the caller checks them. `None` unless every claim has the shape [`claims_bytes`]
+/// (or [`bridge_claims_bytes`]) writes.
 pub fn read_purchase(statement_bytes: &[u8]) -> Option<ReadStatement> {
     use alloy_primitives::{B256, U256, aliases::U40};
     let (protected, unprotected, payload, signature) = sign1(statement_bytes)?;
     let header: Value = ciborium::from_reader(protected.as_slice()).ok()?;
     let header = header.as_map()?;
-    if map_get(header, 3)?.as_text()? != CLAIMS_CONTENT_TYPE {
-        return None;
-    }
+    let bridge = match map_get(header, 3)?.as_text()? {
+        CLAIMS_CONTENT_TYPE => false,
+        BRIDGE_CONTENT_TYPE => true,
+        _ => return None,
+    };
     let kid: [u8; 20] = fixed(map_get(header, 4))?;
     let alibi_id = map_get(map_get(header, 15)?.as_map()?, 2)?
         .as_text()?
@@ -637,20 +642,36 @@ pub fn read_purchase(statement_bytes: &[u8]) -> Option<ReadStatement> {
         verifying_contract: fixed(map_get(m, 19))?,
         mode,
         pay_ref: fixed(map_get(m, 22)),
+        predecessor: if bridge {
+            Some(fixed(map_get(m, 23))?)
+        } else {
+            None
+        },
         legs,
         countersign,
         protected,
         claims_bytes: payload,
     };
     // Only the canonical claims: what `claims_bytes` writes for them, byte for byte.
-    let rewritten = claims_bytes(&StatementClaims {
-        countersign: &read.countersign,
-        chain_id: read.chain_id,
-        verifying_contract: read.verifying_contract,
-        mode: read.mode,
-        legs: &read.legs,
-        pay_ref: read.pay_ref,
-    });
+    let rewritten = match read.predecessor {
+        Some(predecessor) if read.pay_ref.is_none() => bridge_claims_bytes(&BridgeClaims {
+            countersign: &read.countersign,
+            chain_id: read.chain_id,
+            verifying_contract: read.verifying_contract,
+            mode: read.mode,
+            legs: &read.legs,
+            predecessor,
+        }),
+        Some(_) => return None,
+        None => claims_bytes(&StatementClaims {
+            countersign: &read.countersign,
+            chain_id: read.chain_id,
+            verifying_contract: read.verifying_contract,
+            mode: read.mode,
+            legs: &read.legs,
+            pay_ref: read.pay_ref,
+        }),
+    };
     (rewritten == read.claims_bytes).then_some(read)
 }
 

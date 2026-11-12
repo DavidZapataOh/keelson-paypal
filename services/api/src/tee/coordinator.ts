@@ -116,12 +116,19 @@ export async function legSupportsStatements(
   return (await legCapabilities(deps, leg)).statements;
 }
 
+/**
+ * Whether the SP1 program the deployed `EngineProofVerifier` pins reads decoy salts. It does not:
+ * that verifier is immutable, so a mandate with decoys could not have its countersign proven, and
+ * decoys stay off until a verifier of a program that reads them is deployed.
+ */
+const ENGINE_PROOF_READS_DECOYS = false;
+
 /** What both legs do: a feature is used only once each leg reports it. */
 export async function bothLegs(deps: { tee: Pick<TeeConfig, "client"> }): Promise<Capabilities> {
   const [a, b] = await Promise.all([legCapabilities(deps, "a"), legCapabilities(deps, "b")]);
   return {
     statements: a.statements && b.statements,
-    decoys: a.decoys && b.decoys,
+    decoys: a.decoys && b.decoys && ENGINE_PROOF_READS_DECOYS,
     status_list: a.status_list && b.status_list,
     paypal_reads: b.paypal_reads,
   };

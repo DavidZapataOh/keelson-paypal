@@ -12,9 +12,7 @@ use alloy_sol_types::SolStruct;
 use keelson_canon::{Cart, Context, Deny, PayPalUnit, canonicalize, cart_hash};
 use keelson_core::eip712::Countersign;
 use keelson_core::{AcirField, Dst, currency_numeric};
-use keelson_mandate::{
-    CATEGORY_IDS, Fr, decode_mandate_with_decoys, h_sd, mandate_challenge, merchant_leaf,
-};
+use keelson_mandate::{CATEGORY_IDS, Fr, decode_mandate, h_sd, mandate_challenge, merchant_leaf};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
@@ -189,9 +187,6 @@ pub struct CountersignInput {
     /// The engine image the trace names.
     pub oci_digest: String,
     pub canonicalizer: String,
-    /// The salts of the mandate's decoy digests; empty without decoys.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub decoy_salts: Vec<String>,
 }
 
 /// A recomputed countersign.
@@ -216,9 +211,8 @@ pub enum RecomputeError {
 
 /// Recomputes the countersign the engine signs for `input`, on the canonicalizer and policy path.
 pub fn recompute(input: &CountersignInput) -> Result<Recomputed, RecomputeError> {
-    let mandate =
-        decode_mandate_with_decoys(&input.payload_sd, &input.disclosures, &input.decoy_salts)
-            .map_err(|_| RecomputeError::Mandate)?;
+    let mandate = decode_mandate(&input.payload_sd, &input.disclosures)
+        .map_err(|_| RecomputeError::Mandate)?;
     let commitment = mandate["zk"]["commitment"]
         .as_str()
         .and_then(|c| B256::from_str(c).ok())

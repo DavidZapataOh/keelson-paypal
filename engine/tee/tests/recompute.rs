@@ -34,7 +34,6 @@ fn input_of(r: &CountersignRequest, out: &Countersigned) -> CountersignInput {
             .as_str()
             .unwrap()
             .to_owned(),
-        decoy_salts: Vec::new(),
     }
 }
 

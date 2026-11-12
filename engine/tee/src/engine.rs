@@ -1392,8 +1392,15 @@ impl Engine {
             .first()
             .and_then(|receipt| verify_receipt(receipt, &read.registered, &keys))
             .ok_or(bad("export.receipt"))?;
-        // The statement's ES256K signature is by the leg its mode names; the legs signed its facts.
-        let expected = read.legs.last().ok_or(bad("export.statement"))?.signer;
+        // A purchase statement's ES256K signature is by the leg its mode names; a bridge's is by a
+        // leg A signer, whose statement this leg's own log registered (the receipt above). The
+        // legs signed its facts either way.
+        let last = read.legs.last().ok_or(bad("export.statement"))?.signer;
+        let expected = if read.predecessor.is_some() {
+            read.kid
+        } else {
+            last
+        };
         let digest: [u8; 32] =
             Sha256::digest(to_be_signed(&read.protected, &read.claims_bytes)).into();
         let by_kid = [27u8, 28].iter().any(|v| {
