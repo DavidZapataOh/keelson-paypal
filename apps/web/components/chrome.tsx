@@ -19,6 +19,7 @@ const OWN_CHROME = new Set([
   "/operator/",
   "/judge/",
   "/agents/",
+  "/developers/",
   "/connect/",
   "/consent/",
   "/sign-in/",

@@ -1,0 +1,66 @@
+[project]
+name = "keelson-finance"
+version = "0.1.0"
+description = "Keelson for Python: let an AI agent spend within a mandate the user signs with a passkey, and verify the receipt of every purchase."
+readme = "README.md"
+license = "Apache-2.0"
+requires-python = ">=3.11"
+dependencies = ["httpx2>=2.16,<3", "pydantic>=2.14,<3"]
+keywords = ["keelson", "paypal", "agents", "agentic-commerce", "mandate"]
+
+[project.optional-dependencies]
+openai-agents = ["openai-agents>=0.24"]
+langchain = ["langchain-core>=1.8"]
+claude-agent-sdk = ["claude-agent-sdk>=0.2.180"]
+operator = ["cryptography>=46"]
+
+[project.scripts]
+keelson = "keelson._cli:main"
+
+[project.urls]
+Homepage = "https://keelson.finance"
+Repository = "https://github.com/DavidZapataOh/keelson-paypal"
+
+[dependency-groups]
+dev = [
+  "datamodel-code-generator==0.93.0",
+  "mypy==2.4.1",
+  "pytest==9.2.0",
+  "pytest-asyncio==1.4.1.post1",
+  "ruff==0.17.4",
+  "cryptography>=46",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/keelson"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = ["live: calls Keelson's live sandbox"]
+
+[tool.mypy]
+strict = true
+python_version = "3.11"
+files = ["src"]
+plugins = ["pydantic.mypy"]
+
+[[tool.mypy.overrides]]
+module = "keelson._models"
+ignore_errors = true
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+exclude = ["src/keelson/_models.py"]
+select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
+
+[tool.ruff.lint.per-file-ignores]
+# The tools' next steps are sentences the model reads; they are not wrapped.
+"src/keelson/_tools.py" = ["E501"]
