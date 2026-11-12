@@ -20,7 +20,7 @@
   document.querySelector("[data-search-open]")!.addEventListener("click", open);
   addEventListener("keydown", (e) => {
     const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
-    if ((e.key === "k" && (e.metaKey || e.ctrlKey)) || (e.key === "/" && !typing)) {
+    if ((e.key.toLowerCase() === "k" && (e.metaKey || e.ctrlKey)) || (e.key === "/" && !typing)) {
       e.preventDefault();
       open();
     }
