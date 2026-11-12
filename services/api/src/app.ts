@@ -41,6 +41,7 @@ import { registerAlerts } from "./routes/alerts.ts";
 import { registerAlibis } from "./routes/alibis.ts";
 import { registerAmount } from "./routes/amount.ts";
 import { registerAnonymousMandates } from "./routes/anonymous-mandates.ts";
+import { registerAuthzen } from "./routes/authzen.ts";
 import { registerBonds } from "./routes/bonds.ts";
 import { registerCardWebhooks } from "./routes/card-webhooks.ts";
 import { registerChannel3Webhook } from "./routes/channel3-webhook.ts";
@@ -48,6 +49,7 @@ import { registerChargebacks } from "./routes/chargebacks.ts";
 import { type CompileSources, registerCompile } from "./routes/compile.ts";
 import { registerConnections } from "./routes/connections.ts";
 import { registerCountersign } from "./routes/countersign.ts";
+import { registerCredentialIssuer } from "./routes/credential-issuer.ts";
 import { registerDisputes } from "./routes/disputes.ts";
 import { registerEmbed } from "./routes/embed.ts";
 import { noFraming, registerEmbedPage } from "./routes/embed-page.ts";
@@ -77,6 +79,7 @@ import { registerOperators } from "./routes/operators.ts";
 import { registerPasskeys } from "./routes/passkeys.ts";
 import { registerPayPalWallet } from "./routes/paypal-wallet.ts";
 import { registerPayPalWebhook } from "./routes/paypal-webhook.ts";
+import { registerProblems } from "./routes/problems.ts";
 import { registerPurchaseHolds } from "./routes/purchase-holds.ts";
 import { registerPurchaseTracking } from "./routes/purchase-tracking.ts";
 import { registerPurchases } from "./routes/purchases.ts";
@@ -366,6 +369,10 @@ export function createApp(deps: Deps): OpenAPIHono {
   // An upload is refused before its body is read or fingerprinted.
   app.on("POST", "/v1/evidence", requireClient(["evidence:write"]));
   app.use("/v1/*", rateLimit(deps.kv, deps.rateLimit));
+  // The AuthZEN binding (`/access/v1/...`) reads and decides nothing a retry could repeat.
+  app.use("/access/*", smallBody);
+  if (deps.authenticate) app.use("/access/*", deps.authenticate);
+  app.use("/access/*", rateLimit(deps.kv, deps.rateLimit));
   // A model turn streams and changes nothing a retry could repeat; a buffered replay would end the stream.
   const idempotent = idempotency(deps.kv, deps.log);
   app.use("/v1/*", (c, next) => (STREAMED_POSTS.test(c.req.path) ? next() : idempotent(c, next)));
@@ -440,6 +447,9 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerRevoke(app, deps);
   registerConnections(app, deps);
   registerMandateRequests(app, deps);
+  registerProblems(app);
+  registerAuthzen(app, deps);
+  registerCredentialIssuer(app, deps);
   registerEmbed(app, deps);
   registerEmbedSigning(app, deps);
   if (deps.embedPage) registerEmbedPage(app, deps, deps.embedPage);

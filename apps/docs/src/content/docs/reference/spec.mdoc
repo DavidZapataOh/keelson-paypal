@@ -24,6 +24,18 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
 The TypeScript and Rust implementations MUST produce the same output for every vector in `packages/core/test/vectors`.
 
+### Domain separation
+
+Every signed or hashed value carries a tag no other value shares, so a signature or a hash over one is never valid as another.
+
+| Where | Tag | Form |
+| --- | --- | --- |
+| Object hashes | `keelson/<kind>/v1` (see above) | ASCII tag, then `0x00`, then the JCS bytes |
+| Log leaves | `keelson.finance/alibi/v1` and `keelson.finance/stop/v1` | The origin line, ending in `\n`, then the leaf body (`packages/log/src/leaf.ts`) |
+| TEE signer binding | `keccak256("KEELSON_TEE_SIGNER_V1")` | The first word of the ABI-encoded attestation binding (`contracts/src/VerdictVerifier.sol`) |
+| TEE messages | EIP-712 domain `{Keelson, 1, chainId, VerdictVerifier}` | Typed data per message type |
+| Circuit inputs | `fieldFromAscii("KEELSON_MANDATE")`, `fieldFromAscii("KEELSON_AMBER")` | A BN254 field element as the first Poseidon2 input |
+
 ## 2. Mandate
 
 A mandate is a `keelson.mandate.1` JSON payload, defined by the schema in [`packages/mandate/src/schema.ts`](https://github.com/DavidZapataOh/keelson-paypal/tree/main/packages/mandate/src/schema.ts). A verifier MUST reject a payload that has an unknown key or an unknown constraint type, a string that contains a Unicode control (Cc) or format (Cf) character, or a lifetime (`exp − iat`) longer than 30 days.
@@ -206,6 +218,12 @@ Noir circuits proved with Barretenberg UltraHonk, in [`circuits`](https://github
 ## 12. Agents
 
 Agents reach Keelson over REST or MCP (`https://api.keelson.finance/mcp`, Streamable HTTP), an OAuth 2.1 protected resource ([`services/mcp`](https://github.com/DavidZapataOh/keelson-paypal/tree/main/services/mcp)). An operator's agent uses client credentials and closes mandates with its own key. A host acting for a user uses the authorization code grant with PKCE and MUST buy only under mandates the user approved for it. The kill switch, per-host disconnects, and push and email alerts are described in [how it works](/concepts/how-it-works/). The OpenAPI document is in [`openapi`](https://github.com/DavidZapataOh/keelson-paypal/tree/main/openapi).
+
+| Standard | What Keelson serves |
+| --- | --- |
+| RFC 9457 problem details | Every `type` resolves to a page at `https://api.keelson.finance/problems/{slug}` |
+| OpenID AuthZEN Authorization API 1.0 | `/.well-known/authzen-configuration`, `POST /access/v1/evaluation` and the boxcar `POST /access/v1/evaluations`: a non-binding preview of a cart against a mandate, from the policy set the TEE legs run |
+| SD-JWT VC (draft-ietf-oauth-sd-jwt-vc) | `/.well-known/jwt-vc-issuer` on keelson.finance, whose `jwks_uri` serves the attested issuer key, and the Type Metadata at the user credential's `vct` |
 
 ## 13. Risk
 

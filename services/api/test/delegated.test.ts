@@ -695,6 +695,18 @@ describe("the hosted operator's caps for apps that registered themselves", () =>
     });
     return clientId;
   }
+  /** A host named by a metadata document on `host` (Client ID Metadata Document). */
+  async function discovered(host: string): Promise<string> {
+    const clientId = `https://${host}/oauth/${ulid()}`;
+    await testDb.insert(oauthClient).values({
+      id: ulid(),
+      clientId,
+      redirectUris: [`https://${host}/api/mcp/auth_callback`],
+      tokenEndpointAuthMethod: "none",
+      name: "A host",
+    });
+    return clientId;
+  }
   /** A captured purchase of `amount` under mandate `id`, `daysAgo` days ago. */
   async function captured(id: string, amount: bigint, daysAgo = 0, state = "CAPTURED" as const) {
     await testDb.insert(purchases).values({
@@ -711,16 +723,15 @@ describe("the hosted operator's caps for apps that registered themselves", () =>
   const CLAUDE = "https://claude.ai/api/mcp/auth_callback";
   const UNKNOWN = "https://unknown.example/callback";
 
-  test("known hosts are the ones whose every redirect URI a known host registers; loopback is not one", () => {
-    expect(knownHost([CLAUDE])).toBe(true);
-    expect(knownHost(["https://chatgpt.com/connector_platform_oauth_redirect"])).toBe(true);
-    expect(knownHost(["cursor://anysphere.cursor-mcp/oauth/callback"])).toBe(true);
-    expect(knownHost(["http://localhost:53682/callback"])).toBe(false);
-    expect(knownHost(["http://127.0.0.1:8787/callback"])).toBe(false);
-    expect(knownHost([CLAUDE, "http://localhost:53682/callback"])).toBe(false);
-    expect(knownHost([])).toBe(false);
-    expect(knownHost([CLAUDE, "https://evil.example/cb"])).toBe(false);
-    expect(knownHost(["https://claude.ai.evil.example/api/mcp/auth_callback"])).toBe(false);
+  test("known hosts are the ones a known host's metadata document names, never a registration", () => {
+    expect(knownHost("https://claude.ai/oauth/mcp-oauth-client-metadata")).toBe(true);
+    expect(knownHost("https://chatgpt.com/oauth/client.json")).toBe(true);
+    expect(knownHost("https://claude.ai.evil.example/oauth/client.json")).toBe(false);
+    expect(knownHost("https://evil.example/claude.ai")).toBe(false);
+    expect(knownHost("http://claude.ai/oauth/client.json")).toBe(false);
+    expect(knownHost(CLAUDE)).toBe(true);
+    expect(knownHost("Ch1dK3bY2xqP0w")).toBe(false);
+    expect(knownHost("")).toBe(false);
   });
 
   test("an unknown app asks one user for no more than the per-user cap, counting what is left on its mandates", async () => {
@@ -761,7 +772,7 @@ describe("the hosted operator's caps for apps that registered themselves", () =>
   test("a known host gets the higher tier, and is still capped", async () => {
     const { CAPPED, ask } = await hostedWithCaps();
     const a = await newUser();
-    const claude = await registered([CLAUDE]);
+    const claude = await discovered("claude.ai");
     expect((await ask(asHost(claude, a), 60_001)).status).toBe(422);
     await approved(a, claude, CAPPED, 40_000n);
     const over = await ask(asHost(claude, a), 20_001);
@@ -778,10 +789,13 @@ describe("the hosted operator's caps for apps that registered themselves", () =>
     const { CAPPED } = await hostedWithCaps();
     const deps = { demoAgentId: CAPPED, hostedCaps: caps };
     const hosted = await hostedClientId(testDb, CAPPED);
-    const claude = await registered([CLAUDE]);
+    const claude = await discovered("claude.ai");
     const unknown = await registered([UNKNOWN]);
+    // Claude's redirect URI in a registration proves nothing.
+    const lookalike = await registered([CLAUDE]);
     expect(await hostTier(testDb, claude, hosted)).toBe("known");
     expect(await hostTier(testDb, unknown, hosted)).toBe("unknown");
+    expect(await hostTier(testDb, lookalike, hosted)).toBe("unknown");
     expect(await hostTier(testDb, hosted as string, hosted)).toBeUndefined();
     expect(tierCap(deps.hostedCaps, "known")).toBe(60_000n);
     expect(tierCap(deps.hostedCaps, "unknown")).toBe(30_000n);
