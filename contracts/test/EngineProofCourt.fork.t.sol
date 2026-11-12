@@ -51,6 +51,11 @@ contract EngineProofCourtForkTest is Erc8004Base {
         court = new EngineProofCourt(
             vault, vault.verifier(), IKeelsonValidationRegistry(address(validation)), engineProofs
         );
+        _readCountersign();
+        realProof = realProof && proofJson.readBytes32(".countersign_digest") == _csDigest();
+        // The coverage is locked at the countersign's issue time, which precedes the fork block: the role grants must
+        // already be in force then.
+        vm.warp(cs.issuedAt - 2 * _timelock().getMinDelay() - 1);
         (address[] memory targets, uint256[] memory values, bytes[] memory payloads) =
             new DeployEngineProofCourt().grants(address(court));
         _viaTimelockBatch(targets, values, payloads);
@@ -58,8 +63,6 @@ contract EngineProofCourtForkTest is Erc8004Base {
         // Every slash waits for its veto window.
         p.instantSlashCap = 0;
         _viaTimelock(address(vault), abi.encodeCall(vault.setParams, (p)));
-        _readCountersign();
-        realProof = realProof && proofJson.readBytes32(".countersign_digest") == _csDigest();
     }
 
     function _viaTimelockBatch(address[] memory targets, uint256[] memory values, bytes[] memory payloads) internal {
