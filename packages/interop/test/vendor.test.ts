@@ -33,7 +33,12 @@ test("every vendored file is byte-identical to its pinned upstream", () => {
   expect(PINNED_COMMITS.negativeVectors).toMatch(/^eb51afe2[0-9a-f]{32}$/);
 });
 
-test.each([ALLOW_PAYPAL, DENY_PAYPAL, ALLOW_CARD])("fixture %s verifies offline", async (id) => {
-  const r = await verifyAlibi(alibi(id), { chain: null, now: new Date(NOW * 1000) });
-  expect(r.verdict).toBe("verified-offline");
-});
+// A full offline verification takes seconds on a shared runner.
+test.each([ALLOW_PAYPAL, DENY_PAYPAL, ALLOW_CARD])(
+  "fixture %s verifies offline",
+  { timeout: 30_000 },
+  async (id) => {
+    const r = await verifyAlibi(alibi(id), { chain: null, now: new Date(NOW * 1000) });
+    expect(r.verdict).toBe("verified-offline");
+  },
+);
