@@ -12,7 +12,7 @@ party at fault pay.
 [Status](https://app.keelson.finance/status) · [Red-team scoreboard](https://app.keelson.finance/scoreboard)
 
 [![CI](https://github.com/DavidZapataOh/keelson-paypal/actions/workflows/ci.yml/badge.svg)](https://github.com/DavidZapataOh/keelson-paypal/actions/workflows/ci.yml)
-[![npm](https://img.shields.io/npm/v/@keelson-finance/sdk?label=npm)](https://www.npmjs.com/package/@keelson-finance/sdk)
+[![npm](https://img.shields.io/npm/v/@keelson-finance/sdk?label=npm)](packages/sdk/README.md)
 [![PyPI](https://img.shields.io/pypi/v/keelson-finance?label=PyPI)](https://pypi.org/project/keelson-finance/)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
