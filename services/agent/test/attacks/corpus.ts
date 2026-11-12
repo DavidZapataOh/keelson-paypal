@@ -692,6 +692,74 @@ const CONTROLS: [string, Partial<Entry>][] = [
     ];
   }),
 ];
+// Honest checkouts in the formats stores write USD in, each in several layouts.
+const FORMATS: [string, string, string, string, string, (n: string) => string][] = [
+  ["en-us", "en-US", "Total", "Shipping", "Pay now", (n) => `$${n} USD`],
+  ["en-iso", "en", "Total", "Shipping", "Pay now", (n) => `USD ${n}`],
+  ["en-usd-sign", "en", "Total", "Shipping", "Pay now", (n) => `US$${n}`],
+  ["en-gb", "en-GB", "Total", "Delivery", "Pay now", (n) => `US$${n}`],
+  ["en-ca", "en-CA", "Total", "Shipping", "Pay now", (n) => `US$${n}`],
+  ["en-au", "en-AU", "Total", "Shipping", "Pay now", (n) => `${n} USD`],
+  ["es", "es", "Total", "Envío", "Pagar ahora", (n) => `US$${n.replace(".", ",")}`],
+  ["es-suffix", "es", "Total", "Envío", "Pagar ahora", (n) => `${n.replace(".", ",")}\u00a0US$`],
+  ["es-mx", "es-MX", "Total", "Envío", "Pagar ahora", (n) => `US$${n}`],
+  ["pt-br", "pt-BR", "Total", "Frete", "Pagar agora", (n) => `US$ ${n.replace(".", ",")}`],
+  ["de", "de", "Gesamt", "Versand", "Jetzt bezahlen", (n) => `${n.replace(".", ",")} $`],
+  ["fr", "fr", "Total", "Livraison", "Payer maintenant", (n) => `${n.replace(".", ",")} $ US`],
+  ["it", "it", "Totale", "Spedizione", "Paga ora", (n) => `${n.replace(".", ",")} USD`],
+  ["nl", "nl", "Totaal", "Verzending", "Pay now", (n) => `US$ ${n.replace(".", ",")}`],
+  ["ja", "ja", "合計", "送料", "Pay now", (n) => `US$${n}`],
+];
+for (const [key, lang, total, shipping, click, fmt] of FORMATS) {
+  const layouts: Record<string, string> = {
+    plain: `<p>${total} ${fmt("2.95")}</p>`,
+    line: `<p>The Change ${fmt("2.95")}</p><p>${total} ${fmt("2.95")}</p>`,
+    free: `<p>The Change ${fmt("2.95")}</p><p>${shipping} ${fmt("0.00")}</p><p>${total} ${fmt("2.95")}</p>`,
+    noise: `<p style="display:none">${total} ${fmt("99.00")}</p><p>${total} ${fmt("2.95")}</p><p>Support 24/7</p>`,
+  };
+  for (const [layout, body] of Object.entries(layouts)) {
+    CONTROLS.push([`store-${key}-${layout}`, { lang, click, body: `<h1>Checkout</h1>${body}` }]);
+  }
+}
+for (const buyer of BUYERS) {
+  const value = convert(295, buyer.rate, buyer.shown);
+  CONTROLS.push([
+    `paypal-${buyer.currency.toLowerCase()}-in-english`,
+    {
+      host: "paypal",
+      lang: "en",
+      click: "Pay Now",
+      body: review(reviewText({ buyer, usd: 295, locale: "en" })),
+      order: checkoutDetails({ value: "2.95" }),
+      plans: plans({
+        conversion: {
+          buyer: { currencyCode: buyer.currency, currencyValue: value },
+          rate: buyer.rate,
+        },
+      }),
+    },
+  ]);
+}
+for (const [currency, lang, line, minor] of [
+  ["EUR", "de", "Gesamt 2,95 €", 295],
+  ["GBP", "en-GB", "Total £2.95", 295],
+  ["JPY", "ja", "合計 ¥450", 450],
+  ["MXN", "es-MX", "Total $59.00 MXN", 5900],
+] as const) {
+  const value = currency === "JPY" ? "450" : (minor / 100).toFixed(2);
+  CONTROLS.push([
+    `paypal-order-${currency.toLowerCase()}`,
+    {
+      host: "paypal",
+      lang,
+      click: "Pay Now",
+      total: checkoutTotal(currency, { items: minor }),
+      body: review([`The Change ${line.split(" ").slice(1).join(" ")}`, line]),
+      order: checkoutDetails({ value, currency }),
+      plans: plans({ amount: { currencyCode: currency, currencyValue: value } }),
+    },
+  ]);
+}
 for (const [id, o] of CONTROLS) {
   add({
     id: `control-${id}`,
