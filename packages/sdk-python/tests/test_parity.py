@@ -41,7 +41,7 @@ def test_the_quickstart_is_at_most_12_lines() -> None:
 
 def test_verify_without_node_is_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("KEELSON_VERIFY_COMMAND", "/nonexistent/keelson-verify")
-    with pytest.raises(keelson.VerifierUnavailable, match="npx @keelson/verifier"):
+    with pytest.raises(keelson.VerifierUnavailable, match="npx @keelson-finance/verifier"):
         keelson.verify_alibi(b"{}")
 
 

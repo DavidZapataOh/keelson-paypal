@@ -11,11 +11,13 @@ const surface = new Set(JSON.parse(read("packages/sdk/api-surface.json")) as str
 const tsExports = read("packages/sdk/src/index.ts") + read("packages/sdk/src/errors.ts");
 const verifier = read("packages/verify/src/index.ts");
 const pyMethods = new Set(
-  readdirSync(join(REPO, "packages/sdk-python/src/keelson/resources")).flatMap((f) =>
-    [...read(`packages/sdk-python/src/keelson/resources/${f}`).matchAll(/def ([a-z_]+)\(/g)].map(
-      (m) => m[1] as string,
+  readdirSync(join(REPO, "packages/sdk-python/src/keelson/resources"))
+    .filter((f) => f.endsWith(".py"))
+    .flatMap((f) =>
+      [...read(`packages/sdk-python/src/keelson/resources/${f}`).matchAll(/def ([a-z_]+)\(/g)].map(
+        (m) => m[1] as string,
+      ),
     ),
-  ),
 );
 const pyExports = read("packages/sdk-python/src/keelson/__init__.py");
 
@@ -36,9 +38,9 @@ describe("the SDK pages call only what the SDKs have", () => {
         expect(surface.has(call as string), call).toBe(true);
       }
       for (const [, names, from] of ts.matchAll(/import \{([^}]+)\} from "([^"]+)"/g)) {
-        const adapter = /^@keelson\/sdk\/([a-z-]+)$/.exec(from as string)?.[1];
+        const adapter = /^@keelson-finance\/sdk\/([a-z-]+)$/.exec(from as string)?.[1];
         const source =
-          from === "@keelson/verifier"
+          from === "@keelson-finance/verifier"
             ? verifier
             : adapter
               ? read(`packages/sdk/src/adapters/${adapter}.ts`)
@@ -70,8 +72,8 @@ describe("the SDK pages call only what the SDKs have", () => {
 
   test("install says the packages are not on a registry yet, and installs from the repository", () => {
     const install = page("install");
-    expect(read("packages/sdk/package.json")).toContain('"name": "@keelson/sdk"');
-    expect(read("packages/verify/package.json")).toContain('"name": "@keelson/verifier"');
+    expect(read("packages/sdk/package.json")).toContain('"name": "@keelson-finance/sdk"');
+    expect(read("packages/verify/package.json")).toContain('"name": "@keelson-finance/verifier"');
     expect(read("packages/sdk-python/pyproject.toml")).toContain('name = "keelson-finance"');
     expect(install).toContain("not on npm or PyPI yet");
     expect(install).not.toMatch(/^(npm install|pip install) /m);

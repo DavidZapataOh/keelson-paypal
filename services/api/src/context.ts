@@ -1,5 +1,5 @@
 import type { OpenAPIHono } from "@hono/zod-openapi";
-import { createContextServer } from "@keelson/context";
+import { createContextServer } from "@keelson-finance/context";
 import { createMcpHandler } from "@modelcontextprotocol/server";
 import { bodyLimit } from "hono/body-limit";
 

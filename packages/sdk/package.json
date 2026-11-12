@@ -1,5 +1,5 @@
 {
-  "name": "@keelson/sdk",
+  "name": "@keelson-finance/sdk",
   "version": "0.1.0",
   "description": "Keelson for TypeScript: let an AI agent spend within a mandate the user signs with a passkey, and verify the receipt of every purchase.",
   "license": "Apache-2.0",
@@ -68,7 +68,7 @@
     "@keelson/evidence": "workspace:*",
     "@keelson/mandate": "workspace:*",
     "@keelson/paypal": "workspace:*",
-    "@keelson/verifier": "workspace:*",
+    "@keelson-finance/verifier": "workspace:*",
     "@langchain/core": "1.3.6",
     "@openai/agents": "0.21.0",
     "@types/node": "26.6.6",
@@ -99,5 +99,8 @@
     "@anthropic-ai/claude-agent-sdk": {
       "optional": true
     }
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

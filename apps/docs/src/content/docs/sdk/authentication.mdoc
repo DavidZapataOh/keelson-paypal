@@ -41,7 +41,7 @@ The sign-in may ask for mandates and buy under them:
 
 {% languages label="Use the sign-in" %}
 ```ts
-import { Keelson } from "@keelson/sdk";
+import { Keelson } from "@keelson-finance/sdk";
 
 const keelson = new Keelson(); // reads the saved sign-in
 ```
@@ -61,7 +61,7 @@ An operator that runs its own agent registers an OAuth client and sets `KEELSON_
 
 {% languages label="Client credentials" %}
 ```ts
-import { clientCredentials, Keelson } from "@keelson/sdk";
+import { clientCredentials, Keelson } from "@keelson-finance/sdk";
 
 const keelson = new Keelson({
   auth: clientCredentials({ clientId: process.env.CLIENT_ID!, clientSecret: process.env.CLIENT_SECRET! }),
@@ -79,7 +79,7 @@ keelson = Keelson(auth=client_credentials(client_id=client_id, client_secret=cli
 
 {% languages label="Static token" %}
 ```ts
-import { Keelson, staticToken } from "@keelson/sdk";
+import { Keelson, staticToken } from "@keelson-finance/sdk";
 
 const keelson = new Keelson({ auth: staticToken(token) });
 ```
