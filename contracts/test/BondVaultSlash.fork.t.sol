@@ -230,6 +230,42 @@ contract BondVaultSlashForkTest is SlashBase {
         assertEq(vault.claimable(merchant), AMOUNT);
     }
 
+    /// @dev The account itself claims without a signature, to any address, whatever deadline it passes.
+    function test_claim_byTheAccountNeedsNoSignature() public {
+        Vector memory v = _locked(WEBAUTHN);
+        _freeze(merchant);
+        _slash(_amber(v, AMOUNT));
+        address fresh = makeAddr("merchant's new account");
+        vm.expectEmit(address(vault));
+        emit IKeelsonBondVault.Claimed(merchant, fresh, AMOUNT);
+        vm.prank(merchant);
+        vault.claim(merchant, fresh, 0, 0, "");
+        assertEq(pyusd.balanceOf(fresh), AMOUNT);
+        assertEq(vault.claimable(merchant), 0);
+        assertEq(vault.nonces(merchant), 0);
+
+        vm.prank(merchant);
+        vm.expectRevert(IKeelsonBondVault.ZeroAmount.selector);
+        vault.claim(merchant, fresh, 0, 0, "");
+    }
+
+    /// @dev A claim signature is valid through its deadline's second, not after it.
+    function test_claim_deadlineBoundary() public {
+        Vector memory v = _locked(WEBAUTHN);
+        _freeze(merchant);
+        _slash(_amber(v, AMOUNT));
+        address fresh = makeAddr("merchant's new account");
+        uint256 deadline = vm.getBlockTimestamp() + 1 hours;
+        bytes memory sig = _signClaim(merchantKey, merchant, fresh, 0, deadline, vault.domainSeparator());
+        vm.warp(deadline + 1);
+        vm.expectRevert(IKeelsonBondVault.Expired.selector);
+        vault.claim(merchant, fresh, 0, deadline, sig);
+        vm.warp(deadline);
+        vault.claim(merchant, fresh, 0, deadline, sig);
+        assertEq(pyusd.balanceOf(fresh), AMOUNT);
+        assertEq(vault.nonces(merchant), 1);
+    }
+
     function test_claim_wrongSignerReverts() public {
         Vector memory v = _locked(WEBAUTHN);
         _freeze(merchant);

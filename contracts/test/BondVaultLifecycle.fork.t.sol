@@ -202,4 +202,18 @@ contract BondVaultLifecycleForkTest is LockBase {
         vm.expectRevert(IKeelsonBondVault.InvalidSignature.selector);
         vault.setPayoutAddress(merchant, makeAddr("thief"), 1, deadline, sig);
     }
+
+    /// @dev A payout signature is valid through its deadline's second, not after it.
+    function test_setPayoutAddress_deadlineBoundary() public {
+        (address merchant, uint256 merchantKey) = makeAddrAndKey("merchant");
+        address payout = makeAddr("merchant payout");
+        uint256 deadline = vm.getBlockTimestamp() + 1 hours;
+        bytes memory sig = _signVault(merchantKey, KeelsonTypes.hashPayoutAddress(merchant, payout, 0, deadline));
+        vm.warp(deadline + 1);
+        vm.expectRevert(IKeelsonBondVault.Expired.selector);
+        vault.setPayoutAddress(merchant, payout, 0, deadline, sig);
+        vm.warp(deadline);
+        vault.setPayoutAddress(merchant, payout, 0, deadline, sig);
+        assertEq(vault.payoutAddress(merchant), payout);
+    }
 }

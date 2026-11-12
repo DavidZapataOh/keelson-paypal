@@ -117,6 +117,29 @@ contract BondVaultDepositForkTest is VaultBase {
         vault.depositWithPermit(agentId, funder, AMOUNT, type(uint256).max, sig);
     }
 
+    /// @dev The agent's ERC-8004 wallet is an authority too: it can bond with a permit.
+    function test_depositWithPermit_fromAgentWallet() public {
+        (address wallet, uint256 walletKey) = makeAddrAndKey("agent wallet");
+        _setAgentWallet(wallet, walletKey);
+        (address from,) = _funder(1);
+        vm.prank(from);
+        assertTrue(pyusd.transfer(wallet, AMOUNT));
+        bytes memory sig = _signPermit(walletKey, address(vault), AMOUNT, type(uint256).max);
+        vault.depositWithPermit(agentId, wallet, AMOUNT, type(uint256).max, sig);
+        assertEq(_bond().free, AMOUNT);
+        assertEq(pyusd.balanceOf(wallet), 0);
+
+        vm.expectRevert(IKeelsonBondVault.NotAgentAuthority.selector);
+        vault.depositWithPermit(agentId, from, AMOUNT, type(uint256).max, sig);
+    }
+
+    /// @dev With no agent wallet set, `getAgentWallet` is the zero address, which is no authority.
+    function test_depositWithPermit_fromZeroAddressReverts() public {
+        assertEq(_identity().getAgentWallet(agentId), address(0));
+        vm.expectRevert(IKeelsonBondVault.NotAgentAuthority.selector);
+        vault.depositWithPermit(agentId, address(0), AMOUNT, type(uint256).max, "");
+    }
+
     function _demoParams() internal view returns (IKeelsonBondVault.Params memory) {
         return deployScript.params();
     }
