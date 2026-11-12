@@ -122,9 +122,9 @@ exactly what to do. None of them adds a byte to the core entry.
 
 ## Verifying an Alibi
 
-`@keelson/verifier` checks an Alibi on your machine with the same code as
+`verifyAlibi` from `@keelson/verifier` checks an Alibi on your machine with the same code as
 https://verify.keelson.finance: both TEE signatures, the evidence and the log inclusion proof.
-`{ chain: true }` also reads the anchor on Arbitrum Sepolia.
+`verifyAlibi(bytes, { chain: true })` also reads the anchor on Arbitrum Sepolia.
 
 ```sh
 npx keelson-verify 01M75ZQSJDFE8K76ZKZT08X1B2 --chain

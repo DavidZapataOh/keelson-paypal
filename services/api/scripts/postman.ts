@@ -126,7 +126,9 @@ const strip = (items: Item[]): Item[] =>
     );
     // A free-form object's example gets a random number of made-up keys; it is shown empty.
     const body = request.body as { raw?: string } | undefined;
-    if (body?.raw) body.raw = JSON.stringify(withoutMadeUpKeys(JSON.parse(body.raw)), null, 2);
+    if (body?.raw && /^\s*[[{]/.test(body.raw)) {
+      body.raw = JSON.stringify(withoutMadeUpKeys(JSON.parse(body.raw)), null, 2);
+    }
     // Example responses are generated, not recorded; they are left out.
     return {
       name: i.name,
