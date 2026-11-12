@@ -51,6 +51,65 @@ describe.each(Object.keys(VIEWPORTS) as (keyof typeof VIEWPORTS)[])("signed out 
     });
   }
 
+  test("/status/ lets a keyboard scroll a slashed bond's signed checkpoints", async () => {
+    const context = await browser.newContext(VIEWPORTS[kind]);
+    await context.route(`${API}/**`, (route) => {
+      if (new URL(route.request().url()).pathname !== "/v1/log/bonds") {
+        return route.abort("connectionrefused");
+      }
+      const note = (root: string) =>
+        `log.keelson.finance/conformance/2026-1\n8\n${root}\n\n— log.keelson.finance/conformance/2026-1 ${"A".repeat(92)}=\n`;
+      return route.fulfill({
+        headers: {
+          "access-control-allow-origin": site.base,
+          "access-control-allow-credentials": "true",
+        },
+        json: {
+          bonds: [
+            {
+              chainId: 421614,
+              address: `0x${"b8".repeat(20)}`,
+              origin: "log.keelson.finance/conformance/2026-1",
+              test: true,
+              key: `0x${"ce".repeat(32)}`,
+              owner: `0x${"11".repeat(20)}`,
+              verifier: `0x${"22".repeat(20)}`,
+              canonical: true,
+              beneficiary: `0x${"33".repeat(20)}`,
+              bountyBps: 1000,
+              completionWindowSeconds: 86_400,
+              balanceMinor: "0",
+              withdrawalDelaySeconds: 604_800,
+              withdrawal: null,
+              equivocation: {
+                prover: `0x${"44".repeat(20)}`,
+                amountMinor: "70000",
+                bountyMinor: "7000",
+                provenAt: "2026-11-11T00:41:03.000Z",
+                size: "8",
+                rootA: `0x${"8c".repeat(32)}`,
+                rootB: `0x${"0a".repeat(32)}`,
+                noteA: note("jOVg1qZjazdB7Tj8rmWD+3QWGDDY3TyhORUctiQheD8="),
+                noteB: note("ChqwfS8BauYyPx0+PcCcKXU0rv4BzXuNivf0X6gCOZs="),
+                txHash: `0x${"55".repeat(32)}`,
+                explorerUrl: `https://sepolia.arbiscan.io/tx/0x${"55".repeat(32)}`,
+              },
+              explorerUrl: `https://sepolia.arbiscan.io/address/0x${"b8".repeat(20)}`,
+            },
+          ],
+        },
+      });
+    });
+    const page = await context.newPage();
+    await page.goto(`${site.base}/status/`);
+    const checkpoint = page.getByRole("region", { name: "Checkpoint A" });
+    await checkpoint.waitFor();
+    expect(await checkpoint.evaluate((el) => el.tabIndex)).toBe(0);
+    const { violations } = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
+    expect(violations.map((v) => `${v.id}: ${v.nodes.length}`)).toEqual([]);
+    await context.close();
+  });
+
   test("/status/ keeps its shape while the first report loads", async () => {
     const context = await browser.newContext(VIEWPORTS[kind]);
     // The live report, held back a moment so it lands after first paint.

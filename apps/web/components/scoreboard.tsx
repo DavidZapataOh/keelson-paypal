@@ -274,6 +274,28 @@ node services/redteam/scripts/scoreboard.ts ledger.jsonl \\
   );
 }
 
+/**
+ * The scoreboard's footprint while it loads: each block is as tall as the section it stands for,
+ * so the checkout attacks below it stay put when the numbers arrive.
+ */
+export function ScoreboardSkeleton() {
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-10" aria-busy="true">
+      <Skeleton className="h-[22px] w-56 rounded-md" />
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-10">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {[0, 1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-[164px] rounded-lg sm:h-[182px] lg:h-[198px]" />
+          ))}
+        </div>
+        <Skeleton className="h-[823px] rounded-lg sm:h-[783px]" />
+        <Skeleton className="h-[686px] rounded-lg sm:h-[607px] md:h-[348px] xl:h-[314px]" />
+      </div>
+      <Skeleton className="h-11 w-64 rounded-md" />
+    </div>
+  );
+}
+
 /** The scoreboard of `?campaign=`, or of the featured campaign; live while it runs. */
 export function ScoreboardPage() {
   const asked = useSearchParams().get("campaign");
@@ -310,15 +332,7 @@ export function ScoreboardPage() {
   if (list && !id) {
     return <p className="text-muted-foreground">No campaign has run yet.</p>;
   }
-  if (!board) {
-    return (
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4" aria-busy="true">
-        {[0, 1, 2, 3].map((i) => (
-          <Skeleton key={i} className="h-40 rounded-lg" />
-        ))}
-      </div>
-    );
-  }
+  if (!board) return <ScoreboardSkeleton />;
   return (
     <div className="grid grid-cols-[minmax(0,1fr)] gap-10">
       <div className="flex flex-wrap items-center gap-3">

@@ -4,7 +4,7 @@ import { Suspense } from "react";
 import { AppShell } from "../../components/app-shell";
 import { CheckoutAttacks } from "../../components/checkout-attacks";
 import { PageHead } from "../../components/page-head";
-import { ScoreboardPage } from "../../components/scoreboard";
+import { ScoreboardPage, ScoreboardSkeleton } from "../../components/scoreboard";
 
 export const metadata: Metadata = {
   title: "Red-team scoreboard",
@@ -31,7 +31,7 @@ export default function Page() {
         }
       />
       <div className="grid grid-cols-[minmax(0,1fr)] gap-12">
-        <Suspense>
+        <Suspense fallback={<ScoreboardSkeleton />}>
           <ScoreboardPage />
         </Suspense>
         <CheckoutAttacks />
