@@ -43,7 +43,7 @@ fn signs_a_kms_decrypt_as_the_aws_sdk_does() {
     let session = AwsSession {
         region: s("region"),
         access_key_id: s("access_key_id"),
-        secret_access_key: s("secret_access_key").into(),
+        secret_access_key: s("secret_access_key"),
         session_token: s("session_token"),
     };
     let headers = signed_headers(

@@ -53,7 +53,7 @@ impl std::fmt::Display for SealError {
 pub struct AwsSession {
     pub region: String,
     pub access_key_id: String,
-    pub secret_access_key: Zeroizing<String>,
+    pub secret_access_key: String,
     pub session_token: String,
 }
 
