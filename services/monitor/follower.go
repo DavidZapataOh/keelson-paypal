@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"filippo.io/torchwood"
+	"github.com/ethereum/go-ethereum/common"
 	"github.com/transparency-dev/formats/log"
 	"github.com/transparency-dev/merkle/compact"
 	"github.com/transparency-dev/merkle/rfc6962"
@@ -35,6 +36,11 @@ type Report struct {
 	DegradedLeaves []uint64  `json:"degradedLeaves"`
 	Findings       []Finding `json:"findings"`
 	CoLogged       *CoLog    `json:"coLogged,omitempty"`
+	// Anchor is the origin's on-chain anchor as last checked against the
+	// view, and Signers how far the leaves' TEE signers were checked against
+	// the on-chain registry.
+	Anchor  *AnchorCheck `json:"anchor,omitempty"`
+	Signers *SignerCheck `json:"signers,omitempty"`
 	// Error is why the last check could not run, such as the log being
 	// unreachable. It is not a finding.
 	Error string `json:"error,omitempty"`
@@ -76,16 +82,21 @@ type follower struct {
 	// the view at each size, so a growing fork yields one proof.
 	equivocated map[string]bool
 	colog       *coLogProbe
+	// chain reads the origin's chain; chainAt and chainSize are when and at
+	// which size it was last read.
+	chain     *chainReader
+	chainAt   time.Time
+	chainSize uint64
 }
 
 // Follow checks the origin every poll until ctx is done.
 func Follow(ctx context.Context, o *origin, st *State, poll time.Duration, sigsum *sigsumTrust, hc *http.Client, out chan<- Event, logger *slog.Logger) {
-	fetcher, err := client.NewHTTPFetcher(o.URL, hc)
-	if err != nil {
-		panic(err) // o.URL is validated by newOrigin.
-	}
-	f := &follower{o: o, st: st, out: out, fetcher: fetcher, hc: hc, sigsum: sigsum, log: logger.With("origin", o.Name)}
-	f.colog = newCoLogProbe(f)
+	f := newFollower(o, st, sigsum, hc, out, logger)
+	defer func() {
+		if f.chain != nil {
+			f.chain.close()
+		}
+	}()
 	t := time.NewTicker(poll)
 	defer t.Stop()
 	for {
@@ -96,6 +107,16 @@ func Follow(ctx context.Context, o *origin, st *State, poll time.Duration, sigsu
 		case <-t.C:
 		}
 	}
+}
+
+func newFollower(o *origin, st *State, sigsum *sigsumTrust, hc *http.Client, out chan<- Event, logger *slog.Logger) *follower {
+	fetcher, err := client.NewHTTPFetcher(o.URL, hc)
+	if err != nil {
+		panic(err) // o.URL is validated by newOrigin.
+	}
+	f := &follower{o: o, st: st, out: out, fetcher: fetcher, hc: hc, sigsum: sigsum, log: logger.With("origin", o.Name)}
+	f.colog = newCoLogProbe(f)
+	return f
 }
 
 // step runs one round of checks and records its outcome.
@@ -110,6 +131,7 @@ func (f *follower) step(ctx context.Context) {
 	case err == nil:
 		f.st.verified(f.o.Name, time.Now())
 		f.colog.maybeRun(ctx)
+		f.checkChain(ctx)
 		return
 	case errors.As(err, &ee):
 		f.equivocation(ee.E)
@@ -119,6 +141,71 @@ func (f *follower) step(ctx context.Context) {
 		f.log.Warn("check", "err", err)
 	}
 	f.st.failed(f.o.Name, err)
+}
+
+// chainInterval is how often the chain is read while the view does not grow.
+const chainInterval = time.Minute
+
+// checkChain compares the origin's on-chain anchor with the view and checks
+// the TEE signers of the new leaves against the on-chain registry, after the
+// view grows and at least every chainInterval.
+func (f *follower) checkChain(ctx context.Context) {
+	if f.o.Chain == nil {
+		return
+	}
+	cur := f.st.Get(f.o.Name)
+	if f.o.Chain.CheckpointAnchor == (common.Address{}) {
+		if cur.Anchor == nil {
+			now := time.Now()
+			id, name := f.o.Chain.ChainID, f.o.Chain.Name
+			err := f.st.Update(f.o.Name, func(s *OriginState) {
+				s.Anchor = &AnchorCheck{ChainID: id, Chain: name, Status: "not-deployed", CheckedAt: now}
+				s.Signers = &SignerCheck{ChainID: id, Chain: name, Status: "not-deployed", CheckedAt: now}
+			})
+			if err != nil {
+				f.log.Error("state", "err", err)
+			}
+		}
+		return
+	}
+	if cur.Size == f.chainSize && time.Since(f.chainAt) < chainInterval {
+		return
+	}
+	if f.chain == nil {
+		c, err := newChainReader(ctx, f.o.Chain)
+		if err != nil {
+			f.log.Error("chain", "err", err)
+			return
+		}
+		f.chain = c
+	}
+	f.chainAt, f.chainSize = time.Now(), cur.Size
+	anchor, afd := f.checkAnchor(ctx, cur)
+	sc, idx, sfd := f.checkSigners(ctx, cur)
+	if ctx.Err() != nil {
+		return
+	}
+	if afd != nil {
+		sfd = append(sfd, *afd)
+	}
+	now := time.Now()
+	err := f.st.Update(f.o.Name, func(s *OriginState) {
+		s.Anchor, s.Signers, s.SignerIndex = &anchor, &sc, idx
+		for _, fd := range sfd {
+			fd.At = now
+			s.addFinding(fd)
+		}
+	})
+	if err != nil {
+		f.log.Error("state", "err", err)
+		return
+	}
+	for _, fd := range sfd {
+		f.log.Warn("finding", "kind", fd.Kind, "detail", fd.Detail)
+	}
+	if anchor.Error != "" || sc.Error != "" {
+		f.log.Warn("chain", "anchor", anchor.Error, "signers", sc.Error)
+	}
 }
 
 func (f *follower) finding(fd Finding) {
@@ -299,6 +386,8 @@ func buildReport(o *origin, st *State) Report {
 		DegradedLeaves: append([]uint64{}, s.DegradedLeaves...),
 		Findings:       append([]Finding{}, s.Findings...),
 		CoLogged:       s.CoLogged,
+		Anchor:         s.Anchor,
+		Signers:        s.Signers,
 		Error:          lastErr,
 	}
 }
