@@ -454,6 +454,11 @@ asked for the countersign. Each step is published on their `purchase:<id>` chann
 `GET /v1/events`: `purchase.countersigned`, `purchase.logged`, `purchase.covered`,
 `purchase.captured`, `purchase.failed`, `purchase.denied`.
 
+A stream starts with `retry: 3000` and a `: connected` comment, and sends a `: heartbeat` comment
+every 15 s, so no proxy closes it while no event comes: it was measured open past 150 s through
+Cloudflare and Render. A client that loses it reconnects after 3 s with `Last-Event-ID` and gets
+only the events after that id.
+
 A DENY is logged too and stays `DENIED`. The ERC-8004 validation of a DENY is recorded with the
 operator's signature over its `ValidationRequest`, and coverages are released
 (`releaseCoverage`) once their window has passed. Keelson signs coverage only for the operator
@@ -474,8 +479,20 @@ else gets the header: not another user, not a 401 or 404. With an OTLP exporter 
 (`OTEL_EXPORTER_OTLP_ENDPOINT` or `OTEL_TRACES_EXPORTER`) the spans go there instead, and the
 header is not sent.
 
+Tracing must start before the server's modules load: `pg` reaches the server through ESM imports
+that run before any of its modules could start it, and an unpatched `pg` times no query. So
+`pnpm start` runs `node --import ./dist/telemetry.js dist/server.js`.
+
 `bench/money-path.bench.ts` drives real sandbox purchases (`PURCHASES`, `CONCURRENCY` mandates
-buying at once) through the public API and prints the waterfall from those headers as JSON. Its
+buying at once) through the public API and prints the waterfall from those headers as JSON. It
+reports two numbers. The steady money path is timed on mandates whose C3 proof is published
+(`GET /v1/mandates/{id}` says `c3Published`), against the 8 s p95 budget. The first purchase on a
+mandate signed just before it is reported apart: its Alibi waits for that mandate's C3 proof,
+which takes about 10 s after signing (a worker's start and some 7 s of proving), and the bench
+also reports that time for each mandate. Once the proof is published, the C3 task makes the
+mandate's waiting purchases due at once, so the resumer drives them on its next 5 s pass instead
+of after their 20 s lease. A purchase ends when its event or its state says so: the bench reads
+`GET /v1/purchases/{id}` once a second alongside the stream. Its
 agent is the demo operator's own OAuth client (`KEELSON_CLIENT_ID`, `KEELSON_CLIENT_SECRET`), with
 access tokens from the deployed API. Purchases with a leg down are measured by the in-process live
 tests (`tamper.live`, `coverage.live`).

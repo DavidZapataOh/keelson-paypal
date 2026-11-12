@@ -51,6 +51,7 @@ import { type Principal, principalChannel } from "../principal.ts";
 import { ProblemSchema, problem } from "../problem.ts";
 import { LegError, type MandateIssued } from "../tee/client.ts";
 import { unboundPolicy } from "../tee/engine-source.ts";
+import { c3Published } from "../zk/c3.ts";
 import { PurchaseProgress } from "./purchases.ts";
 import { REVOCABLE, revokeMandate } from "./revoke.ts";
 
@@ -222,6 +223,10 @@ const MandateView = z
     }),
     purchases: z.array(MandatePurchase).openapi({
       description: `The mandate's latest ${PURCHASES_SHOWN} purchases, newest first.`,
+    }),
+    c3Published: z.boolean().openapi({
+      description:
+        "Whether the mandate's C3 proof (its user is registered, without saying who) is stored and its root is on chain. Its purchases' Alibis wait for it.",
     }),
     pendingHolds: z.array(PendingPurchaseHold).openapi({
       description:
@@ -887,6 +892,7 @@ export function registerMandates(app: OpenAPIHono, deps: MandateDeps): void {
               .map((d) => ({ id: d.id, state: d.state })),
           };
         }),
+        c3Published: await c3Published(db, row.c3Proof),
         pendingHolds: waiting.map((h) => ({ ...h, amountMinor: h.amountMinor.toString() })),
       },
       200,

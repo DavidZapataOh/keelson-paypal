@@ -3,7 +3,7 @@ import "../tee/attest.ts";
 import { toBase64 } from "@keelson/alibi";
 import { c3Statement, verifyC3 } from "@keelson/alibi/verify";
 import { toHex } from "@keelson/core";
-import { asc, type Db, mandates, passkey, sql, userSetRoots } from "@keelson/db";
+import { and, asc, chainTxs, type Db, eq, mandates, passkey, sql, userSetRoots } from "@keelson/db";
 import {
   type C3Assertion,
   c3Inputs,
@@ -72,6 +72,26 @@ const ROOTS_CHAIN_ID = 421614;
 
 /** The relayer key a registered-user root is published under (`0x` + 64 hex). */
 export const rootKey = (root: string): string => `RegisteredUserSet.publish:${root}`;
+
+/**
+ * Whether a mandate's C3 proof is published: stored, and the user-set root it proves membership
+ * in confirmed on chain. Its purchases' Alibis carry it from then on.
+ */
+export async function c3Published(db: Db, proof: C3Proof | null): Promise<boolean> {
+  const root = proof?.public_inputs[2];
+  if (!root) return false;
+  const [tx] = await db
+    .select({ id: chainTxs.id })
+    .from(chainTxs)
+    .where(
+      and(
+        eq(chainTxs.chainId, ROOTS_CHAIN_ID),
+        eq(chainTxs.key, rootKey(root)),
+        eq(chainTxs.status, "confirmed"),
+      ),
+    );
+  return tx !== undefined;
+}
 
 /** How long a publish waits for its pending transaction before the caller tries again. */
 const PUBLISH_WAIT_MS = 15_000;
