@@ -1,0 +1,162 @@
+{
+  "version": "1.0.0",
+  "valid": [
+    {
+      "kind": "custom_id",
+      "value": "ks1.sm.01M6ZWXSB31RY6D753ET0RGPZF.JeYgDHlgnVwNJEpAhS0JFmn8D_0Rzg3Zw2Va0K2LXK4",
+      "parsed": {
+        "env": "s",
+        "kind": "m",
+        "id": "01M6ZWXSB31RY6D753ET0RGPZF",
+        "digest": "0x25e6200c79609d5c0d244a40852d091669fc0ffd11ce0dd9c3655ad0ad8b5cae"
+      },
+      "source": "packages/alibi/test/fixtures/01M6ZWZJHWRRHQEYNJAT7NMSV8.alibi and packages/alibi/test/fixtures/01M6ZX07MFWDDDW4199FDJHWEG.alibi, /paypal/custom_id (PayPal sandbox order 8MY937060S1606416)"
+    },
+    {
+      "kind": "invoice_id",
+      "value": "KS1-01M6ZWZJHWRRHQEYNJAT7NMSV8-01-1H6DNY2FEJ24A4TXAY209K6SXS",
+      "parsed": {
+        "id": "01M6ZWZJHWRRHQEYNJAT7NMSV8",
+        "seq": 1,
+        "digest16": "0x31336be13dd211144d755e10133367b9"
+      },
+      "source": "packages/alibi/test/fixtures/01M6ZWZJHWRRHQEYNJAT7NMSV8.alibi, /paypal/invoice_id (PayPal sandbox capture 5VK089183A260134T)"
+    },
+    {
+      "kind": "invoice_id",
+      "value": "KS1-01M6ZX07MFWDDDW4199FDJHWEG-02-1XENCQNVGYZTY0H0E8K2HHSY8W",
+      "parsed": {
+        "id": "01M6ZX07MFWDDDW4199FDJHWEG",
+        "seq": 2,
+        "digest16": "0x3d75597aee1efebc0881c898a31cf91c"
+      },
+      "source": "packages/alibi/test/fixtures/01M6ZX07MFWDDDW4199FDJHWEG.alibi, /paypal/invoice_id (PayPal sandbox capture 8E547963J1687504T)"
+    },
+    {
+      "kind": "verdict_ref",
+      "value": "ksv1.01M6ZX3QW8T2H5N7K9P1R4S6V8.ZxJoTl1yXFfDHgnl",
+      "parsed": {
+        "id": "01M6ZX3QW8T2H5N7K9P1R4S6V8",
+        "digest12": "0x6712684e5d725c57c31e09e5"
+      },
+      "source": "generated with encodeVerdictRef(\"01M6ZX3QW8T2H5N7K9P1R4S6V8\", SHA-256(utf8(\"ksv1 test vector\")))"
+    }
+  ],
+  "invalid": [
+    {
+      "kind": "custom_id",
+      "value": "ks1.sm.01m6zwxsb31ry6d753et0rgpzf.JeYgDHlgnVwNJEpAhS0JFmn8D_0Rzg3Zw2Va0K2LXK4",
+      "reason": "ULID in lowercase Crockford base32"
+    },
+    {
+      "kind": "invoice_id",
+      "value": "KS1-01M6ZWZJHWRRHQEYNJAT7NMSV8-01-1h6dny2fej24a4txay209k6sxs",
+      "reason": "digest in lowercase Crockford base32"
+    },
+    {
+      "kind": "invoice_id",
+      "value": "KS1-01M6ZWZJHWRRHQEYNJAT7NMSI8-01-1H6DNY2FEJ24A4TXAY209K6SXS",
+      "reason": "ULID contains I, which Crockford base32 excludes"
+    },
+    {
+      "kind": "invoice_id",
+      "value": "KS1-01M6ZWZJHWRRHQEYNJAT7NMSV8-01-1H6DNY2FEJ24A4TXAY209K6SXL",
+      "reason": "digest contains L, which Crockford base32 excludes"
+    },
+    {
+      "kind": "custom_id",
+      "value": "ks1.sm.01M6ZWXSB31RY6D753ET0RGPZO.JeYgDHlgnVwNJEpAhS0JFmn8D_0Rzg3Zw2Va0K2LXK4",
+      "reason": "ULID contains O, which Crockford base32 excludes"
+    },
+    {
+      "kind": "verdict_ref",
+      "value": "ksv1.01M6ZX3QW8T2H5N7K9P1R4S6U8.ZxJoTl1yXFfDHgnl",
+      "reason": "ULID contains U, which Crockford base32 excludes"
+    },
+    {
+      "kind": "custom_id",
+      "value": "ks1.sm.01M6ZWXSB31RY6D753ET0RGPZF.JeYgDHlgnVwNJEpAhS0JFmn8D_0Rzg3Zw2Va0K2LXK=",
+      "reason": "base64url with = padding"
+    },
+    {
+      "kind": "verdict_ref",
+      "value": "ksv1.01M6ZX3QW8T2H5N7K9P1R4S6V8.ZxJoTl1yXFfDHgn=",
+      "reason": "base64url with = padding"
+    },
+    {
+      "kind": "custom_id",
+      "value": "ks1.sm.01M6ZWXSB31RY6D753ET0RGPZF.JeYgDHlgnVwNJEpAhS0JFmn8D_0Rzg3Zw2Va0K2LXK5",
+      "reason": "non-zero trailing bits in the base64url digest"
+    },
+    {
+      "kind": "custom_id",
+      "value": "ks1.sm.81M6ZWXSB31RY6D753ET0RGPZF.JeYgDHlgnVwNJEpAhS0JFmn8D_0Rzg3Zw2Va0K2LXK4",
+      "reason": "ULID starts with 8, beyond 128 bits"
+    },
+    {
+      "kind": "invoice_id",
+      "value": "KS1-81M6ZWZJHWRRHQEYNJAT7NMSV8-01-1H6DNY2FEJ24A4TXAY209K6SXS",
+      "reason": "ULID starts with 8, beyond 128 bits"
+    },
+    {
+      "kind": "invoice_id",
+      "value": "KS1-01M6ZWZJHWRRHQEYNJAT7NMSV8-01-8H6DNY2FEJ24A4TXAY209K6SXS",
+      "reason": "digest starts with 8, beyond 128 bits"
+    },
+    {
+      "kind": "invoice_id",
+      "value": "KS1-01M6ZWZJHWRRHQEYNJAT7NMSV8-100-1H6DNY2FEJ24A4TXAY209K6SXS",
+      "reason": "sequence 100 has three digits"
+    },
+    {
+      "kind": "invoice_id",
+      "value": "KS1-01M6ZWZJHWRRHQEYNJAT7NMSV8-1-1H6DNY2FEJ24A4TXAY209K6SXS",
+      "reason": "sequence 1 has one digit"
+    },
+    {
+      "kind": "custom_id",
+      "value": "ks1.sm.01M6ZWXSB31RY6D753ET0RGPZF.JeYgDHlgnVwNJEpAhS0JFmn8D_0Rzg3Zw2Va0K2LXK",
+      "reason": "76 characters: the digest is one character short"
+    },
+    {
+      "kind": "custom_id",
+      "value": "ks1.sm.01M6ZWXSB31RY6D753ET0RGPZF.JeYgDHlgnVwNJEpAhS0JFmn8D_0Rzg3Zw2Va0K2LXK4A",
+      "reason": "78 characters: the digest is one character long"
+    },
+    {
+      "kind": "custom_id",
+      "value": "ks1.xm.01M6ZWXSB31RY6D753ET0RGPZF.JeYgDHlgnVwNJEpAhS0JFmn8D_0Rzg3Zw2Va0K2LXK4",
+      "reason": "env x is neither s nor p"
+    },
+    {
+      "kind": "custom_id",
+      "value": "ks1.sz.01M6ZWXSB31RY6D753ET0RGPZF.JeYgDHlgnVwNJEpAhS0JFmn8D_0Rzg3Zw2Va0K2LXK4",
+      "reason": "kind z is neither m nor a"
+    },
+    {
+      "kind": "custom_id",
+      "value": "ks2.sm.01M6ZWXSB31RY6D753ET0RGPZF.JeYgDHlgnVwNJEpAhS0JFmn8D_0Rzg3Zw2Va0K2LXK4",
+      "reason": "prefix ks2. is not this version"
+    },
+    {
+      "kind": "custom_id",
+      "value": "KS1.sm.01M6ZWXSB31RY6D753ET0RGPZF.JeYgDHlgnVwNJEpAhS0JFmn8D_0Rzg3Zw2Va0K2LXK4",
+      "reason": "prefix in upper case"
+    },
+    {
+      "kind": "invoice_id",
+      "value": "ks1-01M6ZWZJHWRRHQEYNJAT7NMSV8-01-1H6DNY2FEJ24A4TXAY209K6SXS",
+      "reason": "prefix in lower case"
+    },
+    {
+      "kind": "verdict_ref",
+      "value": "ksv2.01M6ZX3QW8T2H5N7K9P1R4S6V8.ZxJoTl1yXFfDHgnl",
+      "reason": "prefix ksv2. is not this version"
+    },
+    {
+      "kind": "invoice_id",
+      "value": "KS1-01M6ZWZJHWRRHQEYNJAT7NMSV8-00-1H6DNY2FEJ24A4TXAY209K6SXS",
+      "reason": "sequence 00: captures from one hold are numbered from 01"
+    }
+  ]
+}

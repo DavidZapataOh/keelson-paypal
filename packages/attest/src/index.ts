@@ -2,7 +2,13 @@ export { AttestationCache } from "./cache.ts";
 export { type AttestCode, AttestError } from "./errors.ts";
 export { type DstackEvent, replayRtmr3 } from "./eventlog.ts";
 export { nitroMeasurement, tdxMeasurement } from "./measurement.ts";
-export { isDebugMode, type NitroPcrs, type NitroResult, verifyNitro } from "./nitro.ts";
+export {
+  isDebugMode,
+  type NitroPcrs,
+  type NitroResult,
+  nitroTimestamp,
+  verifyNitro,
+} from "./nitro.ts";
 export {
   type AttestedBinding,
   type AttestedBlock,

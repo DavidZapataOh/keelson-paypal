@@ -1,0 +1,24 @@
+---
+import Home from "../components/Home.astro";
+import { type Doc, href } from "../lib/docs";
+import Shell from "./Shell.astro";
+
+interface Props {
+  entry: Doc;
+}
+const { entry } = Astro.props;
+const { title, description, estimate } = entry.data;
+---
+<Shell title={title} description={description} current={href(entry.id)} home={entry.id === "index"}>
+  {entry.id === "index" ? <Home /> : (
+  <article class="doc" data-pagefind-body>
+    <header class="doc-head">
+      <h1>{title}</h1>
+      <p class="lede">{description}</p>
+      {estimate && <p class="meta">{estimate}</p>}
+    </header>
+    <div class="prose"><slot /></div>
+    <footer class="doc-foot"><a href={`/${entry.id}.md`}>View this page as Markdown</a></footer>
+  </article>
+  )}
+</Shell>

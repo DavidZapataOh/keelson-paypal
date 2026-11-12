@@ -73,7 +73,7 @@ describe.skipIf(!live)("mandate hold (live sandbox)", { timeout: 300_000 }, () =
     paypal,
     requestTimeoutMs: 60_000,
   });
-  const { signed, hold, authorize, revoke, approve, release } = holdHarness(app, paypal);
+  const { signed, hold, authorize, revoke, approve, release, saveBuyer } = holdHarness(app, paypal);
 
   test("a signed mandate is held, approved by the buyer and authorized to ACTIVE", async () => {
     const { sub, mid, mandateHash } = await signed();
@@ -88,6 +88,8 @@ describe.skipIf(!live)("mandate hold (live sandbox)", { timeout: 300_000 }, () =
       const held = await hold(sub, mid);
       expect(held.status, JSON.stringify(held.body)).toBe(200);
       expect(held.body.state).toBe("HOLD_PENDING");
+      // Without a saved PayPal the buyer approves the order in PayPal.
+      expect(held.body.approved).toBe(false);
       const orderId = held.body.orderId as string;
       console.info(`order id: ${orderId}`);
 
@@ -248,6 +250,35 @@ describe.skipIf(!live)("mandate hold (live sandbox)", { timeout: 300_000 }, () =
     await approve(orderId as string, mid);
     const again = await hold(sub, mid);
     expect(again).toEqual({ status: 200, body: { orderId, state: "HOLD_PENDING" } });
+  });
+
+  test("a user with a saved PayPal is held and authorized to ACTIVE with no PayPal window", async () => {
+    const { sub, mid, mandateHash } = await signed();
+    await saveBuyer(sub);
+    let authorizationId: string | undefined;
+    try {
+      const held = await hold(sub, mid);
+      expect(held.status, JSON.stringify(held.body)).toBe(200);
+      expect(held.body).toMatchObject({ state: "HOLD_PENDING", approved: true });
+      const orderId = held.body.orderId as string;
+      expect((await row(mid))?.paypalVaultId).toEqual(expect.any(String));
+      // The same order while it waits, still approved.
+      expect((await hold(sub, mid)).body).toMatchObject({ orderId, approved: true });
+
+      const done = await authorize(sub, mid, orderId);
+      expect(done.status, JSON.stringify(done.body)).toBe(200);
+      expect(done.body.state).toBe("ACTIVE");
+      authorizationId = done.body.authorizationId as string;
+      const auth = await call(paypal.paypal.payments.getAuthorizedPayment({ authorizationId }));
+      expect(auth.customId).toBe(holdCustomId("s", mid, mandateHash));
+      expect(auth.amount).toMatchObject({
+        currencyCode: "USD",
+        value: toPayPalValue({ currency: "USD", minor: BUDGET }),
+      });
+      expect((await row(mid))?.state).toBe("ACTIVE");
+    } finally {
+      await release(authorizationId);
+    }
   });
 
   test("another user's mandate does not exist for them", async () => {

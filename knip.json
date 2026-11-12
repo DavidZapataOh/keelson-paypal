@@ -2,24 +2,11 @@
   "$schema": "https://unpkg.com/knip@6/schema.json",
   "ignore": ["contracts/**", "packages/sdk-python/**"],
   "workspaces": {
-    "apps/store": {
-      "entry": ["src/server.ts!", "public/checkout.js!", "bench/*.bench.ts"],
-      "project": ["src/**/*.ts!", "public/**/*.js!", "test/**/*.ts", "bench/**/*.ts"]
-    },
-    "apps/verify": {
-      "entry": ["src/main.tsx!", "vite.config.ts", "vitest.config.ts", "bench/*.bench.ts"],
-      "project": ["src/**/*.{ts,tsx}!", "test/**/*.ts", "bench/**/*.ts"],
-      "ignoreDependencies": ["@keelson/ui"]
-    },
-    "apps/web": {
-      "entry": [
-        "app/**/{page,layout}.tsx!",
-        "next.config.ts",
-        "postcss.config.mjs",
-        "vitest.config.ts",
-        "csp.ts!"
-      ],
-      "project": ["app/**/*.tsx!", "components/**/*.tsx!", "lib/**/*.ts!", "test/**/*.ts"]
+    "apps/docs": {
+      "entry": ["scripts/data.mjs!", "astro.config.mjs!", "markdoc.config.mjs!", "test/**/*.ts"],
+      "project": ["src/**/*.{ts,astro}!", "scripts/**/*.mjs!", "test/**/*.ts"],
+      "ignoreUnresolved": ["/pagefind/pagefind.js"],
+      "ignoreDependencies": ["@astrojs/markdoc"]
     },
     "engine/tee": {
       "entry": ["scripts/*.ts!"],
@@ -47,10 +34,6 @@
     "packages/compiler": {
       "entry": ["src/index.ts!", "eval/run.ts"],
       "project": ["src/**/*.ts!", "eval/**/*.ts", "test/**/*.ts"]
-    },
-    "packages/context": {
-      "entry": ["src/index.ts!", "src/stdio.ts!", "scripts/*.ts"],
-      "project": ["src/**/*.ts!", "scripts/**/*.ts", "test/**/*.ts"]
     },
     "packages/core": {
       "entry": [
@@ -100,13 +83,13 @@
       "entry": ["src/index.ts!", "bench/*.bench.ts"],
       "project": ["src/**/*.ts!", "bench/**/*.ts", "test/**/*.ts"]
     },
-    "packages/sdk": {
-      "entry": ["src/index.ts!", "src/cli.ts!", "src/adapters/*.ts!", "scripts/*.ts", "examples/*"],
-      "project": ["src/**/*.ts!", "scripts/**/*.ts", "test/**/*.ts", "examples/**"]
-    },
     "packages/timestamp": {
       "entry": ["src/index.ts!", "scripts/*.ts", "bench/*.bench.ts"],
       "project": ["src/**/*.ts!", "scripts/**/*.ts", "bench/**/*.ts", "test/**/*.ts"]
+    },
+    "apps/store": {
+      "entry": ["src/server.ts!", "public/checkout.js!", "bench/*.bench.ts"],
+      "project": ["src/**/*.ts!", "public/**/*.js!", "test/**/*.ts", "bench/**/*.ts"]
     },
     "packages/ui": {
       "entry": [
@@ -118,17 +101,32 @@
       ],
       "project": ["src/**/*.{ts,tsx}!", "test/**/*.{ts,tsx}"]
     },
-    "packages/verify": {
-      "entry": ["src/index.ts!", "src/cli.ts!"],
-      "project": ["src/**/*.ts!", "test/**/*.ts"]
+    "apps/verify": {
+      "entry": ["src/main.tsx!", "vite.config.ts", "vitest.config.ts", "bench/*.bench.ts"],
+      "project": ["src/**/*.{ts,tsx}!", "test/**/*.ts", "bench/**/*.ts"],
+      "ignoreDependencies": ["@keelson/ui"]
+    },
+    "apps/web": {
+      "entry": [
+        "app/**/{page,layout}.tsx!",
+        "next.config.ts",
+        "postcss.config.mjs",
+        "vitest.config.ts",
+        "csp.ts!"
+      ],
+      "project": ["app/**/*.tsx!", "components/**/*.tsx!", "lib/**/*.ts!", "test/**/*.ts"]
+    },
+    "services/api": {
+      "entry": ["src/server.ts!", "src/workflows.ts!", "scripts/*.ts", "bench/*.bench.ts"],
+      "project": ["src/**/*.ts!", "scripts/**/*.ts", "bench/**/*.ts", "test/**/*.ts"]
     },
     "services/agent": {
       "entry": ["src/index.ts!", "scripts/*.ts"],
       "project": ["src/**/*.ts!", "scripts/**/*.ts", "test/**/*.ts"]
     },
-    "services/api": {
-      "entry": ["src/server.ts!", "src/workflows.ts!", "scripts/*.ts", "bench/*.bench.ts"],
-      "project": ["src/**/*.ts!", "scripts/**/*.ts", "bench/**/*.ts", "test/**/*.ts"]
+    "services/redteam": {
+      "entry": ["src/index.ts!"],
+      "project": ["src/**/*.ts!", "test/**/*.ts"]
     },
     "services/mcp": {
       "entry": ["src/index.ts!", "src/stdio.ts!", "view/alibi.ts!", "scripts/*.ts"],
@@ -138,12 +136,20 @@
       "entry": [".railway/railway.ts", "scripts/*.ts", "test/**/*.test.ts", "web/app.js"],
       "project": ["scripts/**/*.ts", "test/**/*.ts", "web/**/*.js"]
     },
-    "services/redteam": {
-      "entry": ["src/index.ts!"],
-      "project": ["src/**/*.ts!", "test/**/*.ts"]
-    },
     "services/witness": {
       "entry": [".railway/railway.ts"]
+    },
+    "packages/sdk": {
+      "entry": ["src/index.ts!", "src/cli.ts!", "src/adapters/*.ts!", "scripts/*.ts", "examples/*"],
+      "project": ["src/**/*.ts!", "scripts/**/*.ts", "test/**/*.ts", "examples/**"]
+    },
+    "packages/verify": {
+      "entry": ["src/index.ts!", "src/cli.ts!"],
+      "project": ["src/**/*.ts!", "test/**/*.ts"]
+    },
+    "packages/context": {
+      "entry": ["src/index.ts!", "src/stdio.ts!", "scripts/*.ts"],
+      "project": ["src/**/*.ts!", "scripts/**/*.ts", "test/**/*.ts"]
     }
   }
 }

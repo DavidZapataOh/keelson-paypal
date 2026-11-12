@@ -66,6 +66,8 @@ export const mandates = pgTable(
       .default("mandate"),
     /** The original authorization; a void must target it, never a reauthorization. */
     paypalParentAuthorizationId: text().unique("mandates_paypal_parent_authorization_id_unique"),
+    /** The saved PayPal the hold was authorized with, when it was not approved in a PayPal popup. */
+    paypalVaultId: text(),
     /** The parent authorization's `create_time`. */
     authorizedAt: timestamp({ withTimezone: true }),
     reauthorizedAt: timestamp({ withTimezone: true }),

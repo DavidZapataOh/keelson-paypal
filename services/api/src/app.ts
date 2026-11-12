@@ -71,6 +71,7 @@ import { registerObservations } from "./routes/observations.ts";
 import { registerOperatorConsole } from "./routes/operator-console.ts";
 import { registerOperators } from "./routes/operators.ts";
 import { registerPasskeys } from "./routes/passkeys.ts";
+import { registerPayPalWallet } from "./routes/paypal-wallet.ts";
 import { registerPayPalWebhook } from "./routes/paypal-webhook.ts";
 import { registerPurchaseHolds } from "./routes/purchase-holds.ts";
 import { registerPurchaseTracking } from "./routes/purchase-tracking.ts";
@@ -102,6 +103,9 @@ const STREAMED_POSTS =
 const PUBLIC_READS =
   /^\/v1\/(alibis\/[0-7][0-9A-HJKMNP-TV-Z]{25}|alibis\/[^/]+\/receipt|timestamps\/[^/]+|anonymous-mandates\/[^/]+|anonymous-purchases\/[^/]+|engine-proofs\/[^/]+|user-set\/roots\/[^/]+)$/;
 
+/** Public operations beyond PUBLIC_READS that the documentation's try-it calls. */
+const DOCS_CALLS = /^\/v1\/(live-purchases|log\/bonds|alibis\/verify)$/;
+
 export interface Deps {
   db: Db;
   kv: RedisClientType;
@@ -130,6 +134,8 @@ export interface Deps {
   hostedCaps?: HostedCaps;
   /** Browser origin of the public verifier, allowed to read public Alibis, receipts and timestamps without credentials. */
   verifyOrigin?: string;
+  /** Browser origin of the documentation, whose try-it calls the operations anyone may call, without credentials. */
+  docsOrigin?: string;
   /** Reads the anchor and signer registry for `POST /v1/alibis/verify`; it verifies offline without it. */
   alibiChain?: ChainReader;
   /** WebAuthn RP ID that mandate signatures must be scoped to; defaults to `keelson.finance`. */
@@ -299,10 +305,32 @@ export function createApp(deps: Deps): OpenAPIHono {
   const receiptCors = deps.verifyOrigin
     ? cors({ origin: deps.verifyOrigin, allowMethods: ["GET"], allowHeaders: ["accept"] })
     : undefined;
-  // The app's status page reads the dependency report.
-  if (appCors) app.use("/status", appCors);
-  if (appCors || receiptCors) {
+  // The documentation's try-it calls only operations that need no credentials.
+  const docsCors = deps.docsOrigin
+    ? cors({
+        origin: deps.docsOrigin,
+        allowMethods: ["GET", "POST"],
+        allowHeaders: ["content-type", "idempotency-key", "accept"],
+      })
+    : undefined;
+  const fromDocs = (c: Context) =>
+    docsCors !== undefined && c.req.header("origin") === deps.docsOrigin;
+  // The app's status page reads the dependency report, and so does the documentation.
+  if (appCors || docsCors) {
+    app.use("/status", (c, next) => {
+      if (docsCors && fromDocs(c)) return docsCors(c, next);
+      return appCors ? appCors(c, next) : next();
+    });
+  }
+  if (appCors || receiptCors || docsCors) {
     app.use("/v1/*", (c, next) => {
+      if (
+        docsCors &&
+        fromDocs(c) &&
+        (PUBLIC_READS.test(c.req.path) || DOCS_CALLS.test(c.req.path))
+      ) {
+        return docsCors(c, next);
+      }
       if (
         receiptCors &&
         c.req.header("origin") === deps.verifyOrigin &&
@@ -391,6 +419,7 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerEvents(app, deps);
   registerMandates(app, deps);
   registerHold(app, deps);
+  registerPayPalWallet(app, deps);
   registerPurchaseHolds(app, deps);
   registerRevoke(app, deps);
   registerConnections(app, deps);

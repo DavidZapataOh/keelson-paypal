@@ -1,8 +1,13 @@
+import { timings } from "./server-timing.ts";
 import { startTelemetry } from "./tracing.ts";
 
-if (process.env.OTEL_EXPORTER_OTLP_ENDPOINT || process.env.OTEL_TRACES_EXPORTER) {
-  const sdk = await startTelemetry();
-  process.once("SIGTERM", () => {
-    void sdk.shutdown();
-  });
-}
+// With an OTLP exporter configured, spans go there; otherwise they only time each purchase's
+// steps for `Server-Timing`.
+const sdk = await startTelemetry(
+  process.env.OTEL_EXPORTER_OTLP_ENDPOINT || process.env.OTEL_TRACES_EXPORTER
+    ? {}
+    : { spanProcessors: [timings] },
+);
+process.once("SIGTERM", () => {
+  void sdk.shutdown();
+});

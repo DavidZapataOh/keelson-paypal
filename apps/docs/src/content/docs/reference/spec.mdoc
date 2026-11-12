@@ -1,0 +1,216 @@
+---
+title: Specification
+description: What Keelson signs, logs and enforces, stated as requirements.
+section: Reference
+order: 1
+---
+
+Version 1.0.0, 2026-11-12.
+
+This specification states what Keelson signs, logs and enforces. It describes the deployed system and marks the one part still being built. Each section names the component that implements it; that component's README is the detailed reference. A **mandate** is what the user allows an agent to buy. A **countersign** is the TEE legs' signed decision on one cart. An **Alibi** is the verifiable record of that decision. A **verdict** is the TEE legs' signed attribution of a dispute.
+
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "SHOULD NOT", "RECOMMENDED", "NOT RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be interpreted as described in BCP 14 [RFC 2119] [RFC 8174] when, and only when, they appear in all capitals, as shown here.
+
+## 1. Primitives
+
+| Primitive | Definition | Implemented in | Test vectors |
+| --- | --- | --- | --- |
+| Canonical JSON | RFC 8785 (JCS) | `packages/core/src/jcs.ts`, `engine/core` | `packages/core/test/vectors/jcs-raw.json` |
+| Domain-separated hash | `H(dst, v) = SHA-256(utf8(dst) ‖ 0x00 ‖ utf8(JCS(v)))`, with `dst` one of `keelson/mandate/v1`, `keelson/mandate-challenge/v1`, `keelson/cart/v1`, `keelson/evidence-item/v1`, `keelson/eval/v1`, `keelson/alibi/v1`, `keelson/verdict/v1` | `packages/core/src/hash.ts` (`hashObject`) | `packages/core/test/vectors/hash.json`, `packages/core/test/vectors/cart-hash.json` |
+| Identifiers | ULID (26 Crockford base32 characters) | `packages/core/src/ulid.ts` | none; covered by `packages/core/test/ulid.test.ts` |
+| Money | Integer minor units and an ISO 4217 code | `packages/core/src/money.ts` | `packages/core/test/vectors/money.json` |
+| ZK-friendly hash | Poseidon2 over BN254 | `packages/core/src/poseidon2.ts`, the Noir circuits | `packages/core/test/vectors/poseidon2.json`, `packages/core/test/vectors/field-from-ascii.json` |
+| Typed signatures | EIP-712, domain `{Keelson, 1, chainId, VerdictVerifier}` for TEE messages | `packages/core/src/eip712.ts` | `packages/core/test/vectors/eip712.json`, `packages/core/test/vectors/countersign.json`, `packages/core/test/vectors/report-data.json` |
+
+The TypeScript and Rust implementations MUST produce the same output for every vector in `packages/core/test/vectors`.
+
+## 2. Mandate
+
+A mandate is a `keelson.mandate.1` JSON payload, defined by the schema in [`packages/mandate/src/schema.ts`](https://github.com/DavidZapataOh/keelson-paypal/tree/main/packages/mandate/src/schema.ts). A verifier MUST reject a payload that has an unknown key or an unknown constraint type, a string that contains a Unicode control (Cc) or format (Cf) character, or a lifetime (`exp − iat`) longer than 30 days.
+
+| Member | Meaning |
+| --- | --- |
+| `mid`, `iat`, `nbf`, `exp`, `nonce` | Identity and validity window |
+| `mode` | `immediate` or `autonomous` |
+| `user` | The user's `sub` and the passkey credential (`cred`: id, RP ID, P-256 JWK) |
+| `agent` | The operator's ERC-8004 registry and `agent_id`, the agent's confirmation key (`cnf`), and the bond (vault, asset, minimum) |
+| `payment` | `rail` (`paypal` or `card`), currency, and constraints: `payment.amount_range`, `payment.budget`, `payment.allowed_payees`, `payment.execution_date`, `payment.card_controls` |
+| `checkout` | Constraints: `checkout.allowed_merchants`, `checkout.line_items`, `keelson.category` (Google Product Taxonomy ids), `keelson.attributes`, `keelson.returns` |
+| `intent` | The prompt's summary and hash, and the subjective wishes no machine can check |
+| `policy` | Engine, version, `policy_set_hash` and the allowed TEE measurements |
+| `consent` | Terms hash and the user's acknowledgements |
+| `zk.commitment` | `C_m`, the Poseidon2 commitment to the mandate's checkable fields |
+| `embed` | Present when signed inside a framed approval: the top-level origin the passkey assertion must name |
+
+**Selective disclosure.** The payload is issued as SD-JWT (RFC 9901), so an Alibi can show an arbiter one field without the others.
+
+**Signing.** Let `H_sd = H("keelson/mandate/v1", payload_SD)`. The passkey challenge MUST be `M = SHA-256("keelson/mandate-challenge/v1" ‖ 0x00 ‖ H_sd ‖ C_m)`. The user signs `M` with a WebAuthn passkey on the RP ID `keelson.finance`, through Secure Payment Confirmation where the browser supports it. What the user signs MUST be the card rendered from the payload, never a model's summary of it. When `embed` is present, the assertion MUST name that top-level origin.
+
+**Field colors.** Each field of the card says who answers for it:
+
+| Color | Fields | Who answers |
+| --- | --- | --- |
+| Green | agent, cart sanity, currency, total, budget, merchant, deadline, quantity | Keelson checks it; the warranty pays when it was wrong |
+| Amber | category, variant, return policy | The operator attests it; its bond pays when it was wrong |
+| Gray | subjective wishes, fields the drafting models disagree on | Only the user can judge it |
+
+Evidence MAY raise a field's color: a merchant-signed checkout, or a zkTLS proof of the field.
+
+**Compilation.** [`packages/compiler`](https://github.com/DavidZapataOh/keelson-paypal/tree/main/packages/compiler) turns a natural-language request into a mandate. Two models draft it independently. The merge MUST NOT be wider than either draft, and a field the drafts disagree on MUST be shown gray. A third model checks the card against the request. Nothing a model returns is signed without the user's passkey.
+
+## 3. Policy
+
+Mandate rules are a Cedar policy set, in [`engine/policy`](https://github.com/DavidZapataOh/keelson-paypal/tree/main/engine/policy). The evaluator MUST fail closed: an error is a DENY. Every decision records a `keelson.eval/1` trace whose hash is `evalHash`. Extras a user adds MUST compile only to `forbid`, so they can narrow a mandate and never widen it.
+
+`cedar-policy-symcc` proves that the policy set states the rules in `engine/policy/policy/spec.cedar`. The proof bundle is committed, checked for freshness in CI and attested on `main`. The WebAssembly evaluator in `packages/policy` is pinned byte for byte to the Rust one by a parity job.
+
+## 4. Countersign
+
+The engine runs in two TEE legs built from one reproducible image, in [`engine/tee`](https://github.com/DavidZapataOh/keelson-paypal/tree/main/engine/tee):
+
+- **Leg A**, Intel TDX on Phala Cloud, holds the KMS root, issues credentials, keeps the budget ledger, reads PayPal and produces the `Observation` of each countersign.
+- **Leg B**, an AWS Nitro Enclave with no network and no KMS root, verifies everything again and countersigns over leg A's `Observation`. Leg B MUST NOT trust leg A's decision; it re-evaluates the request itself.
+
+Each leg MUST sign every decision, ALLOW or DENY, with a secp256k1 key generated in RAM at boot. The signed message is the EIP-712 `Countersign`:
+
+```
+Countersign(bytes32 requestId, bytes32 mandateHash, bytes32 mandateCommitment, bytes32 cartHash,
+            uint256 agentId, bytes32 merchantId, uint64 amount, uint16 currency, uint8 category,
+            bytes32 evidenceRoot, bytes32 evalHash, bytes32 policySetHash, uint8 decision,
+            uint32 failedFieldsMask, uint40 issuedAt, uint40 expiresAt)
+```
+
+`failedFieldsMask` is pinned by `packages/core/test/vectors/failed-fields-mask.json`.
+
+**Idempotence.** A request id is answered once per mandate. Retrying the same input MUST return the same countersign, and any other input under that id, including the same id on another mandate, MUST fail with `replay` ([`engine/tee/src/budget.rs`](https://github.com/DavidZapataOh/keelson-paypal/tree/main/engine/tee/src/budget.rs)).
+
+**Budget.** Leg A's available budget is `max − captured − live reservations`, with `captured` taken from its own PayPal read. Leg A MUST NOT ALLOW a cart whose total exceeds it.
+
+**Two of two.** A purchase is countersigned by both legs. When leg B is unreachable, leg A MAY sign alone; every artifact of that purchase MUST then say `degraded`. On chain, a degraded result waits a longer veto window (`DEGRADED_WINDOW`, 72 hours, in `contracts/src/KeelsonBondVault.sol`). Vectors: `packages/core/test/vectors/countersign-2of2.json`, `packages/core/test/vectors/countersign-degraded.json`.
+
+**Attestation binding.** Each leg's attestation MUST carry
+
+```
+report_data = keccak256(abi.encode(keccak256("KEELSON_TEE_SIGNER_V1"), chainid, bondVault, teeKind,
+              signer, policySetHash, engineBuildId, bootEpoch, issuerJwkThumbprint)) ‖ blockHash
+```
+
+with `blockHash` from a recent Arbitrum block ([`engine/tee/src/report_data.rs`](https://github.com/DavidZapataOh/keelson-paypal/tree/main/engine/tee/src/report_data.rs)). `VerdictVerifier` MUST register a signer only from such an attestation, under an allowed measurement, and only for 72 hours (`SIGNER_TTL` in `contracts/src/VerdictVerifier.sol`).
+
+## 5. Evidence
+
+What the agent saw is sealed item by item, in [`packages/evidence`](https://github.com/DavidZapataOh/keelson-paypal/tree/main/packages/evidence): the product and cart data, what the model received, a DOM snapshot in `keelson-dom-v1`, the accessibility tree, a screenshot, MHTML, a normalized HAR, outside observations and the PayPal amount countersigned.
+
+Each item is a salted leaf (`keelson/evidence-item/v1`) of an RFC 6962 Merkle tree whose root is `evidenceRoot`, so one item can be shown without the others and an unrevealed item cannot be guessed from its hash. PII MUST be redacted from every public item; the originals are kept encrypted. A hidden-text detector records text a page hid from people but showed to the agent.
+
+Two kinds of outside testimony MAY be attached:
+
+- **Channel3**, a third party's live product data, compared field by field with what the agent saw. It is testimony, not proof.
+- **TLSNotary**: leg A notarizes a TLS session with the store's public product endpoint and signs a `WebFact` (`hostHash`, `urlPathHash`, `tCapture`, `rangeCommitment`, `attId`). TLSNotary is alpha software.
+
+## 6. Alibi
+
+An Alibi is the bundle that lets anyone check a purchase without trusting Keelson. It is built by [`packages/alibi`](https://github.com/DavidZapataOh/keelson-paypal/tree/main/packages/alibi) and checked by [`apps/verify`](https://github.com/DavidZapataOh/keelson-paypal/tree/main/apps/verify). It holds the log leaf, its inclusion proof, the on-chain anchor, both TEE attestations and signatures, the selectively disclosed mandate, the evidence manifest, the evaluation trace, optional ZK proofs, card records and PayPal references. It is served as JSON, as a `.alibi` file, and as a PDF with the file embedded and a QR link to `verify.keelson.finance`. The Alibi hash fields are pinned by `packages/core/test/vectors/alibi.json`.
+
+A verifier MUST check an Alibi against trust roots pinned in its code, never against roots the Alibi or a Keelson server supplies: the log keys and witness quorum, the TSA roots, Intel's and AWS's attestation roots, the allowed engine builds, and the contract addresses. The reference verifier runs in the browser and reads the chain once, in one Multicall. A verifier MUST NOT report an Alibi as valid when any check fails. Each check, with a command that runs it, is listed in [Verify every claim](/security/verify/).
+
+## 7. Transparency log
+
+Every countersign, ALLOW or DENY, MUST be a leaf of the public log in [`services/log`](https://github.com/DavidZapataOh/keelson-paypal/tree/main/services/log):
+
+```
+leaf      = "keelson.finance/alibi/v1\n" ‖ JCS(object)
+leaf_hash = SHA-256(0x00 ‖ leaf)
+```
+
+The object MUST hold hashes and ids only: `agent_id`, `alibi_id`, `cart_hash`, `countersign_digest`, `eval_hash`, `evidence_root`, `issued_at`, `mandate_commitment`, `mandate_hash`, `measurements`, `mode`, `paypal_ref_commit`, `policy_set_hash`, optional `prev_alibi_by_user`, and `tee_sigs`. A user's kill switch is logged as a `keelson.finance/stop/v1` leaf.
+
+| Property | How |
+| --- | --- |
+| Format | c2sp.org/tlog-tiles on Tessera |
+| Origins | `log.keelson.finance/alibi/2026-1` (Arbitrum Sepolia), `log.keelson.finance/alibi-live/2026-1` (Arbitrum One, not yet anchored) |
+| Log signatures | Ed25519 and ML-DSA-44 on every checkpoint. The Ed25519 key is derived inside leg A from the dstack KMS and never leaves it |
+| Witnesses | 2 of 3 Keelson-run witnesses on three providers cosign every published checkpoint |
+| External record | Checkpoints co-logged hourly in Sigsum's seasalp log, cosigned by at least two of the Glasklar, Mullvad and Tillitis witnesses |
+| Anchoring | `CheckpointAnchor` accepts a witnessed checkpoint signed by both TEE legs, with an RFC 6962 consistency proof from the previous anchor; at least hourly or every 1,000 leaves |
+| Equivocation | `LogBond.proveEquivocation(noteA, noteB)` slashes the log's PYUSD bond when two checkpoints signed by its key state different roots for one size, verified on chain with an Ed25519 verifier; 10% goes to the prover and the rest to `KeelsonReserve` |
+| Monitoring | A public monitor ([`services/monitor`](https://github.com/DavidZapataOh/keelson-paypal/tree/main/services/monitor)) checks signatures, quorum, consistency, every leaf's format and inclusion, and the Sigsum co-logging. Anyone can run it |
+
+## 8. PayPal
+
+PayPal is the rail. Keelson uses the Orders v2 and Payments v2 APIs with `intent: AUTHORIZE`, through [`packages/paypal`](https://github.com/DavidZapataOh/keelson-paypal/tree/main/packages/paypal) and [`services/api`](https://github.com/DavidZapataOh/keelson-paypal/tree/main/services/api):
+
+1. **Hold.** One `AUTHORIZE` order per mandate for its cap, approved with the JavaScript SDK v6, then authorized. A mandate on the PayPal rail that allows several merchants MUST instead hold each cart on its own (one order per cart), since one authorization pays one payee.
+2. **Capture.** Each countersigned ALLOW MUST be captured from the hold for exactly the countersigned total. `final_capture` MUST be true only for the capture that uses up the hold, or for a per-cart hold. `invoice_id` names the purchase, and `PayPal-Request-Id` MUST be derived from the countersign digest, so a retry cannot charge twice.
+3. **Close.** The remainder MUST be voided when the mandate ends. An authorization older than three days, the end of PayPal's honor period, is reauthorized.
+4. **Webhooks.** A webhook MUST be verified before it is used, and it only points at a resource: Keelson MUST act on an authenticated `GET` of that resource, never on the notification body.
+5. **Disputes** are read, evaluated and answered through the Disputes API (section 10).
+6. **Refunds and Payouts** MUST carry a verdict reference and a `PayPal-Request-Id` derived from it, so a retry is the same operation.
+
+The identifiers Keelson writes into PayPal objects (`custom_id`, `invoice_id`, `PayPal-Request-Id` and the references on refunds and payouts) are an open convention, specified in the [PayPal Agent Mandate Extension](/reference/ks1/).
+
+**Card rail.** A mandate with `payment.rail: card` holds the user's budget on PayPal, on Keelson's account, which pays the card network; merchants that take cards are paid through a single-use card. The card MUST be issued only after both legs ALLOW, MUST be capped at the countersigned total, and MUST be limited to the mandate's merchant category codes and country. Every authorization the card network sends MUST be checked again by both legs (`POST /v1/card/authorize`), and the settled charge is captured from the PayPal hold. See [card mandates](/concepts/how-it-works/).
+
+## 9. On chain
+
+Contracts are deployed on Arbitrum Sepolia from [`contracts`](https://github.com/DavidZapataOh/keelson-paypal/tree/main/contracts). They are unaudited.
+
+| Contract | Role |
+| --- | --- |
+| `VerdictVerifier` | Registers TEE signers from attestations (Automata DCAP for TDX, a Nitro validator) and verifies 2-of-2 and degraded signatures |
+| `KeelsonBondVault` | Holds each operator's PYUSD bond by ERC-8004 `agentId`, locks a coverage per purchase, and slashes on a verdict |
+| `KeelsonReserve` | ERC-4626 vault of premiums, which pays warranties when Keelson is at fault |
+| `CheckpointAnchor` | Anchors witnessed checkpoints, enforcing consistency |
+| `LogBond` | Puts PYUSD behind the log's key |
+| `MandateViolationCourt`, `AmberContradictionCourt`, `ViolationBondPool` | Convictions from ZK proofs, without the TEEs |
+| ZK verifiers | UltraHonk verifiers for C1, C2a, C2b, C3 and C1+C3, each with a reference build |
+| `RegisteredUserSet` | Roots of the registered-user tree, for C3 |
+| `KeelsonReputationReporter`, `KeelsonValidationRegistry` | ERC-8004 reputation and validation records |
+
+**Governance.** A timelock (5 minutes on testnets, 48 hours on Arbitrum One) is the only admin of the access manager. A 2-of-3 guardian Safe can cancel timelock operations, veto slashes and revoke signers. A relayer pays gas, so operators, merchants and buyers never hold ETH.
+
+## 10. Disputes and attribution
+
+A PayPal dispute is attributed by an ordered decision list compiled to Cedar, with symcc proofs that it is total, exclusive and reachable ([`engine/policy`](https://github.com/DavidZapataOh/keelson-paypal/tree/main/engine/policy)). Attribution fails closed.
+
+| Party at fault | Rules | Consequence |
+| --- | --- | --- |
+| Operator | R00 (a proof fails), R31 (double capture), R61 (amber field failed) | Bond slashed |
+| Keelson | R30 (single-use mandate countersigned twice), R60 (green field failed) | Reserve pays the warranty |
+| Merchant | R11, R21, R35, R40, R50 | Evidence to PayPal |
+| User | R10, R20, R32, R62, R70 | Evidence to PayPal |
+
+Both TEE legs sign the EIP-712 `Verdict`:
+
+```
+Verdict(bytes32 disputeId, bytes32 coverageId, uint256 agentId, address payee, uint96 amount,
+        uint8 ruleId, uint8 liable, uint8 fieldId, bytes32 evidenceHash, bytes32 inputsHash,
+        bytes32 policySetHash, bytes32 checkpointRoot, uint40 issuedAt, uint40 deadline)
+```
+
+`disputeId = keccak256(paypalDisputeId ‖ coverageId)` is a nullifier: a verdict MUST NOT be applied twice for one `disputeId`. A merchant is settled in PYUSD on chain or by PayPal Payout, as it chooses. PayPal adjudicates the dispute; the verdict decides the evidence, the slash and the warranty.
+
+## 11. Zero-knowledge circuits
+
+Noir circuits proved with Barretenberg UltraHonk, in [`circuits`](https://github.com/DavidZapataOh/keelson-paypal/tree/main/circuits):
+
+| Circuit | Statement | Status |
+| --- | --- | --- |
+| C1 `mandate_predicate` (`circuits/c1`) | The countersigned cart satisfies the mandate `C_m` commits to, without revealing it | Proved inside leg A for an ALLOW; verifier on chain |
+| C2a `mandate_violation` (`circuits/c2a`) | A countersigned cart violates its mandate (amount, currency, category, expiry, merchant non-membership) | `MandateViolationCourt` on chain |
+| C2b `amber_contradiction` (`circuits/c2b`) | A notarized TLS response contradicts an amber field the operator attested | `AmberContradictionCourt` on chain |
+| C3 `anonymous_mandate` (`circuits/c3`) | A registered user's passkey signed the mandate, without revealing which user | Proved by the API; verifier on chain |
+| C1+C3 `anonymous_purchase` (`circuits/c1c3`) | C1 and C3 composed by recursion in one proof | Proved by the API; verifier on chain |
+| SP1 engine proof (`engine/zkvm`) | The engine's evaluation of a disputed purchase produced the countersigned digest | In progress |
+
+## 12. Agents
+
+Agents reach Keelson over REST or MCP (`https://api.keelson.finance/mcp`, Streamable HTTP), an OAuth 2.1 protected resource ([`services/mcp`](https://github.com/DavidZapataOh/keelson-paypal/tree/main/services/mcp)). An operator's agent uses client credentials and closes mandates with its own key. A host acting for a user uses the authorization code grant with PKCE and MUST buy only under mandates the user approved for it. The kill switch, per-host disconnects, and push and email alerts are described in [how it works](/concepts/how-it-works/). The OpenAPI document is in [`openapi`](https://github.com/DavidZapataOh/keelson-paypal/tree/main/openapi).
+
+## 13. Risk
+
+Every operator has a trust grade, a premium and a minimum bond, set by the red team's results and its own record (`GET /v1/operators/{agentId}/grade`). The risk model is described in [`services/api/README.md`](https://github.com/DavidZapataOh/keelson-paypal/tree/main/services/api/README.md).
+
+## 14. Limits
+
+What Keelson does not protect against is stated in the [threat model](/security/threat-model/).

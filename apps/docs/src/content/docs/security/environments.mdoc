@@ -1,0 +1,70 @@
+---
+title: Real or sandbox
+description: Which dependency runs in production, which runs in a provider's sandbox or testnet, and how to check each.
+section: Security
+order: 3
+---
+
+Keelson runs in production on real infrastructure, but money only moves in its providers' own test environments. Nothing in the product is simulated or mocked: the TEE quotes are real Intel TDX and AWS Nitro attestations, the log is a public transparency log with external witnesses, and PayPal, the card issuer and the chain are their providers' sandboxes and testnets.
+
+## By dependency {% #by-dependency %}
+
+| Dependency | Environment | What that means | Check |
+| --- | --- | --- | --- |
+| PayPal (Orders, Payments, Disputes, Webhooks, Payouts) | Sandbox | Holds, captures, disputes and payouts are real API calls against `api-m.sandbox.paypal.com`. No real money moves. | [PayPal environment](#env-paypal-sandbox) |
+| Demo merchant (RunFast, `store.keelson.finance`) | Ours, PayPal sandbox checkout | A real store Keelson operates, with a PayPal sandbox business account and the PayPal JavaScript SDK v6. Disputes and attacks run against it. | [Buy a pair](https://store.keelson.finance) |
+| Card rail (card mandates) | Sandbox | The budget is held on PayPal's sandbox. The single-use card is issued by Lithic's sandbox, which also plays the card network. | [Card purchases on record](#env-live-purchases) |
+| TEE leg A, Intel TDX on Phala Cloud | Production hardware | Real TDX quotes, checked against Intel's collateral. | [Leg A](/security/verify/#leg-a-tdx) |
+| TEE leg B, AWS Nitro Enclave | Production hardware | Real Nitro attestation documents, signed by AWS's root. | [Leg B](/security/verify/#leg-b-nitro) |
+| Alibi log (`log.keelson.finance`) | Production | A public C2SP tlog-tiles log. The sandbox origin holds every Alibi; the live origin is reserved for Arbitrum One. | [The log's checkpoint](/security/verify/#log-checkpoint) |
+| Witnesses (`witness-1..3.keelson.finance`) | Production | Three witnesses Keelson operates on three providers. They are not independent of Keelson. | [Witnesses](/security/verify/#witnesses) |
+| Sigsum (seasalp log and its witnesses) | Production | Every checkpoint is co-logged in a public log Keelson does not run. | [Sigsum](/security/verify/#sigsum) |
+| Monitor | Production | A public monitor Keelson operates on a separate provider. Anyone can run the same binary. | [The public monitor](/security/verify/#monitor) |
+| Contracts (bond vault, reserve, verifiers, courts, anchor, log bond) | Arbitrum Sepolia testnet, test PYUSD | Deployed and source-verified. Arbitrum One has a registry entry and fork tests and is not deployed. | [Contracts](/security/verify/#contracts) |
+| On-chain anchor | Arbitrum Sepolia testnet | Witnessed checkpoints are anchored with both TEE legs' signatures. | [On-chain anchor](/security/verify/#anchor) |
+| ERC-8004 registries | Arbitrum Sepolia, official v2.0.0 registries | Bonds are keyed by the agent's id in the official Identity registry. | [packages/erc8004](https://github.com/DavidZapataOh/keelson-paypal/tree/main/packages/erc8004#readme) |
+| Claude (Anthropic API) | Production | The mandate compiler, the shopping agent and the red team call the real API. | [The shopping agent](https://github.com/DavidZapataOh/keelson-paypal/tree/main/services/agent) |
+| Agent browser (Kernel) | Production | The shopping agent drives a real hosted Chromium. | [The shopping agent](https://github.com/DavidZapataOh/keelson-paypal/tree/main/services/agent) |
+| Channel3 | Production | A third party's live product data, compared field by field with what the agent saw. It is a third party's testimony, not a cryptographic proof. | [Channel3 observation](https://github.com/DavidZapataOh/keelson-paypal/tree/main/services/api#channel3-observation) |
+| TLSNotary (`tlsn` 0.1.0-alpha.15) | Production, alpha software | Leg A is the notary. TLSNotary itself is alpha. | [engine/tlsn](https://github.com/DavidZapataOh/keelson-paypal/tree/main/engine/tlsn#readme) |
+| RFC 3161 timestamps | Production TSAs | Public timestamp authorities date each Alibi. | [packages/timestamp](https://github.com/DavidZapataOh/keelson-paypal/tree/main/packages/timestamp#readme) |
+| Proof generation (Noir, UltraHonk) | Production | C1 is proved inside leg A; C3 and C1+C3 by the API's workflows. Proofs verify on Arbitrum Sepolia. | [Zero-knowledge verifiers](/security/verify/#zk-verifiers) |
+| Engine proof (SP1, Succinct Prover Network) | Production prover network, verified on Arbitrum Sepolia | A Groth16 proof that the engine's evaluation of a disputed purchase gives the digest both TEE legs signed, verified by `EngineProofVerifier`. | [engine/zkvm](https://github.com/DavidZapataOh/keelson-paypal/tree/main/engine/zkvm#readme) |
+| Live purchases at real stores | Real stores | The shopping agent's purchases outside the demo store, countersigned and logged, never covered. Only blocked carts are on record so far. | [Live purchases](#env-live-purchases) |
+
+## PayPal environment {% #env-paypal-sandbox %}
+
+The API reports which PayPal environment it talks to.
+
+```sh {% check="env-paypal-sandbox" %}
+curl -s https://api.keelson.finance/status | jq -r .dependencies.paypal.environment
+# expect: ^sandbox$
+```
+
+## Two flows {% #two-flows %}
+
+Keelson has two flows, and they are kept apart.
+
+**Sandbox.** The demo store, RunFast, is ours and its merchant account is a PayPal sandbox account. This flow has everything: attacks, blocked purchases, PayPal sandbox disputes, signed verdicts, slashes of the operator's bond and warranty payouts. [Judge Mode](https://app.keelson.finance/judge) walks through it.
+
+**Live.** The shopping agent buys at real stores that accept PayPal and do not integrate Keelson. Its click on PayPal's final payment waits for Keelson's countersignature of the checkout total, and a cart that breaks the mandate is blocked before the click. When the store charges in another currency, the agent checks PayPal's conversion against a reference rate and the mandate's spread cap before the click. Keelson countersigns and logs these purchases and covers none of them; no dispute is ever opened against these stores. They are listed at [app.keelson.finance/live](https://app.keelson.finance/live) and by the API.
+
+On 11 November 2026 the live flow has two purchases on record, both blocked: carts at `www.alfred.com` through PayPal, for USD 5.90 each, denied with `paypal.insufficient`, so nothing was paid. No purchase paid at a real store is on record yet.
+
+The same list, `GET /v1/live-purchases`, also shows two card-rail purchases at Harbor Street Coffee (MCC 5814), for USD 14.50 each. Those are sandbox demonstrations of a card mandate: Harbor Street Coffee is a test merchant on the card issuer's sandbox, not a real store.
+
+## Live purchases {% #env-live-purchases %}
+
+Every live purchase, allowed or blocked, is public.
+
+```sh {% check="env-live-purchases" %}
+curl -s https://api.keelson.finance/v1/live-purchases | jq '.purchases | length'
+# expect: ^[1-9]
+```
+
+## Not live yet {% #not-live-yet %}
+
+These are not live:
+
+- **Arbitrum One.** The contracts have no Arbitrum One deployment, so the live log origin is not anchored there.
+- **The monitor's checks of TEE signatures and on-chain anchors.** Its report states both as `not-enabled`.

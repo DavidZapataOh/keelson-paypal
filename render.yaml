@@ -443,6 +443,44 @@ services:
 
   - type: web
     runtime: static
+    name: keelson-docs
+    buildCommand: npm install -g pnpm@12.16.1 && pnpm install --frozen-lockfile && pnpm turbo run build --filter=@keelson/docs...
+    envVars:
+      # The deployed build needs production's live values; without them it fails and the last deploy stays up.
+      - key: DOCS_REQUIRE_LIVE
+        value: "1"
+    staticPublishPath: ./apps/docs/dist
+    autoDeployTrigger: checksPass
+    buildFilter:
+      paths:
+        - apps/docs/**
+        - openapi/**
+        - packages/alibi/test/fixtures/**
+        - package.json
+        - pnpm-lock.yaml
+        - pnpm-workspace.yaml
+        - turbo.json
+        - tsconfig.base.json
+        - .node-version
+        - render.yaml
+    domains:
+      - docs.keelson.finance
+    headers:
+      - path: /_astro/*
+        name: Cache-Control
+        value: public, max-age=31536000, immutable
+      - path: /*
+        name: Content-Security-Policy
+        value: "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'sha256-t9d5n0J3QKZkc5LWCadf0iSNwTnHH5M809+Ztdao8rc='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://api.keelson.finance; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'"
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: no-referrer
+
+  - type: web
+    runtime: static
     name: keelson-web
     buildCommand: npm install -g pnpm@12.16.1 && pnpm install --frozen-lockfile && pnpm turbo run build --filter=@keelson/web
     staticPublishPath: ./apps/web/out
