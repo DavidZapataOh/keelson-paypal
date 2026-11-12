@@ -299,6 +299,9 @@ try {
       agent: agent && { outcome: agent.outcome, ms: agent.ms, usd: agent.usage.usd },
       checkout: run && {
         outcome: run.outcome,
+        // What the agent said the page showed, and where a checkout that did not pay ended.
+        note: run.note,
+        ...(run.stop ? { stop: run.stop } : {}),
         ms: run.ms,
         usd: run.usage.usd,
         refusedByGate: gate.refused,
@@ -341,6 +344,9 @@ try {
           recorded === 200 &&
           summary.alibi.status === 200 &&
           summary.alibi.listed;
+    if (run?.outcome === "declined") {
+      console.error(`declined: the store or PayPal declined the payment. ${run.note}`);
+    }
     if (!ok) process.exitCode = 1;
   } finally {
     await session.close();
