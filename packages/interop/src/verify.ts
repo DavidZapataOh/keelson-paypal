@@ -1,3 +1,4 @@
+import { receiptKeyMap } from "@keelson/log";
 import { type AcpExport, verifyAcp } from "./acp.ts";
 import { type Ap2Export, verifyAp2 } from "./ap2.ts";
 import type { StatementFacts } from "./facts.ts";
@@ -5,6 +6,7 @@ import { jwtPayload } from "./jose.ts";
 import type { EcPublicJwk } from "./signer.ts";
 import { type AlibiRef, StatementError, verifyStatement } from "./statement.ts";
 import { type TapExport, verifyTap } from "./tap.ts";
+import { EXPORT_ISSUER_KEYS } from "./trust.ts";
 import { type UcpExport, verifyUcp } from "./ucp.ts";
 import { type ViExport, verifyVi } from "./vi.ts";
 import { type EvidencePack, verifyEvidencePack } from "./visa.ts";
@@ -67,15 +69,20 @@ function issuerSigned(x: Artifact): string[] {
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
 /**
- * Verifies any Keelson export offline: the standard's own signatures and bindings under the pinned
- * issuer keys, the purchase's Transparent Statement and its receipt under the pinned log receipt
- * keys, and every fact the issuer signed against the statement's.
+ * Verifies any Keelson export offline: the standard's own signatures and bindings under the issuer
+ * keys, the purchase's Transparent Statement and its receipt under the log receipt keys, and every
+ * fact the issuer signed against the statement's. The keys default to the pinned ones.
  */
 export async function verifyExport(
   artifact: unknown,
-  o: { now: number; issuerKeys: EcPublicJwk[]; receiptKeys: ReadonlyMap<string, Uint8Array> },
+  opts: { now: number; issuerKeys?: EcPublicJwk[]; receiptKeys?: ReadonlyMap<string, Uint8Array> },
 ): Promise<ExportReport> {
   const started = performance.now();
+  const o = {
+    now: opts.now,
+    issuerKeys: opts.issuerKeys ?? EXPORT_ISSUER_KEYS,
+    receiptKeys: opts.receiptKeys ?? receiptKeyMap(),
+  };
   const x = artifact as Artifact;
   let base: ExportReport;
   switch (x?.type) {

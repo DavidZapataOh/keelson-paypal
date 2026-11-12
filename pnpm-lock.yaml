@@ -294,6 +294,9 @@ importers:
       '@keelson/chain':
         specifier: workspace:*
         version: link:../../packages/chain
+      '@keelson/interop':
+        specifier: workspace:*
+        version: link:../../packages/interop
       '@keelson/ui':
         specifier: workspace:*
         version: link:../../packages/ui
