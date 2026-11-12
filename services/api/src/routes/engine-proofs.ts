@@ -97,10 +97,13 @@ export function registerEngineProofs(app: OpenAPIHono, deps: Pick<Deps, "db">): 
     const digest = `0x${Buffer.from(row.digest).toString("hex")}`;
     const p = row.proof;
     // A paid request or proof is finished by the engine proof sweep's runs until it gives it up.
+    const running =
+      row.attemptedAt !== null && Date.now() - row.attemptedAt.getTime() < ENGINE_RUN_MS;
     const resumable =
-      (row.proved !== null || (row.request !== null && row.request !== REQUEST_CLAIM)) &&
-      (row.resumes < ENGINE_RESUMES ||
-        (row.attemptedAt !== null && Date.now() - row.attemptedAt.getTime() < ENGINE_RUN_MS));
+      ((row.proved !== null || (row.request !== null && row.request !== REQUEST_CLAIM)) &&
+        (row.resumes < ENGINE_RESUMES || running)) ||
+      // A first run still inside its claim, however late it started.
+      (row.request === REQUEST_CLAIM && running);
     const failed =
       !p &&
       !resumable &&

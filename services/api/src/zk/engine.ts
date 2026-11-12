@@ -192,25 +192,59 @@ async function executeInput(
   }
 }
 
+/**
+ * The Succinct Prover Network requester key, taken out of `process.env` on load so that only the
+ * prover's own process ever receives it, never a browser or another child of the workflow.
+ */
+const NETWORK_PRIVATE_KEY = process.env.NETWORK_PRIVATE_KEY;
+delete process.env.NETWORK_PRIVATE_KEY;
+
 /** What the prover needs from the workflow's environment: its other keys stay out of it. */
 function proverEnv(extra: Record<string, string> = {}): NodeJS.ProcessEnv {
-  if (!process.env.NETWORK_PRIVATE_KEY) throw new Error("NETWORK_PRIVATE_KEY is not set");
+  if (!NETWORK_PRIVATE_KEY) throw new Error("NETWORK_PRIVATE_KEY is not set");
   return {
     PATH: process.env.PATH,
     HOME: process.env.HOME,
     TMPDIR: process.env.TMPDIR,
-    NETWORK_PRIVATE_KEY: process.env.NETWORK_PRIVATE_KEY,
+    NETWORK_PRIVATE_KEY,
     RUST_LOG: "warn",
     ...extra,
   };
 }
 
 /**
+ * The network request id the prover's `request` printed, from the one stdout line that names it:
+ * the SP1 logger writes JSON lines to stdout too.
+ *
+ * @internal
+ */
+export function requestIdOf(stdout: string): Hex | undefined {
+  for (const line of stdout.split("\n")) {
+    if (!line.startsWith('{"request_id":')) continue;
+    try {
+      const id = (JSON.parse(line) as { request_id?: unknown }).request_id;
+      if (typeof id === "string" && /^0x[0-9a-f]{64}$/.test(id)) return id as Hex;
+    } catch {
+      // Not the prover's line.
+    }
+  }
+  return undefined;
+}
+
+/** How many times a paid request's id is written before it is left to the error log. */
+const STORE_ATTEMPTS = 3;
+
+/**
  * Requests a Groth16 proof of `input` from the Succinct Prover Network, paid by
  * `NETWORK_PRIVATE_KEY`, and stores the request on purchase `purchaseId` as soon as the prover
  * prints it, even when the prover then fails: a request it could not cancel may still be paid for.
  */
-async function requestProof(db: Db, purchaseId: string, input: CountersignInput): Promise<Hex> {
+async function requestProof(
+  db: Db,
+  log: Logger,
+  purchaseId: string,
+  input: CountersignInput,
+): Promise<Hex> {
   const dir = await mkdtemp(join(tmpdir(), "engine-request-"));
   try {
     const inputPath = join(dir, "input.json");
@@ -227,19 +261,40 @@ async function requestProof(db: Db, purchaseId: string, input: CountersignInput)
       failure = err;
       stdout = (err as { stdout?: string }).stdout ?? "";
     }
-    const line = stdout.split("\n").find((l) => l.startsWith("{"));
-    const requested = line ? (JSON.parse(line) as { request_id: Hex }) : undefined;
-    if (requested) {
-      await db
-        .update(purchases)
-        .set({ engineRequest: requested.request_id })
-        .where(eq(purchases.id, purchaseId));
-    }
+    const requestId = requestIdOf(stdout);
+    if (requestId) await storeRequest(db, log, purchaseId, requestId);
     if (failure) throw failure;
-    if (!requested) throw new Error("the engine prover printed no request");
-    return requested.request_id;
+    if (!requestId) throw new Error("the engine prover printed no request");
+    return requestId;
   } finally {
     await rm(dir, { recursive: true, force: true });
+  }
+}
+
+/**
+ * Stores paid request `requestId` on purchase `purchaseId`, retrying, and logs it as an error
+ * before giving up so that an operator can still store it and let the sweep wait for it.
+ */
+async function storeRequest(
+  db: Db,
+  log: Logger,
+  purchaseId: string,
+  requestId: Hex,
+): Promise<void> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await db
+        .update(purchases)
+        .set({ engineRequest: requestId })
+        .where(eq(purchases.id, purchaseId));
+      return;
+    } catch (err) {
+      if (attempt === STORE_ATTEMPTS) {
+        log.error({ err, purchaseId, requestId }, "paid engine proof request not stored");
+        throw err;
+      }
+      await new Promise((r) => setTimeout(r, 1_000 * attempt));
+    }
   }
 }
 
@@ -333,6 +388,8 @@ export async function proveEngine(
   // A proof paid for by an earlier run that did not get recorded is recorded, not bought again.
   let proved = existing?.proved?.vkey === ENGINE_PROVER.vkey ? existing.proved : undefined;
   if (proved) await attempted(db, purchaseId);
+  // Without the key nothing can be paid for, so the purchase is not claimed and stays startable.
+  if (!proved && !NETWORK_PRIVATE_KEY) throw new Error("NETWORK_PRIVATE_KEY is not set");
   if (!proved) {
     // The purchase is claimed before anything is paid, so two runs never both request a proof. A
     // run that finds a request waits for it again; one that finds a claim but no request stops,
@@ -354,7 +411,7 @@ export async function proveEngine(
         await releaseClaim(db, purchaseId);
         throw new Error(`purchase ${purchaseId}: its engine input does not give its countersign`);
       }
-      requestId = await requestProof(db, purchaseId, input);
+      requestId = await requestProof(db, log, purchaseId, input);
     } else {
       const [row] = await db
         .select({ request: purchases.engineRequest })

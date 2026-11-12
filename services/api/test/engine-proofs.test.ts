@@ -298,6 +298,24 @@ describe("engine proof sweep", () => {
     expect((await sweep()).stuck).not.toContain(paid);
   });
 
+  test("is proving while its first run holds a fresh claim past the hour", async () => {
+    const claimed = await stalled({
+      engineRequest: "requesting",
+      engineAttemptedAt: minutesAgo(5),
+    });
+    await testDb.insert(disputes).values({
+      id: `PP-D-${randomBytes(4).toString("hex")}`,
+      purchaseId: claimed,
+      reason: "UNAUTHORISED",
+      raw: {},
+      createdAt: new Date(Date.now() - 2 * 3_600_000),
+    });
+    const body = (await (await app.request(`/v1/engine-proofs/${claimed}`)).json()) as {
+      status: string;
+    };
+    expect(body.status).toBe("proving");
+  });
+
   test("is failed for a bare claim, and for a proof given up on", async () => {
     const claim = await stalled({ engineRequest: "requesting", engineAttemptedAt: minutesAgo(90) });
     const givenUp = await stalled({
