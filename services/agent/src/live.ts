@@ -33,6 +33,8 @@ export interface LiveStore {
   hosts: readonly string[];
   /** Hosts whose every page is a checkout page. */
   checkoutHosts: readonly string[];
+  /** The store's PayPal merchant id, as PayPal's orders name their payee. */
+  paypalMerchantId: string;
 }
 
 /** Shopify's `/products/<handle>.js`, the fields the quote reads. */
@@ -212,33 +214,127 @@ export function liveObservations(o: {
 const FINISH: Anthropic.Beta.BetaTool = {
   name: "finish",
   description:
-    "End the checkout. `paid` once the store shows its order confirmation; `blocked` when Keelson held a payment action; `stopped` when the checkout asks for anything you must not give or cannot be completed.",
+    "End the checkout. `paid` once the store shows its order confirmation; `declined` when the store or PayPal says the payment was declined or could not be processed; `blocked` when Keelson held a payment action; `stopped` when the checkout asks for anything you must not give or cannot be completed. In `note`, say what the page shows, with no name, email, address or number of the buyer's.",
   strict: true,
   input_schema: {
     type: "object",
     additionalProperties: false,
     required: ["status", "note"],
     properties: {
-      status: { type: "string", enum: ["paid", "blocked", "stopped"] },
+      status: { type: "string", enum: ["paid", "declined", "blocked", "stopped"] },
       note: { type: "string" },
     },
   },
 };
 
-const CHECKOUT_SYSTEM = `You complete the checkout of a cart a shopping agent already chose, in the buyer's browser. Buy exactly the cart you are given on the store: put it in the store's cart, go to the store's checkout and pay with PayPal. The buyer's PayPal account is already signed in in this browser. Never type passwords, card numbers, codes or personal details, never add anything to the cart, never change the quantity, and decline every offer to save PayPal, a card or the buyer's information, to pay in installments or to take credit. Keelson holds every action that pays until it has countersigned this cart: if an action is blocked, do not look for another way to pay; call finish with blocked. When the store shows the order confirmation, call finish with paid.`;
+const CHECKOUT_SYSTEM = `You complete the checkout of a cart a shopping agent already chose, in the buyer's browser. Buy exactly the cart you are given on the store: put it in the store's cart, go to the store's checkout and pay with PayPal. The buyer's PayPal account is already signed in in this browser. Never type passwords, card numbers, codes or personal details, never add anything to the cart, never change the quantity, and decline every offer to save PayPal, a card or the buyer's information, to pay in installments or to take credit. Keelson holds every action that pays until it has countersigned this cart: if an action is blocked, do not look for another way to pay; call finish with blocked. When the store shows the order confirmation, call finish with paid. If the store or PayPal says the payment was declined or could not be processed, do not try again or another way: call finish with declined.`;
 
 const MODEL = "claude-sonnet-5-5";
 const PRICE = [2, 10, 0.2, 2.5] as const;
 const MAX_TURNS = 30;
 
+/** How a checkout ended, as the model reports it and the page confirms it. */
+type Outcome = "paid" | "declined" | "blocked" | "stopped";
+
 export interface CheckoutRun {
-  outcome: "paid" | "blocked" | "stopped" | "turns-exhausted";
+  outcome: Outcome | "turns-exhausted";
+  /** What the model said the page showed, with emails and long numbers removed. */
   note: string;
+  /** The page where a checkout that did not pay ended, described without the buyer's details. */
+  stop?: StopPage;
   /** The total the payment was allowed for: the quote's, or the last one re-quoted. */
   total: CheckoutTotal;
   steps: Step[];
   usage: Usage;
   ms: number;
+}
+
+/**
+ * The page a checkout that did not pay ended on, as the log may keep it: whether it is a store's
+ * order confirmation, the alerts it shows (emails and long numbers removed), the labels of its
+ * required form fields and the names of its visible buttons. No field's value is read.
+ *
+ * @internal
+ */
+export interface StopPage {
+  confirmation: boolean;
+  alerts: string[];
+  required: string[];
+  buttons: string[];
+}
+
+/** A store's order confirmation: Shopify's `/thank-you` (or `/thank_you`) and `/orders/…`. */
+const CONFIRMATION = /\/(?:thank[-_]you|orders\/)/;
+
+/**
+ * `text` with emails and runs of 4 or more digits removed, on one line, at most 300 characters.
+ *
+ * @internal
+ */
+export function scrub(text: string): string {
+  return text
+    .replace(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g, "<email>")
+    .replace(/\d(?:[\d\s().-]*\d){3,}/g, "#")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 300);
+}
+
+/**
+ * Describes the page a checkout that did not pay ended on, as {@link StopPage}.
+ *
+ * @internal
+ */
+export async function describeStop(page: Page): Promise<StopPage> {
+  const shown = await page
+    .evaluate(() => {
+      const visible = (el: Element) => el.checkVisibility();
+      const name = (el: Element) => (el as HTMLElement).innerText?.trim() ?? "";
+      const label = (el: HTMLInputElement) =>
+        (el.labels?.[0]?.innerText || el.getAttribute("aria-label") || el.placeholder || "").trim();
+      return {
+        alerts: [...document.querySelectorAll("[role=alert]")].filter(visible).map(name),
+        required: [...document.querySelectorAll<HTMLInputElement>("input, select, textarea")]
+          .filter(
+            (el) =>
+              el.type !== "hidden" &&
+              visible(el) &&
+              (el.required || el.getAttribute("aria-required") === "true"),
+          )
+          .map(label),
+        buttons: [...document.querySelectorAll("button, [role=button], input[type=submit]")]
+          .filter(visible)
+          .map(
+            (el) =>
+              name(el) || (el as HTMLInputElement).value || el.getAttribute("aria-label") || "",
+          ),
+      };
+    })
+    .catch(() => ({ alerts: [], required: [], buttons: [] }));
+  const clean = (xs: string[]) => [...new Set(xs.map(scrub).filter(Boolean))];
+  return {
+    confirmation: CONFIRMATION.test(URL.parse(page.url())?.pathname ?? ""),
+    alerts: clean(shown.alerts),
+    required: clean(shown.required),
+    buttons: clean(shown.buttons),
+  };
+}
+
+/**
+ * How a checkout ended: what the model reports, and a decline wherever the page shows one after
+ * the gate let a payment through: an alert on the store's checkout and no order confirmation.
+ *
+ * @internal
+ */
+export function outcomeOf(
+  reported: Outcome,
+  page: Pick<StopPage, "confirmation" | "alerts">,
+  paidThrough: boolean,
+): Outcome {
+  if (reported === "stopped" && paidThrough && !page.confirmation && page.alerts.length > 0) {
+    return "declined";
+  }
+  return reported;
 }
 
 /** A URL as the run's log shows it: no query or fragment, which can carry checkout tokens. */
@@ -283,9 +379,22 @@ export async function runCheckout(o: {
     gate: o.gate,
   });
   let total = o.quote.total;
-  const end = (outcome: CheckoutRun["outcome"], note: string): CheckoutRun => {
+  const end = async (reported: CheckoutRun["outcome"], note: string): Promise<CheckoutRun> => {
+    const stop = reported === "paid" ? undefined : await describeStop(browser.page);
+    const outcome =
+      stop && reported !== "turns-exhausted"
+        ? outcomeOf(reported, stop, o.gate.paid !== undefined)
+        : reported;
     step({ kind: "end", detail: outcome });
-    return { outcome, note, total, steps, usage, ms: Math.round(performance.now() - started) };
+    return {
+      outcome,
+      note: scrub(note),
+      ...(stop ? { stop } : {}),
+      total,
+      steps,
+      usage,
+      ms: Math.round(performance.now() - started),
+    };
   };
   const show = (t: CheckoutTotal) => `${decimal(t.currency, t.minor)} ${t.currency}`;
   const cart = o.proposal.lines.map((l, i) => ({
@@ -331,7 +440,7 @@ export async function runCheckout(o: {
         detail: response.stop_reason ?? "",
         ms: Math.round(performance.now() - t),
       });
-      if (response.stop_reason === "refusal") return end("stopped", "refused");
+      if (response.stop_reason === "refusal") return await end("stopped", "refused");
       messages.push({ role: "assistant", content: response.content });
       const calls = response.content.filter(
         (b): b is Anthropic.Beta.BetaToolUseBlock => b.type === "tool_use",
@@ -343,11 +452,8 @@ export async function runCheckout(o: {
       const results: Anthropic.Beta.BetaToolResultBlockParam[] = [];
       for (const call of calls) {
         if (call.name === FINISH.name) {
-          const { status, note } = call.input as {
-            status: "paid" | "blocked" | "stopped";
-            note: string;
-          };
-          return end(status, note);
+          const { status, note } = call.input as { status: Outcome; note: string };
+          return await end(status, note);
         }
         const tt = performance.now();
         const result = await browser.toolResult(call);
@@ -383,25 +489,75 @@ export async function runCheckout(o: {
       }
       messages.push({ role: "user", content });
     }
-    return end("turns-exhausted", "");
+    return await end("turns-exhausted", "");
   } finally {
     await browser.close();
   }
 }
 
 const TRANSACTION = /^[0-9A-Z]{17}$/;
+const DECIMAL = /^\d+(?:\.\d+)?$/;
+/** Activity types that are the buyer paying a merchant. */
+const PAYMENTS = new Set(["PAYMENT_SENT", "AUTHORIZATION"]);
+/** How long before the pay click an entry may be dated, for clock skew between the two. */
+const SKEW_MS = 120_000;
+/** How many of the newest activity entries are opened. */
+const NEWEST = 10;
+
+/** The fields read from an entry's details in the buyer's PayPal activity. @internal */
+export interface ActivityEntry {
+  transactionId: string;
+  transactionTypeEnum: string;
+  timeCreatedInISO: string;
+  amount: { rawAmounts: { gross: { value: string; currencyCode: string } } };
+}
+
+/** What the payment just made charged, and when its pay click was let through, at the latest. */
+interface PaidOrder {
+  currency: string;
+  /** The order's total, a decimal string (`2.95`). */
+  value: string;
+  since: Date;
+}
+
+const sameDecimal = (a: string, b: string) =>
+  DECIMAL.test(a) && DECIMAL.test(b) && Number(a) === Number(b);
+
+/**
+ * The id of the one activity entry that is a payment or authorization of exactly the order's
+ * gross since its pay click; undefined when none is, or more than one.
+ *
+ * @internal
+ */
+export function activityMatch(entries: readonly unknown[], order: PaidOrder): string | undefined {
+  const ids = entries.flatMap((e) => {
+    const x = e as Partial<ActivityEntry> | null;
+    const gross = x?.amount?.rawAmounts?.gross;
+    const at = Date.parse(x?.timeCreatedInISO ?? "");
+    const ok =
+      typeof x?.transactionId === "string" &&
+      TRANSACTION.test(x.transactionId) &&
+      PAYMENTS.has(x.transactionTypeEnum ?? "") &&
+      gross?.currencyCode === order.currency &&
+      sameDecimal(String(gross.value), order.value) &&
+      at >= order.since.getTime() - SKEW_MS;
+    return ok ? [x.transactionId as string] : [];
+  });
+  return ids.length === 1 ? ids[0] : undefined;
+}
 
 /**
  * The PayPal transaction id of the payment just made: from the store's confirmation page when it
- * shows one, else from the newest entry of the buyer's PayPal activity that names `merchant` and
- * `total`, read in a tab
- * of its own that nothing records. Only the id leaves the page.
+ * shows one, else from the buyer's PayPal activity, in a tab of its own that nothing records. The
+ * activity page lists entries by id; each entry's details, which the page itself fetches when one
+ * is opened, state its type, time and gross, and the one {@link activityMatch} finds is taken.
+ * Only the id leaves PayPal's pages.
  */
 export async function paypalTransactionId(
   context: BrowserContext,
   confirmation: Page,
-  total: string,
-  merchant: string,
+  order: PaidOrder,
+  paypal = "https://www.paypal.com",
 ): Promise<string | undefined> {
   const shown = await confirmation
     .locator("body")
@@ -412,16 +568,29 @@ export async function paypalTransactionId(
   if (onPage && TRANSACTION.test(onPage)) return onPage;
   const tab = await context.newPage();
   try {
-    await tab.goto("https://www.paypal.com/myaccount/activities/", { waitUntil: "load" });
-    const link = tab
-      .locator('a[href*="/activit"]')
-      .filter({ hasText: total })
-      .filter({ hasText: merchant })
-      .first();
-    await link.waitFor({ timeout: 15_000 });
-    const href = (await link.getAttribute("href")) ?? "";
-    const id = /\/([0-9A-Z]{17})(?:[/?#]|$)/.exec(href)?.[1];
-    return id && TRANSACTION.test(id) ? id : undefined;
+    await tab.goto(`${paypal}/myaccount/activities/`, { waitUntil: "load" });
+    const rows = tab.locator('[class*="js_transactionItem-"]');
+    await rows.first().waitFor({ timeout: 15_000 });
+    const ids = (await rows.evaluateAll((els) => els.map((e) => e.className)))
+      .map((c) => /\bjs_transactionItem-([0-9A-Z]{17})\b/.exec(c)?.[1])
+      .filter((id): id is string => id !== undefined)
+      .slice(0, NEWEST);
+    const entries = await tab.evaluate(
+      (ids) =>
+        Promise.all(
+          ids.map((id) =>
+            fetch(`/myaccount/activities/details/inline/${id}`, {
+              credentials: "same-origin",
+              headers: { accept: "application/json" },
+            })
+              .then((r) => (r.ok ? r.json() : undefined))
+              .then((b) => b?.data)
+              .catch(() => undefined),
+          ),
+        ),
+      ids,
+    );
+    return activityMatch(entries, order);
   } catch {
     return undefined;
   } finally {

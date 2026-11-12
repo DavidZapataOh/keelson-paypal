@@ -6,6 +6,7 @@ import {
   type FxReference,
   spreadBps,
 } from "@keelson/core";
+import { payeeAllowed } from "@keelson/mandate";
 import type { Locator, Page } from "playwright";
 import {
   decimalText,
@@ -109,9 +110,9 @@ export type PayAction =
  *
  * On PayPal, PayPal's own data decides. Once the checkout has settled, the gate asks PayPal for
  * the order as PayPal's own buttons do, and pays only an order whose total is exactly the
- * countersigned value and currency, whose intent is a payment and whose only payee is the one the
- * mandate names, when it names one. It then reads what the Pay form submits (the funding
- * instrument and the conversion option) and PayPal's funding data for that instrument, which
+ * countersigned value and currency, whose intent is a payment and whose only payee is one the
+ * mandate names (see {@link payeeAllowed}): naming none, it allows paying none. It then reads
+ * what the Pay form submits (the funding instrument and the conversion option) and PayPal's funding data for that instrument, which
  * states what PayPal charges the buyer: the order's total, or its `convertedAmount` in the buyer's
  * currency (see {@link readFunding}). A converted charge is paid only within the mandate's spread
  * of the reference rate Keelson fetched when it countersigned, at the rate the charge gives for
@@ -122,7 +123,7 @@ export class PayGate {
   readonly #checkoutHosts: readonly string[];
   readonly #convertHosts: readonly string[];
   readonly #cart: (() => Promise<Money | undefined>) | undefined;
-  readonly #payee: string | undefined;
+  readonly #payees: readonly string[];
   readonly #maxSpreadBps: number;
   #total: CheckoutTotal | undefined;
   #reference: FxReference | undefined;
@@ -165,15 +166,15 @@ export class PayGate {
     checkoutHosts: readonly string[];
     cart?: () => Promise<Money | undefined>;
     convertHosts?: readonly string[];
-    /** The PayPal merchant id the mandate allows paying, when it names one. */
-    payee?: string;
+    /** The PayPal merchant ids the mandate allows paying (`allowedPayees`); none by default. */
+    payees?: readonly string[];
     /** The mandate's `fx.max_spread_bps`. */
     maxSpreadBps?: number;
   }) {
     this.#checkoutHosts = o.checkoutHosts;
     this.#convertHosts = o.convertHosts ?? PAYPAL_HOSTS;
     this.#cart = o.cart;
-    this.#payee = o.payee;
+    this.#payees = o.payees ?? [];
     this.#maxSpreadBps = o.maxSpreadBps ?? DEFAULT_MAX_SPREAD_BPS;
   }
 
@@ -385,7 +386,7 @@ export class PayGate {
   /**
    * PayPal's order for the page and what PayPal charges the buyer for it, read from PayPal right
    * before the action, once the checkout has settled: refused unless the order charges exactly
-   * `total`, is a payment, and pays the payee the mandate names, and unless PayPal's funding data
+   * `total`, is a payment, and pays a payee the mandate names, and unless PayPal's funding data
    * states what the Pay form pays with. An order whose breakdown adds tax or shipping to the
    * countersigned items is held with that total as its re-quote.
    */
@@ -458,7 +459,7 @@ export class PayGate {
     }
     if (!INTENTS.has(charge.intent))
       await fail(`PayPal's order is not a payment (${charge.intent}).`);
-    if (this.#payee !== undefined && charge.payee !== this.#payee) {
+    if (!payeeAllowed(this.#payees, charge.payee)) {
       await fail("PayPal's order pays another merchant than the mandate names. Paying waits.");
     }
     const funding = await readFunding(page, token, form, charge);

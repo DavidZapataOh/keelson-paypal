@@ -32,6 +32,7 @@ describe("pricing a cart from a Shopify store's public product JSON", () => {
     store = {
       origin,
       merchant: "mrc_alfred",
+      paypalMerchantId: "DZ93UDZC2BKLE",
       category: "gpt:887",
       returnDays: 0,
       returnsFree: false,
