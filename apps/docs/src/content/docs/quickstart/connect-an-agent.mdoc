@@ -50,7 +50,7 @@ Closing a mandate for a countersign takes the agent's own key, which Keelson nev
 
 ## Tools
 
-`keelson.compile_mandate`, `keelson.request_mandate`, `keelson.get_request`, `keelson.request_mandate_change`, `keelson.confirm_mandate`, `keelson.submit_evidence`, `keelson.check_cart`, `keelson.request_countersign`, `keelson.get_purchase`, `keelson.get_alibi`, `keelson.verify_alibi` and `keelson.get_trust_grade`. Each asks for the scope its API calls need, and `keelson.get_alibi` renders the Alibi as an MCP App.
+`keelson.compile_mandate`, `keelson.request_mandate`, `keelson.get_request`, `keelson.request_mandate_change`, `keelson.confirm_mandate`, `keelson.submit_evidence`, `keelson.check_cart`, `keelson.request_countersign`, `keelson.get_purchase`, `keelson.get_alibi`, `keelson.verify_alibi`, `keelson.export_alibi` and `keelson.get_trust_grade`. Each asks for the scope its API calls need, and `keelson.get_alibi` renders the Alibi as an MCP App.
 
 Every write tool answers `{status, next, message}`. `status` is `pending_approval`, `approved`, `denied`, `blocked`, `success` or `error`; `next` says what to do next, with the tool, its arguments and when. A purchase also carries `outcome`: on `unknown` the money may have moved, so the agent polls `keelson.get_purchase` and never starts the purchase again.
 
