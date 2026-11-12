@@ -31,6 +31,19 @@ describe("the built site", () => {
     expect(existsSync(dist("index.html"))).toBe(true);
   });
 
+  test("has every page the app's developer guide links to", () => {
+    const steps = readFileSync(join(repo, "apps/web/components/developers/steps.ts"), "utf8");
+    const linked = [...steps.matchAll(/`\$\{DOCS\}(\/[a-z0-9/-]+)`/g)].map((m) => m[1] as string);
+    expect(linked).toEqual([
+      "/sdk/install",
+      "/sdk/authentication",
+      "/sdk/mandates",
+      "/sdk/purchases",
+      "/sdk/verify",
+    ]);
+    for (const path of linked) expect(existsSync(dist(path, "index.html")), path).toBe(true);
+  });
+
   test("llms.txt opens with agent instructions and lists every page", () => {
     const llms = read("llms.txt");
     expect(llms.startsWith("# Keelson\n")).toBe(true);

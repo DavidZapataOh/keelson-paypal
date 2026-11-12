@@ -30,7 +30,7 @@ export const STEPS: Step[] = [
     title: "Install",
     body: "Two packages: the SDK, and the verifier that checks receipts on your machine.",
     code: {
-      typescript: "npm install @keelson/sdk @keelson/verifier",
+      typescript: "npm install @keelson-finance/sdk @keelson-finance/verifier",
       python: "pip install keelson-finance",
     },
   },

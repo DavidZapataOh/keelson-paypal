@@ -26,6 +26,7 @@ describe("accessibility", () => {
       "/quickstart/verify-an-alibi/",
       "/reference/api/",
       "/reference/api/verifyAlibi/",
+      "/sdk/mandates/",
     ]) {
       test(`${path} in ${scheme} at ${width} has no serious or critical violations`, async () => {
         const context = await browser.newContext({

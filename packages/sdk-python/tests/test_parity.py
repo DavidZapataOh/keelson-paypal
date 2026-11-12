@@ -41,7 +41,7 @@ def test_the_quickstart_is_at_most_12_lines() -> None:
 
 def test_verify_without_node_is_unavailable(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("KEELSON_VERIFY_COMMAND", "/nonexistent/keelson-verify")
-    with pytest.raises(keelson.VerifierUnavailable, match="npx @keelson/verifier"):
+    with pytest.raises(keelson.VerifierUnavailable, match="npx @keelson-finance/verifier"):
         keelson.verify_alibi(b"{}")
 
 
@@ -64,4 +64,15 @@ def test_the_wheel_is_at_most_60_kb_with_two_dependencies(tmp_path: Path) -> Non
 def test_verify_reports_a_broken_verifier_as_a_keelson_error(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("KEELSON_VERIFY_COMMAND", "echo not-json")
     with pytest.raises(keelson.KeelsonError):
+        keelson.verify_alibi(b"{}")
+
+
+def test_an_old_node_is_reported_as_verifier_unavailable(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    for name, script in {"node": "echo v18.19.0", "npx": "exit 0"}.items():
+        f = tmp_path / name
+        f.write_text(f"#!/bin/sh\n{script}\n")
+        f.chmod(0o755)
+    monkeypatch.delenv("KEELSON_VERIFY_COMMAND", raising=False)
+    monkeypatch.setenv("PATH", str(tmp_path))
+    with pytest.raises(keelson.VerifierUnavailable, match=r"Node\.js 20"):
         keelson.verify_alibi(b"{}")

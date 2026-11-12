@@ -10,7 +10,7 @@ import {
   quote,
   storedLogin,
 } from "../../src/index.ts";
-import { hasBuyer, judge, type User } from "./user.ts";
+import { buys, hasBuyer, judge, type User } from "./user.ts";
 
 const live = process.env.KEELSON_LIVE === "1";
 // Keelson's hosted operator backs at most $100 per user for an app it does not know.
@@ -73,7 +73,7 @@ describe.skipIf(!live)(
       expect((err as MandateRequestClosedError).state).toBe("DENIED");
     });
 
-    describe.skipIf(!hasBuyer)("held on PayPal", () => {
+    describe.skipIf(!hasBuyer || !buys("purchase-ts"))("held on PayPal", () => {
       let mandate: Mandate;
       let purchaseId: string;
 

@@ -105,3 +105,11 @@ test("two refreshes at once send one request, so a rotated token is never reused
   expect(s.seen).toHaveLength(1);
   expect(await readdir(dir)).not.toContain("e.json.lock");
 });
+
+test("a refresh goes to the client's API, not the one written in the file", async () => {
+  const path = join(dir, "f.json");
+  await writeCredentials(saved({ apiUrl: "https://elsewhere.invalid", expiresAt: 0 }), path);
+  s.script(json(200, { access_token: "a2", expires_in: 3600 }));
+  expect(await storedLogin({ path, baseUrl: s.url }).token()).toBe("a2");
+  expect(s.seen).toHaveLength(1);
+});

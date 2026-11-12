@@ -309,6 +309,8 @@ try {
           payee: gate.paid.charge.payee,
         },
         conversion: gate.paid?.conversion,
+        // Where PayPal's charge to the buyer was read, the rate it gives and the rate PayPal shows.
+        funding: gate.paid?.funding,
         // Only the amounts read on each page where a pay action was held.
         heldAmounts: gate.held,
       },

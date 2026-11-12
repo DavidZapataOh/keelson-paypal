@@ -12,12 +12,30 @@ from typing import Any
 from ._errors import KeelsonError, VerifierUnavailable
 from ._jcs import canonical_bytes
 
-VERIFIER = "@keelson/verifier@0.1.0"
+VERIFIER = "@keelson-finance/verifier@0.1.1"
+
+
+_NEEDS_NODE = f"Verifying an Alibi offline runs `npx {VERIFIER}`, which needs Node.js 20 or later."
+
+
+def _check_node() -> None:
+    """Refuses a missing or older Node.js before the verifier fails in a way that says less."""
+    node = shutil.which("node")
+    if node is None:
+        raise VerifierUnavailable(_NEEDS_NODE)
+    try:
+        version = subprocess.run([node, "--version"], capture_output=True, text=True, timeout=30).stdout
+        major = int(version.strip().lstrip("v").split(".")[0])
+    except (OSError, ValueError, subprocess.TimeoutExpired) as err:
+        raise VerifierUnavailable(_NEEDS_NODE) from err
+    if major < 20:
+        raise VerifierUnavailable(f"{_NEEDS_NODE} This machine has Node.js {version.strip()}.")
 
 
 def _command() -> list[str]:
     if os.environ.get("KEELSON_VERIFY_COMMAND"):
         return shlex.split(os.environ["KEELSON_VERIFY_COMMAND"])
+    _check_node()
     if shutil.which("keelson-verify"):
         return ["keelson-verify"]
     if shutil.which("npx"):

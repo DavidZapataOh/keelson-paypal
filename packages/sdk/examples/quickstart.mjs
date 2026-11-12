@@ -1,5 +1,5 @@
-import { Keelson, quote } from "@keelson/sdk";
-import { verifyAlibi } from "@keelson/verifier";
+import { Keelson, quote } from "@keelson-finance/sdk";
+import { verifyAlibi } from "@keelson-finance/verifier";
 
 const keelson = new Keelson(); // signed in with `npx keelson login`
 const why = "I buy one pair of Pace Lite running shoes, size 10, at RunFast on the PayPal sandbox, and nothing else.";

@@ -1,11 +1,11 @@
-# @keelson/verifier
+# @keelson-finance/verifier
 
 Verifies a Keelson Alibi on your machine, trusting no one: both TEE countersignatures and
 attestations, the evidence manifest, the transparency log inclusion proof and its witnesses and,
 with `--chain`, the anchor on Arbitrum Sepolia. Same code as https://verify.keelson.finance.
 
 ```js
-import { verifyAlibi, fetchAndVerify } from "@keelson/verifier";
+import { verifyAlibi, fetchAndVerify } from "@keelson-finance/verifier";
 
 const report = await verifyAlibi(bytes); // bytes as issued, base64, JSON text or a parsed object
 report.verdict; // "verified-offline", "verified" with { chain: true }, "failed" or "incomplete"

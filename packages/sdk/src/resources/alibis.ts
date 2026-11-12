@@ -33,7 +33,7 @@ export class Alibis {
       .data;
   }
 
-  /** Keelson's own check of an Alibi. To trust no one, use `verifyAlibi` from `@keelson/verifier`. */
+  /** Keelson's own check of an Alibi. To trust no one, use `verifyAlibi` from `@keelson-finance/verifier`. */
   async verifyRemote(alibi: Uint8Array): Promise<AlibiReport> {
     return (
       await this.keelson.request<AlibiReport>("POST", "/v1/alibis/verify", {

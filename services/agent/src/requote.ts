@@ -96,12 +96,38 @@ const SPACED = /^[\p{Script=Latin}\p{Script=Cyrillic}\p{Script=Greek}]/u;
  * @internal
  */
 export function wordEnd(label: string, words: readonly string[]): number {
+  let patterns = compiled.get(words);
+  if (!patterns) {
+    patterns = wordPatterns(words, "\\p{L}");
+    compiled.set(words, patterns);
+  }
+  return patternEnd(label, patterns);
+}
+/** Each word list's patterns, compiled once. */
+const compiled = new WeakMap<readonly string[], RegExp[]>();
+
+/**
+ * Patterns that find, at every place in a text, the longest of `words` that starts there: whole
+ * words (not after a character of `before`, nor before a letter) for the scripts that space them,
+ * anywhere for the others. Each match is empty, with the word in its first group.
+ */
+export function wordPatterns(words: readonly string[], before: string): RegExp[] {
+  const longest = (ws: readonly string[]) => [...ws].sort((a, b) => b.length - a.length).join("|");
+  const spaced = words.filter((w) => SPACED.test(w));
+  const other = words.filter((w) => !SPACED.test(w));
+  return [
+    ...(spaced.length
+      ? [new RegExp(`(?<![${before}])(?=(${longest(spaced)})(?!\\p{L}))`, "giu")]
+      : []),
+    ...(other.length ? [new RegExp(`(?=(${longest(other)}))`, "gu")] : []),
+  ];
+}
+
+/** Where in `label` a word `patterns` find last ends, or -1. */
+export function patternEnd(label: string, patterns: readonly RegExp[]): number {
   let end = -1;
-  for (const word of words) {
-    const pattern = SPACED.test(word)
-      ? new RegExp(`(?<!\\p{L})${word}(?!\\p{L})`, "giu")
-      : new RegExp(word, "gu");
-    for (const m of label.matchAll(pattern)) end = Math.max(end, m.index + m[0].length);
+  for (const pattern of patterns) {
+    for (const m of label.matchAll(pattern)) end = Math.max(end, m.index + (m[1]?.length ?? 0));
   }
   return end;
 }

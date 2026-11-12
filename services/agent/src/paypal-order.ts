@@ -1,6 +1,6 @@
-import { type CheckoutTotal, checkoutTotal, decimalParts } from "@keelson/core";
+import { type CheckoutTotal, checkoutTotal } from "@keelson/core";
 import type { Page } from "playwright";
-import { minorDigits, type Quote, rateBetween } from "./amounts.ts";
+import { minorDigits } from "./amounts.ts";
 
 /** What PayPal's checkout session charges, as PayPal's own Smart Payment Buttons read it. */
 export interface PayPalCharge {
@@ -9,10 +9,14 @@ export interface PayPalCharge {
   currency: string;
   /** The order's total as PayPal's API writes values: `2.95`, `1500`. */
   value: string;
-  /** Its breakdown, all `0.00` for an order that has none. */
+  /**
+   * Its breakdown, all `0.00` for an order that has none: the item total; shipping, handling and
+   * insurance less any shipping discount; tax and duties; and the discount.
+   */
   subtotal: string;
   shipping: string;
   tax: string;
+  discount: string;
   /** The PayPal merchant id of the order's only payee. */
   payee: string;
 }
@@ -23,7 +27,7 @@ export interface PayPalCharge {
  * asked for: only the value and its ISO code.
  */
 const QUERY =
-  "query GetCheckoutDetails($orderID: String!) { checkoutSession(token: $orderID) { cart { intent amounts { subtotal { currencyValue currencyCode } shippingAndHandling { currencyValue currencyCode } tax { currencyValue currencyCode } total { currencyValue currencyCode } } } payees { merchantId } } }";
+  "query GetCheckoutDetails($orderID: String!) { checkoutSession(token: $orderID) { cart { intent amounts { subtotal { currencyValue currencyCode } shippingAndHandling { currencyValue currencyCode } tax { currencyValue currencyCode } insurance { currencyValue currencyCode } smartDuty { currencyValue currencyCode } discount { currencyValue currencyCode } total { currencyValue currencyCode } } } payees { merchantId } } }";
 
 /** An order id or its legacy EC token, as PayPal's checkout carries it in `token`. */
 const TOKEN = /^(?:EC-)?[0-9A-Z]{17}$/;
@@ -42,10 +46,6 @@ export function orderToken(url: string): string | undefined {
   return tokens.length === 1 && token && isOrderToken(token) ? token : undefined;
 }
 
-/** The buyer's funding options and PayPal's conversion of the order for each, signed in only. */
-const FUNDING =
-  "query GetFundingOptions($orderID: String!) { checkoutSession(token: $orderID) { fundingOptions { currencyConversion { rate from { currencyValue currencyCode } to { currencyValue currencyCode } } } } }";
-
 /**
  * The charge a `GetCheckoutDetails` answer states, or undefined unless it states exactly one.
  */
@@ -56,7 +56,16 @@ function chargeOf(answer: unknown): PayPalCharge | undefined {
     | {
         cart?: {
           intent?: unknown;
-          amounts?: Record<"subtotal" | "shippingAndHandling" | "tax" | "total", Amount>;
+          amounts?: Record<
+            | "subtotal"
+            | "shippingAndHandling"
+            | "tax"
+            | "insurance"
+            | "smartDuty"
+            | "discount"
+            | "total",
+            Amount
+          >;
         };
         payees?: unknown;
       }
@@ -71,10 +80,21 @@ function chargeOf(answer: unknown): PayPalCharge | undefined {
     a.currencyCode === currency
       ? a.currencyValue
       : undefined;
+  // Parts an order without them answers as null.
+  const part = (a: Amount) => (a === null || a === undefined ? "0" : value(a));
+  const sum = (...xs: (string | undefined)[]) => {
+    if (typeof currency !== "string" || xs.some((x) => x === undefined)) return undefined;
+    const digits = minorDigits(currency);
+    const minor = xs.map((x) => minorOf(x as string, currency));
+    if (minor.some((m) => m === undefined)) return undefined;
+    const t = minor.reduce<number>((a, b) => a + (b as number), 0);
+    return (t / 10 ** digits).toFixed(digits);
+  };
   const total = value(amounts?.total);
   const subtotal = value(amounts?.subtotal);
-  const shipping = value(amounts?.shippingAndHandling);
-  const tax = value(amounts?.tax);
+  const shipping = sum(value(amounts?.shippingAndHandling), part(amounts?.insurance));
+  const tax = sum(value(amounts?.tax), part(amounts?.smartDuty));
+  const discount = sum(part(amounts?.discount));
   const payees = session?.payees;
   if (
     typeof intent !== "string" ||
@@ -84,6 +104,7 @@ function chargeOf(answer: unknown): PayPalCharge | undefined {
     subtotal === undefined ||
     shipping === undefined ||
     tax === undefined ||
+    discount === undefined ||
     !Array.isArray(payees) ||
     payees.length !== 1
   ) {
@@ -91,7 +112,7 @@ function chargeOf(answer: unknown): PayPalCharge | undefined {
   }
   const payee = (payees[0] as { merchantId?: unknown } | null)?.merchantId;
   if (typeof payee !== "string" || !/^[0-9A-Z]{8,20}$/.test(payee)) return undefined;
-  return { intent, currency, value: total, subtotal, shipping, tax, payee };
+  return { intent, currency, value: total, subtotal, shipping, tax, discount, payee };
 }
 
 /** A PayPal value in minor units of `currency`, or undefined when it has more decimals. */
@@ -104,163 +125,52 @@ function minorOf(value: string, currency: string): number | undefined {
 
 /**
  * Why PayPal's order does not charge `total`, or undefined when it does: its currency and total
- * are the countersigned ones exactly, and so are its item total, shipping and tax unless PayPal
- * holds no breakdown for it.
+ * are the countersigned ones exactly, and so are its item total, shipping, tax and discount unless
+ * PayPal holds no breakdown for it.
  */
 export function chargeProblem(charge: PayPalCharge, total: CheckoutTotal): string | undefined {
   const minor = (v: string) => minorOf(v, charge.currency);
   if (charge.currency !== total.currency || minor(charge.value) !== total.minor) {
     return `PayPal's order charges ${charge.currency} ${charge.value}`;
   }
-  const parts = [charge.subtotal, charge.shipping, charge.tax].map(minor);
+  const parts = [charge.subtotal, charge.shipping, charge.tax, charge.discount].map(minor);
   if (parts.every((p) => p === 0)) return undefined;
-  const [items, shipping, tax] = parts;
-  if (items !== total.items || shipping !== total.shipping || tax !== total.tax) {
-    return `PayPal's order splits its total into items ${charge.subtotal}, shipping ${charge.shipping} and tax ${charge.tax}`;
+  const [items, shipping, tax, discount] = parts;
+  if (
+    items !== total.items ||
+    shipping !== total.shipping ||
+    tax !== total.tax ||
+    discount !== total.discount
+  ) {
+    return `PayPal's order splits its total into items ${charge.subtotal}, shipping ${charge.shipping}, tax ${charge.tax} and discount ${charge.discount}`;
   }
   return undefined;
 }
 
 /**
  * The charge of the order the PayPal page in `page` is for, read from PayPal itself as PayPal's
- * buttons read it, and PayPal's conversions of it for the buyer's funding options. The requests go
- * to the page's origin with the session's cookies, outside the page, so no script on it can answer
- * them. Undefined when the page names no order or PayPal does not answer one charge. Neither the
- * token nor the answers leave this function but as the charge, the conversions and the rates.
+ * buttons read it. The request goes to the page's origin with the session's cookies, outside the
+ * page, so no script on it can answer it. Undefined when the page names no order or PayPal does
+ * not answer one charge.
  */
-export async function readCharge(
-  page: Page,
-): Promise<{ charge: PayPalCharge; conversions: KnownConversion[]; quotes: Quote[] } | undefined> {
+export async function readCharge(page: Page): Promise<PayPalCharge | undefined> {
   const token = orderToken(page.url());
   const origin = URL.parse(page.url())?.origin;
   if (!token || !origin) return undefined;
-  const ask = (name: string, query: string) =>
-    page
-      .context()
-      .request.post(`${origin}/graphql?${name}`, {
-        headers: {
-          "content-type": "application/json",
-          "x-app-name": "smart-payment-buttons",
-          "paypal-client-context": token,
-        },
-        data: { query, variables: { orderID: token } },
-        timeout: 15_000,
-      })
-      .then((res) => (res.ok() ? (res.json() as Promise<unknown>) : null))
-      .catch(() => null);
-  const [details, funding] = await Promise.all([
-    ask("GetCheckoutDetails", QUERY),
-    ask("GetFundingOptions", FUNDING),
-  ]);
-  const charge = chargeOf(details);
-  return charge ? { charge, ...conversionsOf(funding, charge) } : undefined;
-}
-
-/** PayPal's conversion of an order's total to the buyer's funding currency. */
-export interface KnownConversion {
-  /** The order total converted, as PayPal states it. */
-  from: { currency: string; value: string };
-  currency: string;
-  /** 1 unit of the order's currency in the buyer's. */
-  rate: string;
-  buyer: string;
-  /**
-   * The rate PayPal states when it states the conversion from the buyer's currency to the order's
-   * (`1 COP = 0.0002882 USD`); `rate` is then the one its two amounts give.
-   */
-  inverse?: string;
-}
-
-/**
- * Whether `converted` is `amount` at `rate` up to the last digits PayPal shows of each:
- * `|converted − amount × rate| ≤ 10^−convertedDecimals + amount × 10^−rateDecimals / 2`.
- */
-export function agrees(amount: string, rate: string, converted: string): boolean {
-  const a = decimalParts(amount);
-  const r = decimalParts(rate);
-  const c = decimalParts(converted);
-  const diff =
-    2n * c.int * 10n ** BigInt(a.scale + r.scale) - 2n * a.int * r.int * 10n ** BigInt(c.scale);
-  const bound = 2n * 10n ** BigInt(a.scale + r.scale) + a.int * 10n ** BigInt(c.scale);
-  return (diff < 0n ? -diff : diff) <= bound;
-}
-
-/**
- * Every conversion a review page's GraphQL answer states for the buyer's funding options
- * (`checkoutSession.fundingOptions[].currencyConversion { rate from to }`), with plain decimal
- * values and ISO codes only; nothing else of the answer is kept. PayPal states some from the
- * buyer's currency to the order's, as its page writes the rate (`1 COP = 0.0002882 USD`): those
- * are turned to the order's total converted to the buyer's currency, at the rate the two amounts
- * give, with PayPal's own rate kept as `inverse`. Others state only the rate per unit, between
- * 1 unit of either currency and the other (`1 COP = 0.000290145 USD`): those are `quotes`.
- */
-function conversionsOf(
-  answer: unknown,
-  charge: PayPalCharge,
-): { conversions: KnownConversion[]; quotes: Quote[] } {
-  const options = (answer as { data?: { checkoutSession?: { fundingOptions?: unknown } } } | null)
-    ?.data?.checkoutSession?.fundingOptions;
-  const out: KnownConversion[] = [];
-  const quotes: Quote[] = [];
-  if (!Array.isArray(options)) return { conversions: out, quotes };
-  for (const option of options) {
-    const c = (option as { currencyConversion?: unknown } | null)?.currencyConversion as
-      | {
-          rate?: unknown;
-          from?: { currencyValue?: unknown; currencyCode?: unknown };
-          to?: { currencyValue?: unknown; currencyCode?: unknown };
-        }
-      | null
-      | undefined;
-    const rate = typeof c?.rate === "number" ? String(c.rate) : c?.rate;
-    if (
-      typeof rate !== "string" ||
-      !VALUE.test(rate) ||
-      typeof c?.from?.currencyValue !== "string" ||
-      typeof c.from.currencyCode !== "string" ||
-      typeof c.to?.currencyValue !== "string" ||
-      typeof c.to.currencyCode !== "string" ||
-      !VALUE.test(c.from.currencyValue) ||
-      !VALUE.test(c.to.currencyValue) ||
-      !/^[A-Z]{3}$/.test(c.from.currencyCode) ||
-      !/^[A-Z]{3}$/.test(c.to.currencyCode)
-    ) {
-      continue;
-    }
-    const from = { currency: c.from.currencyCode, value: c.from.currencyValue };
-    const to = { currency: c.to.currencyCode, value: c.to.currencyValue };
-    const minor = minorOf(charge.value, charge.currency);
-    const total = (a: { currency: string; value: string }) =>
-      a.currency === charge.currency &&
-      minor !== undefined &&
-      minorOf(a.value, charge.currency) === minor;
-    if (total(from)) {
-      out.push({
-        from: { currency: charge.currency, value: charge.value },
-        currency: to.currency,
-        rate,
-        buyer: to.value,
-      });
-    } else if (total(to) && from.currency !== charge.currency && Number(from.value) > 0) {
-      out.push({
-        from: { currency: charge.currency, value: charge.value },
-        currency: from.currency,
-        rate: rateBetween(charge.value, from.value),
-        buyer: from.value,
-        inverse: rate,
-      });
-    } else if (
-      Number(from.value) === 1 &&
-      from.currency !== to.currency &&
-      [from.currency, to.currency].includes(charge.currency) &&
-      Number(to.value) === Number(rate) &&
-      Number(rate) > 0
-    ) {
-      const inverse = to.currency === charge.currency;
-      quotes.push({ currency: inverse ? from.currency : to.currency, rate, inverse });
-    } else out.push({ from, currency: to.currency, rate, buyer: to.value });
-  }
-  return { conversions: out, quotes };
+  const details = await page
+    .context()
+    .request.post(`${origin}/graphql?GetCheckoutDetails`, {
+      headers: {
+        "content-type": "application/json",
+        "x-app-name": "smart-payment-buttons",
+        "paypal-client-context": token,
+      },
+      data: { query: QUERY, variables: { orderID: token } },
+      timeout: 15_000,
+    })
+    .then((res) => (res.ok() ? (res.json() as Promise<unknown>) : null))
+    .catch(() => null);
+  return chargeOf(details);
 }
 
 /**
@@ -270,24 +180,26 @@ function conversionsOf(
  */
 export function requoteOf(charge: PayPalCharge, total: CheckoutTotal): CheckoutTotal | undefined {
   if (charge.currency !== total.currency) return undefined;
-  const [value, items, shipping, tax] = [
+  const [value, items, shipping, tax, discount] = [
     charge.value,
     charge.subtotal,
     charge.shipping,
     charge.tax,
+    charge.discount,
   ].map((v) => minorOf(v, charge.currency));
   if (
     value === undefined ||
     items !== total.items ||
     shipping === undefined ||
     tax === undefined ||
-    value !== items + shipping + tax - total.discount ||
+    discount !== total.discount ||
+    value !== items + shipping + tax - discount ||
     value === total.minor
   ) {
     return undefined;
   }
   try {
-    return checkoutTotal(charge.currency, { items, shipping, tax, discount: total.discount });
+    return checkoutTotal(charge.currency, { items, shipping, tax, discount });
   } catch {
     return undefined;
   }

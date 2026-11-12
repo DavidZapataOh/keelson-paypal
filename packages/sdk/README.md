@@ -1,4 +1,4 @@
-# @keelson/sdk
+# @keelson-finance/sdk
 
 Keelson for TypeScript. Your agent asks the user for a mandate, the user signs it with a passkey,
 and every purchase is checked by two TEEs before PayPal captures it. Each purchase comes with an
@@ -9,14 +9,14 @@ Runs on the PayPal sandbox and Arbitrum Sepolia: no real money moves.
 ## Install
 
 ```sh
-npm install @keelson/sdk @keelson/verifier
+npm install @keelson-finance/sdk @keelson-finance/verifier
 npx keelson login
 ```
 
-From this repository, before the packages are on npm:
+To work on the SDK from this repository:
 
 ```sh
-pnpm install && pnpm --filter @keelson/sdk... --filter @keelson/verifier... build
+pnpm install && pnpm --filter @keelson-finance/sdk... --filter @keelson-finance/verifier... build
 node packages/sdk/dist/cli.js login
 node packages/sdk/examples/quickstart.mjs
 ```
@@ -27,8 +27,8 @@ the sign-in to `~/.config/keelson/credentials.json`, readable by you only. No fo
 ## Quickstart
 
 ```js
-import { Keelson, quote } from "@keelson/sdk";
-import { verifyAlibi } from "@keelson/verifier";
+import { Keelson, quote } from "@keelson-finance/sdk";
+import { verifyAlibi } from "@keelson-finance/verifier";
 
 const keelson = new Keelson(); // signed in with `npx keelson login`
 const req = await keelson.mandates.request({
@@ -109,10 +109,10 @@ support.
 ## Agent frameworks
 
 ```js
-import { aiSdkTools } from "@keelson/sdk/ai-sdk"; // Vercel AI SDK
-import { openAiAgentsTools } from "@keelson/sdk/openai-agents"; // OpenAI Agents SDK
-import { langchainTools } from "@keelson/sdk/langchain"; // LangChain, LangGraph
-import { keelsonMcpServer } from "@keelson/sdk/claude-agent-sdk"; // Claude Agent SDK
+import { aiSdkTools } from "@keelson-finance/sdk/ai-sdk"; // Vercel AI SDK
+import { openAiAgentsTools } from "@keelson-finance/sdk/openai-agents"; // OpenAI Agents SDK
+import { langchainTools } from "@keelson-finance/sdk/langchain"; // LangChain, LangGraph
+import { keelsonMcpServer } from "@keelson-finance/sdk/claude-agent-sdk"; // Claude Agent SDK
 ```
 
 Each gives the model Keelson's tools under the names and answers of Keelson's MCP server
@@ -122,7 +122,7 @@ exactly what to do. None of them adds a byte to the core entry.
 
 ## Verifying an Alibi
 
-`verifyAlibi` from `@keelson/verifier` checks an Alibi on your machine with the same code as
+`verifyAlibi` from `@keelson-finance/verifier` checks an Alibi on your machine with the same code as
 https://verify.keelson.finance: both TEE signatures, the evidence and the log inclusion proof.
 `verifyAlibi(bytes, { chain: true })` also reads the anchor on Arbitrum Sepolia.
 

@@ -1,5 +1,5 @@
 import { convertsTo, decimalParts, exceedsConversion } from "@keelson/core";
-import { partEnd, wordEnd } from "./requote.ts";
+import { partEnd, patternEnd, wordEnd, wordPatterns } from "./requote.ts";
 
 /** An amount in minor units of an ISO 4217 currency: cents of USD, yen of JPY, fils of KWD. */
 export interface Money {
@@ -25,9 +25,15 @@ const flat = (s: string) => s.replace(BIDI, "").replace(SPACES, " ");
 
 /** The minor units of `currency`: 2 for USD, 0 for JPY, 3 for KWD (ISO 4217, as CLDR has them). */
 export function minorDigits(currency: string): number {
-  return new Intl.NumberFormat("en", { style: "currency", currency }).resolvedOptions()
-    .maximumFractionDigits as number;
+  let digits = minor.get(currency);
+  if (digits === undefined) {
+    digits = new Intl.NumberFormat("en", { style: "currency", currency }).resolvedOptions()
+      .maximumFractionDigits as number;
+    minor.set(currency, digits);
+  }
+  return digits;
 }
+const minor = new Map<string, number>();
 
 /** How `locale` writes amounts of `currency`, read from CLDR through `Intl.NumberFormat`. */
 interface Shape {
@@ -45,16 +51,35 @@ interface Shape {
  * CA$, R$): each one names this currency alone, whatever locale the page is in.
  */
 function spelled(currency: string, any = false): string[] {
-  return ["en", "en-GB", "en-CA", "en-AU", "es", "fr", "pt", "de", "ja", "zh", "ko", "ar", "hi"]
-    .map((l) =>
+  let all = signsOf.get(currency);
+  if (!all) {
+    all = [
+      "en",
+      "en-GB",
+      "en-CA",
+      "en-AU",
+      "es",
+      "fr",
+      "pt",
+      "de",
+      "ja",
+      "zh",
+      "ko",
+      "ar",
+      "hi",
+    ].map((l) =>
       flat(
         new Intl.NumberFormat(l, { style: "currency", currency })
           .formatToParts(1)
           .find((p) => p.type === "currency")?.value ?? "",
       ).trim(),
-    )
-    .filter((m) => (any || /\p{L}/u.test(m)) && /\p{Sc}/u.test(m));
+    );
+    signsOf.set(currency, all);
+  }
+  return all.filter((m) => (any || /\p{L}/u.test(m)) && /\p{Sc}/u.test(m));
 }
+/** The symbol each of a few locales writes a currency with, by currency. */
+const signsOf = new Map<string, string[]>();
 
 const shapes = new Map<string, Shape>();
 
@@ -156,6 +181,8 @@ const LAST_DIGITS = [
   "ending with",
   "ends in",
   "ending",
+  "last four digits",
+  "últimos cuatro dígitos",
   "terminada en",
   "terminado en",
   "termina en",
@@ -373,17 +400,11 @@ const ASIDE = [
   "qualifying",
 ];
 
-/** Where in `label` a total word last ends, or -1; "subtotal" and "sub-total" are no total. */
-function totalEnd(label: string): number {
-  let end = -1;
-  for (const word of TOTAL) {
-    const pattern = /^\p{Script=Latin}|^\p{Script=Cyrillic}/u.test(word)
-      ? new RegExp(`(?<![\\p{L}\\-])${escapeRegex(word)}(?!\\p{L})`, "giu")
-      : new RegExp(escapeRegex(word), "gu");
-    for (const m of label.matchAll(pattern)) end = Math.max(end, m.index + m[0].length);
-  }
-  return end;
-}
+/** The total words as patterns, compiled once; "subtotal" and "sub-total" are no total. */
+const TOTAL_PATTERNS = wordPatterns(TOTAL.map(escapeRegex), "\\p{L}\\-");
+
+/** Where in `label` a total word last ends, or -1. */
+const totalEnd = (label: string): number => patternEnd(label, TOTAL_PATTERNS);
 
 /** Where an amount sits on its page: the charge, money it is not charged, or another line. */
 export type Context = "total" | "aside" | "line";
@@ -638,15 +659,27 @@ export interface PageReading {
   loose: number[];
   /**
    * The numbers of `loose` that may be the currency only through a sign another currency on the
-   * page also writes (`$ 10.236` where COP and USD both write `$`), as written, with their marks.
+   * page also writes (`$ 10.236` where COP and USD both write `$`), or with no mark at all, as
+   * written, with their marks.
    */
   shared: { value: number; number: string; marks: string[] }[];
+  /** The values of `loose` that are the range a credit offer is eligible for: no charge where PayPal's order states it. */
+  looseOffers: number[];
   /**
    * Amounts in another currency, in that currency's whole units, and whether the page labels each
    * its total or charge (a conversion of the total, "Pagarás $10.231 COP") or money it is not
    * charged (a balance). `currency` is undefined when only a sign names it.
    */
-  conversions: { currency?: string; units: string; total: boolean; aside: boolean }[];
+  conversions: {
+    currency?: string;
+    /** The signs that name it, when no code does (`$3.40`). */
+    marks?: string[];
+    units: string;
+    total: boolean;
+    aside: boolean;
+    /** Whether it is the range a credit offer is eligible for. */
+    offer?: boolean;
+  }[];
   /**
    * The rates the page writes from the currency (`1 USD = 3.468,14 COP`), by currency, as decimal
    * strings with the digits the page shows (`3468.14`).
@@ -750,6 +783,9 @@ function read(text: string, locale: string, currency: string): Omit<PageReading,
   const rates: Record<string, string> = {};
   const inverse: Record<string, string> = {};
   const rated = new Set<Token>();
+  const looseOffers: number[] = [];
+  let looseOffer = false;
+  const dash = (from: number, to: number) => /^ ?[-–—] ?$/u.test(t.slice(from, to));
   let unsure: string | undefined;
   for (const [i, token] of tokens.entries()) {
     // The number of a rate ("1 USD = 3.468,14 COP", "1 COP = 0,00029 USD") is no amount.
@@ -781,8 +817,20 @@ function read(text: string, locale: string, currency: string): Omit<PageReading,
       if (token.values.length > 0) {
         const value = Math.max(...token.values);
         loose.push(value);
-        if (token.marks.length > 0 && token.marks.every((m) => /\p{Sc}/u.test(m))) {
-          shared.push({ value, number: token.number, marks: token.marks });
+        // The range a credit offer is eligible for ("eligible purchases of $10.00-$2,000.00").
+        if (
+          token.context === "aside" &&
+          (looseOffer && /^[-–—]$/u.test(token.label)
+            ? true
+            : next !== undefined && dash(token.to, next.from) && offer(token, false))
+        ) {
+          looseOffers.push(value);
+          looseOffer = true;
+        } else {
+          looseOffer = false;
+          if (token.marks.every((m) => /\p{Sc}/u.test(m))) {
+            shared.push({ value, number: token.number, marks: token.marks });
+          }
         }
       }
       // A number with a separator no locale writes so may still be an amount: count it whole.
@@ -792,7 +840,13 @@ function read(text: string, locale: string, currency: string): Omit<PageReading,
     } else if (token.kind === "other") {
       const value = units(token.number, token.currency, locale);
       // "1 COP = 0,00029 USD": PayPal's rate written from the buyer's currency.
-      if (value === "1" && unit && next?.kind === "target" && token.currency) {
+      if (
+        value !== undefined &&
+        Number(value) === 1 &&
+        unit &&
+        next?.kind === "target" &&
+        token.currency
+      ) {
         const rate = rateOf(next.number);
         const known = inverse[token.currency];
         if (rate === undefined || Number(rate) === 0) unsure ??= "a rate not read for sure";
@@ -806,12 +860,21 @@ function read(text: string, locale: string, currency: string): Omit<PageReading,
         unsure ??= "an amount in another currency not read whole";
         continue;
       }
+      // The buyer's own balance, which PayPal shows beside the total, and the range a credit
+      // offer is eligible for ("eligible purchases of $10.00-$2,000.00") are no charge.
+      const credit =
+        token.context === "aside" &&
+        (conversions.at(-1)?.offer === true && /^[-–—]$/u.test(token.label)
+          ? true
+          : next?.kind === "other" && dash(token.to, next.from) && offer(token, false));
       conversions.push({
-        ...(token.currency ? { currency: token.currency } : {}),
+        ...(token.currency ? { currency: token.currency } : { marks: token.marks }),
         units: value,
         total: token.context === "total",
-        // Only the buyer's own balance, which PayPal shows beside the total, is no charge.
-        aside: token.context === "aside" && /paypal|disponible|available/iu.test(token.label),
+        aside:
+          token.context === "aside" &&
+          (credit || /paypal|disponible|available/iu.test(token.label)),
+        ...(credit ? { offer: true } : {}),
       });
     }
   }
@@ -821,6 +884,7 @@ function read(text: string, locale: string, currency: string): Omit<PageReading,
     offers,
     totals,
     loose,
+    looseOffers,
     shared,
     conversions,
     rates,
@@ -857,6 +921,7 @@ export function readPage(text: string, locales: readonly string[], currency: str
       totals: [],
       offers: [],
       loose: [],
+      looseOffers: [],
       shared: [],
       conversions: [],
       rates: {},
@@ -873,25 +938,31 @@ export function readPage(text: string, locales: readonly string[], currency: str
     r.totals.join() === reading.totals.join() &&
     r.offers.join() === reading.offers.join() &&
     r.loose.join() === reading.loose.join() &&
-    JSON.stringify([r.shared, r.conversions, r.rates, r.inverse]) ===
-      JSON.stringify([reading.shared, reading.conversions, reading.rates, reading.inverse]);
+    JSON.stringify([r.looseOffers, r.shared, r.conversions, r.rates, r.inverse]) ===
+      JSON.stringify([
+        reading.looseOffers,
+        reading.shared,
+        reading.conversions,
+        reading.rates,
+        reading.inverse,
+      ]);
   if (!readings.every(same)) {
     return { locale: first, ...reading, unsure: "its locales read it differently" };
   }
   return { locale: first, ...reading };
 }
 
-/** The total a page charges converted to the buyer's currency, at the rate the page writes. */
+/** PayPal's conversion of a total to the buyer's currency. */
 export interface ShownConversion {
   currency: string;
-  /** 1 unit of the charged currency is `rate` of `currency`, with the digits the page shows. */
+  /** 1 unit of the charged currency is `rate` of `currency`: the rate PayPal's charge gives. */
   rate: string;
-  /** The converted total the page labels, with the decimals it shows. */
+  /** What PayPal charges the buyer, as PayPal writes it. */
   buyer: string;
   locale: string;
 }
 
-export type Judgment = { ok: true; conversion?: ShownConversion } | { ok: false; reason: string };
+export type Judgment = { ok: true } | { ok: false; reason: string };
 
 /** `minor` units of `currency` as a decimal string: `2.95`, `1500`, `1.234`. */
 function wholeOf(minor: number, currency: string): string {
@@ -901,16 +972,16 @@ function wholeOf(minor: number, currency: string): string {
 /**
  * Whether a page charges `minor` of its currency and nothing more, and why not. It must be read
  * for sure and show no larger amount the buyer may be charged, whether of the currency or a number
- * that may be. Its total is labeled in the currency, as exactly `minor`, or, only on a host that
- * `converts` it to the buyer's currency (PayPal), in one other currency at the one rate the page
- * writes for it (`1 USD = 3.468,14 COP`): the converted total is `minor` at that rate up to the
- * page's rounding ({@link convertsTo}), and no other amount in that currency is more. A page that
- * shows a conversion and no rate line, rates that disagree, a rate or an amount in a third
- * currency, or another total, is held. The buyer's own balance does not count. Where PayPal's
- * order states the total, the page need not label it in its own currency (`labeled` false).
- * Where PayPal states its own conversion (`known`), it decides: a rate line the page writes either
- * way (`1 USD = 3.468,14 COP`, `1 COP = 0,00029 USD`) must agree with it, and an amount under a
- * sign both currencies write (`$ 10.236`) is read in the buyer's currency, no more than PayPal's.
+ * that may be, and no other total. On a store's checkout its total is labeled in the currency, as
+ * exactly `minor`, and no other currency shows. Where PayPal's order states the total, the page
+ * need not label it (`labeled` false). On PayPal (`converts`) the page may show the total
+ * converted to the buyer's currency only where PayPal's own funding data states that conversion
+ * (`known`): the page's text can hold a payment, never approve one. Then an amount under a sign
+ * both currencies write (`$ 10.236`) is read in the buyer's currency; no amount in it is more
+ * than PayPal's conversion, a number with no mark that is exactly PayPal's charge is that charge,
+ * and every converted total the page labels is it; the page's rate lines,
+ * either way round (`1 USD = 3.468,14 COP`, `1 COP = 0,00029 USD`), are PayPal's own rate rounded
+ * to the digits they show; and no third currency shows. The buyer's own balance does not count.
  */
 export function judge(
   page: PageReading,
@@ -919,17 +990,30 @@ export function judge(
   converts = false,
   /** Whether the page must label the total; not where PayPal's order states it. */
   labeled = true,
-  /** The rate PayPal itself states for the conversion, which a rate line on the page must agree with. */
-  known?: { currency: string; rate: string },
+  /**
+   * PayPal's conversion of the total, from its funding data: the buyer's currency, the rate its
+   * charge gives, and the rate PayPal shows.
+   */
+  known?: { currency: string; rate: string; buyer?: string; quote?: Quote },
 ): Judgment {
   const no = (reason: string): Judgment => ({ ok: false, reason });
   if (page.unsure !== undefined) return no(page.unsure);
   const whole = wholeOf(minor, currency);
-  // Where PayPal states its conversion, a sign the buyer's currency shares with this one ($ for COP
-  // and USD) writes the buyer's currency: such an amount is no more than PayPal's conversion.
   const theirs: number[] = [];
   if (known) {
     for (const a of page.shared) {
+      if (a.marks.length === 0) {
+        // A number with no mark is the buyer's charge only where it is that charge exactly.
+        const value = units(a.number, known.currency, page.locale);
+        if (
+          value !== undefined &&
+          known.buyer !== undefined &&
+          Number(value) === Number(known.buyer)
+        ) {
+          theirs.push(a.value);
+        }
+        continue;
+      }
       if (!a.marks.every((m) => writes(page.locale, known.currency, m))) continue;
       const value = units(a.number, known.currency, page.locale);
       if (value === undefined) return no("an amount in another currency not read whole");
@@ -939,60 +1023,38 @@ export function judge(
       theirs.push(a.value);
     }
   }
-  const loose = without(page.loose, theirs);
+  const loose = without(page.loose, [...theirs, ...(labeled ? [] : page.looseOffers)]);
   // Where PayPal's order states the charge, the page's balances and credit offers are no charge.
   const payable = labeled ? page.minor : without(page.minor, page.offers);
   if (Math.max(...payable, ...loose) > minor) return no("a larger amount that may be charged");
   if (page.totals.some((t) => t !== minor)) return no("another total");
-  if (known && page.rates[known.currency] !== undefined) {
-    if (Number(page.rates[known.currency]) !== Number(known.rate)) {
-      return no("a rate line that is not PayPal's rate");
-    }
-  }
-  if (known && page.inverse[known.currency] !== undefined) {
-    if (!inverseOf(known.rate, page.inverse[known.currency] as string)) {
-      return no("a rate line that is not PayPal's rate");
-    }
-  }
-  const rates = known ? { [known.currency]: known.rate, ...page.rates } : page.rates;
-  const codes = [...new Set([...Object.keys(rates), ...Object.keys(page.inverse)])];
-  const charged = page.conversions.filter((c) => !c.aside);
-  if (
-    Object.keys(page.rates).length === 0 &&
-    Object.keys(page.inverse).length === 0 &&
-    page.conversions.length === 0
-  ) {
+  const lines = [...new Set([...Object.keys(page.rates), ...Object.keys(page.inverse)])];
+  if (lines.length === 0 && page.conversions.length === 0) {
     return page.totals.includes(minor) || !labeled ? { ok: true } : no("no total labeled");
   }
   if (!converts) return no("another currency on a store's checkout");
+  if (!known) return no("a conversion PayPal's funding data does not state");
   // A rate's unit is set aside as no amount; it may not hide a total under one unit.
   if (minor < 10 ** minorDigits(currency)) return no("a total under one unit next to a rate");
-  const [code, ...more] = codes;
-  if (code === undefined) return no("an amount in another currency with no rate line");
-  if (more.length > 0) return no("rates to more than one currency");
-  if (charged.some((c) => c.currency !== code)) return no("an amount in a third currency");
-  const rate = rates[code];
-  // A rate written from the buyer's currency shows too few digits to check a conversion by.
-  if (rate === undefined) return no("an amount in another currency with no rate line");
-  const totals = charged.filter((c) => c.total);
-  if (totals.length === 0) {
-    // PayPal's own conversion needs no label on the page; one the page alone writes does.
-    if (!known) return no("no converted total labeled");
-    return charged.some((c) => exceedsConversion(whole, rate, c.units))
-      ? no("a larger amount in the buyer's currency")
-      : { ok: true };
+  if (lines.some((c) => c !== known.currency)) return no("rates to more than one currency");
+  if (lines.length > 0 && !(known.quote && showsQuote(page, known.quote))) {
+    return no("a rate line that is not PayPal's rate");
   }
-  if (!totals.every((c) => convertsTo(whole, rate, c.units))) {
-    return no("a converted total that is not the countersigned one at the page's rate");
-  }
-  if (charged.some((c) => exceedsConversion(whole, rate, c.units))) {
+  // An amount only a sign names is the buyer's currency where that currency writes the sign.
+  const charged = page.conversions.filter((c) => !c.aside);
+  const inBuyers = (c: (typeof charged)[number]) =>
+    c.currency === known.currency ||
+    (c.currency === undefined &&
+      (c.marks ?? []).length > 0 &&
+      (c.marks ?? []).every((m) => writes(page.locale, known.currency, m)));
+  if (!charged.every(inBuyers)) return no("an amount in a third currency");
+  if (charged.some((c) => exceedsConversion(whole, known.rate, c.units))) {
     return no("a larger amount in the buyer's currency");
   }
-  const buyer = totals[0]?.units as string;
-  if (totals.some((c) => Number(c.units) !== Number(buyer))) {
-    return no("converted totals that disagree");
+  if (!charged.filter((c) => c.total).every((c) => convertsTo(whole, known.rate, c.units))) {
+    return no("a converted total that is not PayPal's conversion");
   }
-  return { ok: true, conversion: { currency: code, rate, buyer, locale: page.locale } };
+  return { ok: true };
 }
 
 /**
@@ -1012,7 +1074,6 @@ type Fraction = readonly [n: bigint, d: bigint];
 type Range = readonly [lo: Fraction, hi: Fraction];
 
 const atMost = (a: Fraction, b: Fraction) => a[0] * b[1] <= b[0] * a[1];
-const times = (a: Fraction, b: Fraction): Fraction => [a[0] * b[0], a[1] * b[1]];
 
 /** Every value a decimal shown with its digits rounds from: `0.00029` is 0.000285 to 0.000295. */
 function shown(decimal: string): Range {
@@ -1039,26 +1100,8 @@ function quoted(q: Quote): Range | undefined {
 }
 
 /**
- * Whether `buyer` for `merchant` is within `capBps` of a rate PayPal's quote may stand for, up to
- * the digits it shows: `R·(1 − cap) ≤ buyer / merchant ≤ R·(1 + cap)` for some `R` it rounds from.
- *
- * @internal
- */
-export function withinQuote(merchant: string, buyer: string, q: Quote, capBps: number): boolean {
-  const range = quoted(q);
-  const m = decimalParts(merchant);
-  const b = decimalParts(buyer);
-  if (!range || m.int === 0n) return false;
-  const rate: Fraction = [b.int * 10n ** BigInt(m.scale), m.int * 10n ** BigInt(b.scale)];
-  const cap = BigInt(capBps);
-  return (
-    atMost(times(range[0], [10_000n - cap, 10_000n]), rate) &&
-    atMost(rate, times(range[1], [10_000n + cap, 10_000n]))
-  );
-}
-
-/**
- * `buyer / merchant` with 10 significant digits, rounded half up: the rate two amounts give.
+ * `buyer / merchant` with 10 significant digits, rounded half up: the rate two amounts give. Its
+ * trailing zeros stay, so it always shows the digits a conversion is checked with.
  */
 export function rateBetween(merchant: string, buyer: string): string {
   const m = decimalParts(merchant);
@@ -1069,12 +1112,11 @@ export function rateBetween(merchant: string, buyer: string): string {
   const digits = (at(20) / den).toString().length;
   const decimals = Math.min(20, Math.max(0, 30 - digits));
   const q = ((2n * at(decimals) + den) / (2n * den)).toString().padStart(decimals + 1, "0");
-  const text = decimals ? `${q.slice(0, -decimals)}.${q.slice(-decimals)}` : q;
-  return text.includes(".") ? text.replace(/\.?0+$/, "") : text;
+  return decimals ? `${q.slice(0, -decimals)}.${q.slice(-decimals)}` : q;
 }
 
 /** Whether a rate line the page writes for `currency`, either way, is PayPal's quote rounded. */
-export function showsQuote(page: PageReading, q: Quote): boolean {
+function showsQuote(page: PageReading, q: Quote): boolean {
   const range = quoted(q);
   if (!range) return false;
   const forward = page.rates[q.currency];
@@ -1086,81 +1128,10 @@ export function showsQuote(page: PageReading, q: Quote): boolean {
   );
 }
 
-/**
- * Whether a PayPal page charges the order's `minor` of `currency`, where PayPal states only its
- * rate per unit (`q`) and the page alone shows the total converted to the buyer's currency. The
- * page must show no larger amount that may be charged and no other total; its amounts in the
- * buyer's currency, under its code or a sign both currencies write (`$ 10.236`), are the converted
- * total, one value; its rate lines are PayPal's quote rounded; and that total for the order is
- * within the mandate's spread (`capBps`) of PayPal's quote, as {@link withinQuote} bounds it. The
- * conversion is recorded at the rate the two amounts give.
- */
-export function judgeQuoted(
-  page: PageReading,
-  minor: number,
-  currency: string,
-  q: Quote,
-  capBps: number,
-): Judgment {
-  const no = (reason: string): Judgment => ({ ok: false, reason });
-  if (page.unsure !== undefined) return no(page.unsure);
-  if (minor < 10 ** minorDigits(currency)) return no("a total under one unit next to a rate");
-  const paid: string[] = [];
-  const theirs: number[] = [];
-  for (const a of page.shared) {
-    if (!a.marks.every((m) => writes(page.locale, q.currency, m))) continue;
-    const value = units(a.number, q.currency, page.locale);
-    if (value === undefined) return no("an amount in another currency not read whole");
-    paid.push(value);
-    theirs.push(a.value);
-  }
-  const payable = without(page.minor, page.offers);
-  if (Math.max(...payable, ...without(page.loose, theirs)) > minor) {
-    return no("a larger amount that may be charged");
-  }
-  if (page.totals.some((t) => t !== minor)) return no("another total");
-  const charged = page.conversions.filter((c) => !c.aside);
-  if (charged.some((c) => c.currency !== q.currency)) return no("an amount in a third currency");
-  if ([...Object.keys(page.rates), ...Object.keys(page.inverse)].some((c) => c !== q.currency)) {
-    return no("rates to more than one currency");
-  }
-  if (!showsQuote(page, q)) return no("a rate line that is not PayPal's rate");
-  paid.push(...charged.map((c) => c.units));
-  const [buyer, ...rest] = paid;
-  if (buyer === undefined) return no("no converted total shown");
-  if (rest.some((v) => Number(v) !== Number(buyer))) return no("converted totals that disagree");
-  const merchant = wholeOf(minor, currency);
-  if (!withinQuote(merchant, buyer, q, capBps)) {
-    return no("a converted total off PayPal's rate by more than the mandate's spread");
-  }
-  return {
-    ok: true,
-    conversion: {
-      currency: q.currency,
-      rate: rateBetween(merchant, buyer),
-      buyer,
-      locale: page.locale,
-    },
-  };
-}
-
 /** Whether `locale` writes `currency` with the sign `mark`. */
 function writes(locale: string, currency: string, mark: string): boolean {
   const s = shape(locale, currency);
   return s.narrow === mark || s.marks.includes(mark) || s.signs.includes(mark);
-}
-
-/**
- * Whether `inverse`, a rate from the buyer's currency as a page shows it (`0.00029`), is `1 / rate`
- * up to its last digit and the 0.5 in 1,000 a rate's rounding is allowed:
- * `|1 − rate × inverse| ≤ rate × 10^−s / 2 + 1 / 2000`, `s` the decimals the page shows.
- */
-export function inverseOf(rate: string, inverse: string): boolean {
-  const r = decimalParts(rate);
-  const x = decimalParts(inverse);
-  const one = 10n ** BigInt(r.scale + x.scale);
-  const gap = one - r.int * x.int;
-  return 2000n * (gap < 0n ? -gap : gap) <= 1000n * r.int + one;
 }
 
 /** `all` less one of each of `some`. */

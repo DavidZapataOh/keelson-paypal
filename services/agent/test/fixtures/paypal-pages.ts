@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import type { FxReference } from "@keelson/core";
 
 /**
@@ -108,7 +109,14 @@ export function checkoutDetails(o: {
   currency?: string;
   intent?: string;
   payee?: string;
-  parts?: { subtotal: string; shipping: string; tax: string };
+  parts?: {
+    subtotal: string;
+    shipping: string;
+    tax: string;
+    insurance?: string;
+    smartDuty?: string;
+    discount?: string;
+  };
 }) {
   const currency = o.currency ?? "USD";
   const amount = (currencyValue: string) => ({ currencyValue, currencyCode: currency });
@@ -122,31 +130,13 @@ export function checkoutDetails(o: {
             subtotal: amount(parts.subtotal),
             shippingAndHandling: amount(parts.shipping),
             tax: amount(parts.tax),
+            insurance: parts.insurance ? amount(parts.insurance) : null,
+            smartDuty: parts.smartDuty ? amount(parts.smartDuty) : null,
+            discount: parts.discount ? amount(parts.discount) : null,
             total: amount(o.value),
           },
         },
         payees: [{ merchantId: o.payee ?? "SANDBOXPAYEE01" }],
-      },
-    },
-  };
-}
-
-/** The review page's own answer about the buyer's funding options, with PayPal's conversion. */
-export function fundingOptions(o: { from: string; to: string; currency: string; rate: string }) {
-  return {
-    data: {
-      checkoutSession: {
-        fundingOptions: [
-          {
-            id: "balance",
-            currencyConversion: {
-              rate: o.rate,
-              type: "PAYPAL",
-              from: { currencyValue: o.from, currencyCode: "USD" },
-              to: { currencyValue: o.to, currencyCode: o.currency },
-            },
-          },
-        ],
       },
     },
   };
@@ -166,31 +156,160 @@ export const ES_CO_CARD_REVIEW: readonly string[] = [
   "Si continúas, autorizas a PayPal a cobrar el importe de $ 10.236 en tu tarjeta.",
 ];
 
-/** PayPal's conversion of that order, as the review page's funding options state it. */
-export const ES_CO_CARD_CONVERSION = { usd: "2.95", cop: "10236", rate: "3469.83" } as const;
+/** A recorded fixture of PayPal's sandbox, in `fixtures/paypal`. */
+export const recorded = (name: string): unknown =>
+  JSON.parse(readFileSync(new URL(`./paypal/${name}.json`, import.meta.url), "utf8"));
 
 /**
- * A funding options answer for one conversion. `inverse` states it from the buyer's currency to
- * the order's, the way PayPal's page writes its rate (`1 COP = 0,00029 USD`).
+ * A signed-in sandbox buyer's `xoos.getFundingSelection` answer for a EUR 2.95 order, recorded on
+ * PayPal's `/pay` checkout: a bank account and a Visa card that PayPal converts to USD 3.40 at
+ * `1 USD = 0.866445367 EUR`, the card with the issuer's conversion too, and a balance PayPal
+ * disallows. Identifiers, digits and labels are replaced.
  */
-export function fundingConversion(o: {
-  order: string;
+export const RECORDED_SELECTION = "funding-selection-eur";
+
+type Instrument = Record<string, unknown> & { id: string };
+
+/** The recorded answer with its funding instruments replaced. */
+export function fundingSelection(instruments: Instrument[]) {
+  const answer = structuredClone(recorded(RECORDED_SELECTION)) as [
+    { result: { data: { json: { fundingInstruments: Instrument[] } } } },
+  ];
+  answer[0].result.data.json.fundingInstruments = instruments;
+  return answer;
+}
+
+/** The recorded instruments, by type: `BANK`, `CARD` and `BALANCE`. */
+export function recordedInstrument(type: "BANK" | "CARD" | "BALANCE"): Instrument {
+  const [answer] = recorded(RECORDED_SELECTION) as [
+    { result: { data: { json: { fundingInstruments: Instrument[] } } } },
+  ];
+  return structuredClone(
+    answer.result.data.json.fundingInstruments.find((i) => i.type === type) as Instrument,
+  );
+}
+
+/** A card PayPal converts a USD order to the buyer's currency on, shaped like the recorded one. */
+export function convertingCard(o: {
+  id?: string;
   buyer: string;
-  currency: string;
+  value: string;
+  /** PayPal's rate from 1 unit of the buyer's currency to USD. */
   rate: string;
-  inverse?: boolean;
-}) {
-  const order = { currencyValue: o.order, currencyCode: "USD" };
-  const buyer = { currencyValue: o.buyer, currencyCode: o.currency };
+  vendor?: boolean;
+}): Instrument {
+  const card = recordedInstrument("CARD");
+  return {
+    ...card,
+    id: o.id ?? (card.id as string),
+    currencyConversionOptions: [
+      {
+        __typename: "CurrencyConversionPayPal",
+        combinedFundingAmounts: [],
+        conversionRateDurationWarning: false,
+        type: "PAYPAL",
+        conversionRate: {
+          fromAmount: "1",
+          fromCurrency: o.buyer,
+          toAmount: o.rate,
+          toCurrency: "USD",
+        },
+        convertedAmount: { currencyCode: o.buyer, value: o.value },
+      },
+      ...(o.vendor === false
+        ? []
+        : [{ __typename: "CurrencyConversionVendor", combinedFundingAmounts: [], type: "VENDOR" }]),
+    ],
+  };
+}
+
+/** The Pay form's fields as recorded, with `o` in place of the named ones. */
+export function payForm(
+  name: "pay-form-eur" | "pay-form-eur-card",
+  o: Record<string, string | null> = {},
+): [string, string][] {
+  const fields = (recorded(name) as [string, string][]).filter(([k]) => o[k] !== null);
+  const set = new Map(fields);
+  for (const [k, v] of Object.entries(o)) if (v !== null) set.set(k, v);
+  return [...set.entries()];
+}
+
+/** The Pay form of a USD 2.95 order the buyer pays with a card PayPal converts to `buyer`. */
+export const cardForm = (buyer: string, value: string, o: Record<string, string | null> = {}) =>
+  payForm("pay-form-eur-card", {
+    purchaseCurrencyCode: "USD",
+    purchaseAmount: "2.95",
+    fundingInstrumentAmount: "2.95",
+    selectedCurrencyConversionOptionCode: buyer,
+    selectedRadioFiConvertedAmount: value,
+    ...o,
+  });
+
+/**
+ * PayPal's `/pay` review page: the rows, and the Pay form with its hidden fields, whose submit
+ * PayPal's client handles. `script` runs on the page.
+ */
+export function payPage(
+  lines: readonly string[],
+  lang: string,
+  fields: readonly [string, string][],
+  o: { button?: string; script?: string; after?: string } = {},
+): string {
+  const rows = lines.map((l) => `<div>${l}</div>`).join("\n");
+  const inputs = fields
+    .map(([k, v]) => `<input type="hidden" name="${k}" value="${v.replaceAll('"', "&quot;")}">`)
+    .join("");
+  return `<!doctype html><html lang="${lang}"><body><h1>PayPal</h1>
+<form id="pay">${inputs}<section aria-label="Pagar con">${rows}</section>
+<button type="submit"${o.button ?? ""}>Pay</button></form><p id="out"></p>${o.after ?? ""}
+<script>document.getElementById("pay").onsubmit = (e) => { e.preventDefault(); document.getElementById("out").textContent = "clicked Pay"; };${o.script ?? ""}</script>
+</body></html>`;
+}
+
+/** The selected plan of PayPal's hosted checkout, as its `GetFundingOptions` answers it. */
+export function plans(
+  o: {
+    /** What the selected plan's funding source pays. */
+    amount?: { currencyCode: string; currencyValue: string };
+    conversion?: {
+      type?: string;
+      buyer: { currencyCode: string; currencyValue: string };
+      /** PayPal's rate from 1 unit of the order's currency. */
+      rate: string;
+    };
+    /** Other plans the buyer may switch to, not selected. */
+    others?: Record<string, unknown>[];
+    sources?: number;
+  } = {},
+) {
+  const amount = o.amount ?? o.conversion?.buyer ?? { currencyCode: "USD", currencyValue: "2.95" };
+  const source = {
+    fundingInstrument: { id: "CC-SANDBOXCARD0001", type: "CARD", lastDigits: "4242" },
+    amount,
+  };
   return {
     data: {
       checkoutSession: {
         fundingOptions: [
           {
-            id: "card",
-            currencyConversion: o.inverse
-              ? { rate: o.rate, type: "PAYPAL", from: buyer, to: order }
-              : { rate: o.rate, type: "PAYPAL", from: order, to: buyer },
+            allPlans: [
+              {
+                isSelected: true,
+                fundingSources: Array.from({ length: o.sources ?? 1 }, () => source),
+                currencyConversion: o.conversion
+                  ? {
+                      type: o.conversion.type ?? "PAYPAL",
+                      from: { currencyCode: "USD", currencyValue: "1" },
+                      to: {
+                        currencyCode: o.conversion.buyer.currencyCode,
+                        currencyValue: o.conversion.rate,
+                      },
+                      convertedAmount: o.conversion.buyer,
+                    }
+                  : null,
+              },
+              ...(o.others ?? []),
+            ],
           },
         ],
       },
@@ -199,24 +318,65 @@ export function fundingConversion(o: {
 }
 
 /**
- * A funding options answer that states PayPal's rate per unit, not the order converted: two
- * options, each `1 COP = 0.000290145 USD`, as a signed-in Colombian buyer's review page answers.
+ * The recorded `/pay` review page's text for that EUR order, one row per line, with the buyer's
+ * name and address replaced.
  */
-export function fundingUnitRate(o: { currency: string; rate: string; options?: number }) {
-  const option = {
-    id: "card",
-    currencyConversion: {
-      rate: o.rate,
-      type: "PAYPAL",
-      from: { currencyValue: "1", currencyCode: o.currency },
-      to: { currencyValue: o.rate, currencyCode: "USD" },
-    },
-  };
-  return {
-    data: {
-      checkoutSession: {
-        fundingOptions: Array.from({ length: o.options ?? 2 }, () => structuredClone(option)),
-      },
-    },
-  };
-}
+export const RECORDED_PAGE: readonly string[] = [
+  "Select to view your profile. User initials",
+  "JD",
+  "Pay in full",
+  "€2.95 today",
+  "PayPal Credit",
+  "Pay over time with a reusable credit line.",
+  "Terms",
+  "See PayPal Credit terms",
+  "Pay with",
+  "Your choice will be your preferred for future online purchases.",
+  "Sandbox Bank",
+  "Checking",
+  "Last four digits 0001",
+  "••0001",
+  "$3.40",
+  "USD",
+  "Visa",
+  "Credit",
+  "Last four digits 4242",
+  "••4242",
+  "Show all payment methods",
+  "Add card",
+  "Add card",
+  "Ship to",
+  "Ana Prueba",
+  "Calle 1 # 2-3, Bogotá",
+  "Order",
+  "$3.40",
+  "PayPal rate: 1 USD = 0.86645 EUR",
+  "About payment methods",
+  "Pay",
+  "Return to Test Store",
+];
+
+/**
+ * A Colombian buyer's `/pay` review page for a USD 2.95 order paid with a card PayPal converts to
+ * COP, row by row as the gate logged it: the card with its last digits and the converted amount
+ * coded COP, the amount again under the sign COP shares with USD, PayPal's rate written from the
+ * buyer's currency (twice), and the footer that names the amount once more.
+ */
+export const ES_CO_CARD_PAGE: readonly string[] = [
+  "Pagar con",
+  "Visa Cargo",
+  "Últimos cuatro dígitos 4821",
+  "••4821",
+  "$ 10.236",
+  "COP",
+  "$ 10.236",
+  "Tipo de cambio de PayPal: 1 COP = 0,00029 USD",
+  "Tipo de cambio de PayPal: 1 COP = 0,00029 USD",
+  "Si continúas, autorizas a PayPal a cobrar el importe de $ 10.236 en tu tarjeta.",
+];
+
+/**
+ * A frame PayPal's page loads and never shows, as its checkout does for risk and messaging: its
+ * source holds numbers that are no amount on the page.
+ */
+export const HIDDEN_FRAME = `<iframe style="display:none" srcdoc="<body><p>Comisión $ 25.000</p><script>window.cfg={limit:'$ 99.999'}</script></body>"></iframe>`;

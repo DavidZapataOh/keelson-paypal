@@ -273,8 +273,7 @@ describe.each(Object.keys(VIEWPORTS) as Kind[])("alerts and approvals on %s", (k
     const timer = page.getByRole("timer");
     const first = await timer.textContent();
     expect(first).toMatch(/^Expires in 1[34]:\d\d$/);
-    await page.waitForTimeout(1_200);
-    expect(await timer.textContent()).not.toBe(first);
+    await expect.poll(() => timer.textContent(), { timeout: 5_000 }).not.toBe(first);
     const table = page.getByRole("table", { name: "Each field of your mandate against the cart" });
     const failing = table.getByRole("row", { name: /Ask me above.*outside the mandate/ });
     expect(await failing.getAttribute("class")).toContain("bg-warn/10");

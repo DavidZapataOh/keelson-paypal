@@ -37,7 +37,7 @@
     "@keelson/attest": "workspace:*",
     "@keelson/chain": "workspace:*",
     "@keelson/compiler": "workspace:*",
-    "@keelson/context": "workspace:*",
+    "@keelson-finance/context": "workspace:*",
     "@keelson/core": "workspace:*",
     "@keelson/db": "workspace:*",
     "@keelson/erc8004": "workspace:*",

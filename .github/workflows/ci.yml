@@ -210,7 +210,10 @@ jobs:
           sudo tar -xzf /tmp/cddl.tar.gz -C /usr/local/bin cddl
       - env:
           KEELSON_REQUIRE_CDDL: "1"
-        run: pnpm turbo run typecheck test build --filter='!./packages/db' --filter='!./packages/attest' --filter='!./packages/evidence' --filter='!./services/api' --filter='!./apps/store' --filter='!./services/monitor' --filter='!./packages/relayer' --cache-dir=.turbo
+        run: pnpm turbo run typecheck test build --filter='!./packages/db' --filter='!./packages/attest' --filter='!./packages/evidence' --filter='!./services/api' --filter='!./apps/store' --filter='!./services/monitor' --filter='!./packages/relayer' --filter='!./apps/landing' --concurrency=100% --cache-dir=.turbo
+      # On its own, after the fan-out: its e2e times a visitor's tamper flow against a 10 s budget.
+      - name: Landing
+        run: pnpm turbo run typecheck test build --filter=@keelson/landing --cache-dir=.turbo
       - name: The captured timestamp tokens verify with OpenSSL
         working-directory: packages/timestamp
         run: node scripts/openssl-verify.ts
@@ -284,10 +287,10 @@ jobs:
           cache: pnpm
       - uses: astral-sh/setup-uv@v10.3.3
       - run: pnpm install --frozen-lockfile
-      - run: pnpm turbo run build --filter=@keelson/sdk... --filter=@keelson/verifier... --filter=@keelson/context...
+      - run: pnpm turbo run build --filter=@keelson-finance/sdk... --filter=@keelson-finance/verifier... --filter=@keelson-finance/context...
       - name: Types, models, tools and the collection are generated from openapi/keelson.public.json
         run: |
-          pnpm --filter @keelson/sdk types
+          pnpm --filter @keelson-finance/sdk types
           node services/api/scripts/postman.ts
           (cd packages/sdk && node scripts/vectors.ts)
           packages/sdk-python/scripts/models.sh
@@ -303,6 +306,12 @@ jobs:
           uv run ruff format --check .
           uv run mypy
           uv run pytest -q -s tests --ignore=tests/live | tee -a "$GITHUB_STEP_SUMMARY"
+      # Last: it rewrites the verifier's manifest for publishing, as the release does.
+      - name: The verifier package installs and verifies offline
+        run: |
+          node packages/verify/scripts/bundle.mjs
+          (cd packages/verify && pnpm pack --pack-destination "$RUNNER_TEMP/verifier")
+          packages/verify/scripts/check-package.sh "$RUNNER_TEMP"/verifier/*.tgz
 
   # Both SDKs against the live sandbox: sign-in, mandates, purchases, verification and adapters.
   sdk-live:
@@ -325,12 +334,18 @@ jobs:
           cache: pnpm
       - uses: astral-sh/setup-uv@v10.3.3
       - run: pnpm install --frozen-lockfile
-      - run: pnpm turbo run build --filter=@keelson/sdk... --filter=@keelson/verifier... --filter=@keelson/paypal...
-      - run: pnpm --filter @keelson/sdk exec playwright install --with-deps chromium
+      - run: pnpm turbo run build --filter=@keelson-finance/sdk... --filter=@keelson-finance/verifier... --filter=@keelson/paypal...
+      - run: pnpm --filter @keelson-finance/sdk exec playwright install --with-deps chromium
+      # One Judge Mode user for the whole run, which makes one purchase; the suite that buys
+      # rotates with the run number, so four runs cover all four.
+      - name: Pick this run's purchase
+        run: |
+          suites=(purchase-ts quickstart-ts purchase-py quickstart-py)
+          echo "KEELSON_LIVE_BUY=${suites[$((GITHUB_RUN_NUMBER % 4))]}" >> "$GITHUB_ENV"
       - name: TypeScript SDK and verifier
         run: |
-          pnpm --filter @keelson/sdk exec vitest run --no-file-parallelism --reporter=verbose test/live | tee -a "$GITHUB_STEP_SUMMARY"
-          pnpm --filter @keelson/verifier exec vitest run --reporter=verbose | tee -a "$GITHUB_STEP_SUMMARY"
+          pnpm --filter @keelson-finance/sdk exec vitest run --no-file-parallelism --reporter=verbose test/live | tee -a "$GITHUB_STEP_SUMMARY"
+          pnpm --filter @keelson-finance/verifier exec vitest run --reporter=verbose | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Python SDK
         working-directory: packages/sdk-python
         env:

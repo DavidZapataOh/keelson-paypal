@@ -68,7 +68,17 @@ export class Events {
       } catch (err) {
         if (o.signal?.aborted || ++failures > 5) throw err;
       }
-      await new Promise((r) => setTimeout(r, Math.min(500 * 2 ** failures, 8_000)));
+      await new Promise<void>((resolve, reject) => {
+        const t = setTimeout(resolve, Math.min(500 * 2 ** failures, 8_000));
+        o.signal?.addEventListener(
+          "abort",
+          () => {
+            clearTimeout(t);
+            reject(o.signal?.reason);
+          },
+          { once: true },
+        );
+      });
     }
   }
 }

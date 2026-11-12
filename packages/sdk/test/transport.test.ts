@@ -199,3 +199,39 @@ describe("Alibis", () => {
     expect(s.seen.map((r) => r.headers.authorization)).toEqual(["Bearer t0", undefined]);
   });
 });
+
+describe("cancelling", () => {
+  test("a countersign cancelled after it was sent is OutcomeUnknownError", async () => {
+    s.script(hang);
+    const controller = new AbortController();
+    const mandate = {
+      id: "01M7MANDATE000000000000000",
+      agentId: "351",
+      holdMode: "mandate",
+      authorizationId: "AUTH1",
+      openMandate: "a~b~~c~",
+    } as never;
+    const pending = keelson.purchases.countersign({
+      mandate,
+      evidenceRoot: `0x${"0".repeat(64)}`,
+      cart: { merchant: "m", currency: "USD", lines: [], return_days: 0, returns_free: false },
+      signal: controller.signal,
+    });
+    const t0 = Date.now();
+    setTimeout(() => controller.abort(), 100);
+    await expect(pending).rejects.toBeInstanceOf(OutcomeUnknownError);
+    expect(Date.now() - t0).toBeLessThan(1_000);
+  });
+
+  test("a stream waiting to reconnect stops when cancelled", async () => {
+    s.script(drop, drop, drop, drop, drop, drop, drop);
+    const controller = new AbortController();
+    const k = new Keelson({ baseUrl: s.url, auth: staticToken("t"), maxRetries: 0 });
+    const t0 = Date.now();
+    setTimeout(() => controller.abort(), 300);
+    await expect(
+      k.events.stream("public:x", { signal: controller.signal }).next(),
+    ).rejects.toBeDefined();
+    expect(Date.now() - t0).toBeLessThan(2_000);
+  });
+});

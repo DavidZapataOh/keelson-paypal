@@ -86,8 +86,10 @@ async def login(
             self.end_headers()
             text = "Signed in. You can close this tab." if ok else "Sign-in failed. Run keelson login again."
             self.wfile.write(f'<!doctype html><p style="font:16px system-ui;margin:3rem">{text}</p>'.encode())
-            if url.path == "/callback":
-                result.update(q if ok else {"error": q.get("error", "state mismatch")})
+            # Only an answer carrying this sign-in's state counts; anything else on this machine
+            # that hits the listener is turned away and the sign-in keeps waiting.
+            if url.path == "/callback" and q.get("state") == state:
+                result.update(q if ok else {"error": q.get("error", "no code")})
                 loop.call_soon_threadsafe(done.set)
 
         def log_message(self, *args: Any) -> None:
