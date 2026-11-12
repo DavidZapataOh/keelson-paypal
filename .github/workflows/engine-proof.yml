@@ -127,11 +127,9 @@ jobs:
       - uses: actions/checkout@v7
       - name: Free disk and add swap for the Groth16 wrap
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache /usr/share/swift /usr/local/share/boost
-          sudo docker image prune --all --force > /dev/null
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
           sudo swapoff -a || true
-          # A CPU proof peaks at about 45 GB: 16 GB of memory and 24 GB of swap starved the runner.
-          sudo fallocate -l 40G /swapfile2 && sudo chmod 600 /swapfile2 && sudo mkswap /swapfile2 && sudo swapon /swapfile2
+          sudo fallocate -l 24G /swapfile2 && sudo chmod 600 /swapfile2 && sudo mkswap /swapfile2 && sudo swapon /swapfile2
           free -g && df -h /
       - uses: actions/download-artifact@v6
         with:
