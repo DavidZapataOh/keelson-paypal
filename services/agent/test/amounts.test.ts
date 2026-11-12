@@ -2,17 +2,16 @@ import fc from "fast-check";
 import { describe, expect, test } from "vitest";
 import {
   charges,
+  decimalText,
   judge,
-  judgeQuoted,
   minorDigits,
   pageLocale,
   readAmounts,
   readPage,
   scan,
   values,
-  withinQuote,
 } from "../src/amounts.ts";
-import { ES_CO_CARD_CONVERSION, ES_CO_CARD_REVIEW } from "./fixtures/paypal-pages.ts";
+import { ES_CO_CARD_REVIEW } from "./fixtures/paypal-pages.ts";
 
 /** Every language ICU formats numbers for, with the regions and numbering systems that change how. */
 function locales(): string[] {
@@ -378,14 +377,22 @@ describe("PayPal's review page for a buyer whose account converts the total", ()
     locale: fc.constantFrom("es", "es-CO", "es-419", "es-MX", "en", "en-US", "pt-BR"),
   });
 
-  test("pays exactly the countersigned USD total, converted at the rate the page writes", () => {
+  /** PayPal's own conversion at the page's rate, as its funding data states it. */
+  const known = (o: { rate: number }) => {
+    const rate = decimalText(o.rate, 2);
+    return { currency: "COP", rate, quote: { currency: "COP", rate, inverse: false } };
+  };
+  const pays = (text: string, locale: string, minor: number, k?: ReturnType<typeof known>) =>
+    judge(readPage(text, [locale], "USD"), minor, "USD", true, true, k).ok;
+
+  test("pays exactly the countersigned USD total on PayPal's own conversion, never on the text alone", () => {
     fc.assert(
       fc.property(page, (o) => {
         const text = review({ ...o, total: usdTotal(o.usd) });
-        const read = readPage(text, [o.locale], "USD");
-        expect(charges(read, o.usd, "USD", true), text).toBe(true);
-        expect(charges(read, o.usd + 1, "USD", true), text).toBe(false);
-        if (o.usd > 1) expect(charges(read, o.usd - 1, "USD", true), text).toBe(false);
+        expect(pays(text, o.locale, o.usd, known(o)), text).toBe(true);
+        expect(pays(text, o.locale, o.usd), text).toBe(false);
+        expect(pays(text, o.locale, o.usd + 1, known(o)), text).toBe(false);
+        if (o.usd > 1) expect(pays(text, o.locale, o.usd - 1, known(o)), text).toBe(false);
       }),
       { numRuns: 5_000 },
     );
@@ -398,31 +405,29 @@ describe("PayPal's review page for a buyer whose account converts the total", ()
           `$${new Intl.NumberFormat("es-CO", { maximumFractionDigits: 0 }).format(n)} COP`;
         const onlyCop = review({ ...o, total: cop(converted(o)) });
         const read = readPage(onlyCop, [o.locale], "USD");
-        expect(charges(read, o.usd, "USD", true), onlyCop).toBe(true);
+        expect(pays(onlyCop, o.locale, o.usd, known(o)), onlyCop).toBe(true);
         expect(charges(read, o.usd, "USD", false), onlyCop).toBe(false);
         // Off by more than a peso and the rate's rounding: another total.
         const off = Math.ceil((o.usd / 100) * 0.005) + 2;
         const wrong = review({ ...o, total: cop(converted(o) + off), pay: converted(o) + off });
-        expect(charges(readPage(wrong, [o.locale], "USD"), o.usd, "USD", true), wrong).toBe(false);
+        expect(pays(wrong, o.locale, o.usd, known(o)), wrong).toBe(false);
       }),
       { numRuns: 5_000 },
     );
   });
 
-  test("holds when a COP charge is off the rate, no rate shows, or a larger USD amount shows", () => {
+  test("holds when a COP charge is off the rate or a larger USD amount shows", () => {
     fc.assert(
       fc.property(page, fc.integer({ min: 1, max: 1_000_000 }), (o, more) => {
         // A converted charge the rate does not account for, or no rate to check it against.
         const off = review({ ...o, total: usdTotal(o.usd), pay: converted(o) * 2 + 2 });
-        expect(charges(readPage(off, [o.locale], "USD"), o.usd, "USD", true), off).toBe(false);
+        expect(pays(off, o.locale, o.usd, known(o)), off).toBe(false);
+        // PayPal's own rate needs no line on the page; the text alone never pays.
         const unrated = review({ ...o, total: usdTotal(o.usd), rateLine: false });
-        expect(charges(readPage(unrated, [o.locale], "USD"), o.usd, "USD", true), unrated).toBe(
-          false,
-        );
+        expect(pays(unrated, o.locale, o.usd, known(o)), unrated).toBe(true);
+        expect(pays(unrated, o.locale, o.usd), unrated).toBe(false);
         const larger = `${review({ ...o, total: usdTotal(o.usd) })}\nCargo ${usdTotal(o.usd + more)}`;
-        expect(charges(readPage(larger, [o.locale], "USD"), o.usd, "USD", true), larger).toBe(
-          false,
-        );
+        expect(pays(larger, o.locale, o.usd, known(o)), larger).toBe(false);
       }),
       { numRuns: 5_000 },
     );
@@ -514,9 +519,15 @@ describe("pages a second review found paid more than the countersigned total", (
     expect(charges(readPage(text, [locale], currency), 1000, currency, true)).toBe(false);
   });
 
-  test("a store's checkout showing any rate or other currency is held", () => {
+  test("a store's checkout showing any rate or other currency is held; on PayPal, so is text alone", () => {
     const paypal = "Total $10.00 USD\nTasa: 1 USD = 3.468,14 COP\nPagarás $34.681 COP";
-    expect(pays(paypal, true, "es")).toBe(true);
+    const known = {
+      currency: "COP",
+      rate: "3468.14",
+      quote: { currency: "COP", rate: "3468.14", inverse: false },
+    };
+    expect(judge(readPage(paypal, ["es"], "USD"), 1000, "USD", true, true, known).ok).toBe(true);
+    expect(pays(paypal, true, "es")).toBe(false);
     expect(pays(paypal, false, "es")).toBe(false);
     expect(pays("Total $10.00 USD\nAvailable at checkout: 490.00 CAD", false)).toBe(false);
   });
@@ -555,17 +566,15 @@ describe("pages a final review found paid more than the countersigned total", ()
 
   test("on PayPal, only the buyer's balance in another currency is set aside", () => {
     const rate = "Total $10.00 USD\n1 USD = 17.00 MXN\nPagarás $170.00 MXN";
-    expect(
-      charges(readPage(`${rate}\nSaldo de PayPal $4,900.00 MXN`, ["es"], "USD"), 1000, "USD", true),
-    ).toBe(true);
-    expect(
-      charges(
-        readPage(`${rate}\nRemaining balance $4,900.00 MXN`, ["en"], "USD"),
-        1000,
-        "USD",
-        true,
-      ),
-    ).toBe(false);
+    const known = {
+      currency: "MXN",
+      rate: "17.00000000",
+      quote: { currency: "MXN", rate: "17.00", inverse: false },
+    };
+    const paid = (text: string, locale: string) =>
+      judge(readPage(text, [locale], "USD"), 1000, "USD", true, true, known).ok;
+    expect(paid(`${rate}\nSaldo de PayPal $4,900.00 MXN`, "es")).toBe(true);
+    expect(paid(`${rate}\nRemaining balance $4,900.00 MXN`, "en")).toBe(false);
   });
 
   test("a masked card's last digits before a coded amount are no amount", () => {
@@ -620,7 +629,12 @@ describe("a card's or an account's last digits are never an amount", () => {
     const read = readPage(text, ["es"], "USD");
     expect(read.unsure).toBeUndefined();
     expect(read.minor).toEqual([]);
-    const known = { currency: "COP", rate: ES_CO_CARD_CONVERSION.rate };
+    // PayPal charges COP 10,236 and shows 1 COP = 0.000290145 USD.
+    const known = {
+      currency: "COP",
+      rate: "3469.830508",
+      quote: { currency: "COP", rate: "0.000290145", inverse: true },
+    };
     expect(judge(read, 295, "USD", true, false, known)).toEqual({ ok: true });
     // With nothing from PayPal itself, the pesos under the sign USD shares may be dollars.
     expect(judge(read, 295, "USD", true, false).ok).toBe(false);
@@ -676,52 +690,5 @@ describe("a card's or an account's last digits are never an amount", () => {
       ),
       { numRuns: 2_000 },
     );
-  });
-});
-
-describe("PayPal's rate stated per unit", () => {
-  const cop = { currency: "COP", rate: "0.000290145", inverse: true };
-
-  test("bounds a converted total by the mandate's spread and the digits PayPal shows, exactly", () => {
-    // 10236 × 0.000290145 / 2.95 = 1.0067540…: 67.54 basis points over PayPal's rate.
-    expect(withinQuote("2.95", "10236", cop, 68)).toBe(true);
-    expect(withinQuote("2.95", "10236", cop, 67)).toBe(false);
-    // The rate's last digit rounds: 1 / 0.0002901455 to 1 / 0.0002901445 is 3446.547… to 3446.559….
-    expect(withinQuote("1", "3446.55", cop, 0)).toBe(true);
-    expect(withinQuote("1", "3446.56", cop, 0)).toBe(false);
-    // The same quote stated the other way round.
-    expect(
-      withinQuote("2.95", "10236", { currency: "COP", rate: "3446.55", inverse: false }, 68),
-    ).toBe(true);
-    expect(
-      withinQuote("2.95", "10236", { currency: "COP", rate: "3446.55", inverse: false }, 67),
-    ).toBe(false);
-  });
-
-  test("reads the es-CO page's converted total and holds what it cannot tie to PayPal's rate", () => {
-    const page = (text: string) => readPage(text, ["es"], "USD");
-    const text = ES_CO_CARD_REVIEW.join("\n");
-    expect(judgeQuoted(page(text), 295, "USD", cop, 750)).toEqual({
-      ok: true,
-      conversion: { currency: "COP", rate: "3469.830508", buyer: "10236", locale: "es" },
-    });
-    const reason = (t: string, capBps = 750) => {
-      const j = judgeQuoted(page(t), 295, "USD", cop, capBps);
-      return j.ok ? undefined : j.reason;
-    };
-    expect(reason(text, 67)).toBe(
-      "a converted total off PayPal's rate by more than the mandate's spread",
-    );
-    expect(reason(text.replace("0,00029", "0,00031"))).toBe(
-      "a rate line that is not PayPal's rate",
-    );
-    expect(reason(`${text}\nComisión $ 30.000`)).toBe("converted totals that disagree");
-    expect(reason(`${text}\nTotal $2.95 USD\nEnvío $5.00 USD`)).toBe(
-      "a larger amount that may be charged",
-    );
-    expect(reason("Tipo de cambio de PayPal: 1 COP = 0,00029 USD")).toBe(
-      "no converted total shown",
-    );
-    expect(reason(`${text}\nR$ 17,18 BRL`)).toBe("an amount in a third currency");
   });
 });

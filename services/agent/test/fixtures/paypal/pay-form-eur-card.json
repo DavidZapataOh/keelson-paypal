@@ -1,0 +1,14 @@
+[
+  ["fundingInstrumentId", "CC-SANDBOXCARD0001"],
+  ["fundingInstrumentType", "CARD"],
+  ["fundingInstrumentSubtype", "CREDIT"],
+  ["fundingInstrumentAmount", "2.95"],
+  ["balanceInstrumentCount", "0"],
+  ["selectedCurrencyConversionOptionType", "PAYPAL"],
+  ["selectedCurrencyConversionOptionCode", "USD"],
+  ["selectedRadioFiConvertedAmount", "3.4"],
+  ["shippingAddressId", "0000000000000000001"],
+  ["purchaseCurrencyCode", "EUR"],
+  ["purchaseAmount", "2.95"],
+  ["selectedRadioFiCurrencyConversionType", "VENDOR"]
+]
