@@ -28,10 +28,36 @@ export const PROBLEM_TYPES = {
     explain: "The purchase has not been logged with its Alibi yet.",
     fix: "Retry after the purchase is logged.",
   },
+  "amount-confirmation-expired": {
+    title: "Confirmation expired",
+    explain: "The user did not confirm the purchase's amount before the confirmation expired.",
+    fix: "Do not pay. Ask for a new confirmation if the purchase should go ahead.",
+  },
+  "amount-declined": {
+    title: "Amount declined",
+    explain: "The user declined the amount PayPal's order charges for this purchase.",
+    fix: "Do not pay this order.",
+  },
   "amount-exceeds-mandate": {
     title: "Amount exceeds the mandate",
     explain: "The cart total is above the mandate's remaining budget or its per-purchase maximum.",
     fix: "Reduce the cart total, or ask the user to sign a mandate with a larger budget.",
+  },
+  "amount-mismatch": {
+    title: "Amount mismatch",
+    explain:
+      "PayPal's order does not match what Keelson countersigned; the field member names what differs.",
+    fix: "Do not pay. Re-quote the checkout and ask Keelson to countersign the new total.",
+  },
+  "amount-order-changed": {
+    title: "Another order",
+    explain: "Keelson decided this purchase's amount for a different PayPal order.",
+    fix: "Check the amount of the order you are about to pay, then retry.",
+  },
+  answered: {
+    title: "Already answered",
+    explain: "This amount confirmation was already approved or declined.",
+    fix: "Read the confirmation's state instead of answering it again.",
   },
   "approval-required": {
     title: "Paused for approval",

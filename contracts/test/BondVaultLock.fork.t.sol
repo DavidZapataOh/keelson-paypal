@@ -277,6 +277,52 @@ contract BondVaultLockForkTest is LockBase {
         _expectLockRevert(v, IKeelsonBondVault.InsufficientBond.selector);
     }
 
+    /// @dev A premium equal to the amount passes the countersign check; the demo bond then cannot cover both.
+    function test_lock_premiumEqualToAmountIsAllowed() public {
+        Vector memory v = _at(WEBAUTHN);
+        v.coverage.premium = v.coverage.amount;
+        assertLt(deposited, 2 * uint256(v.coverage.amount));
+        _expectLockRevert(v, IKeelsonBondVault.InsufficientBond.selector);
+    }
+
+    /// @dev A bond of exactly the amount and the premium is enough, and leaves nothing free.
+    function test_lock_exactBondLocks() public {
+        Vector memory v = _at(WEBAUTHN);
+        uint128 surplus = uint128(deposited - v.coverage.amount - v.coverage.premium);
+        address to = makeAddr("withdrawal");
+        uint256 deadline = vm.getBlockTimestamp() + 1 hours;
+        vault.requestWithdrawal(
+            agentId,
+            surplus,
+            to,
+            0,
+            deadline,
+            _signVault(operatorKey, KeelsonTypes.hashWithdrawal(agentId, surplus, to, 0, deadline))
+        );
+        _lock(v);
+        assertEq(_bond().free, 0);
+        assertEq(_bond().locked, v.coverage.amount);
+    }
+
+    /// @dev The countersign is still valid in its last second.
+    function test_lock_atCountersignExpiryLocks() public {
+        Vector memory v = _at(WEBAUTHN);
+        v.coverage.expiresAt = v.countersign.expiresAt + 1;
+        vm.warp(v.countersign.expiresAt);
+        _lock(v);
+        assertEq(uint8(vault.coverages(v.coverage.coverageId).status), uint8(IKeelsonBondVault.Status.Active));
+    }
+
+    /// @dev A coverage that ends now is already expired, though its countersign is still valid.
+    function test_lock_atCoverageExpiryReverts() public {
+        Vector memory v = _at(WEBAUTHN);
+        assertLt(v.coverage.expiresAt, v.countersign.expiresAt);
+        vm.warp(v.coverage.expiresAt);
+        _expectLockRevert(v, IKeelsonBondVault.Expired.selector);
+        vm.warp(v.coverage.expiresAt - 1);
+        _lock(v);
+    }
+
     /// @dev A paused PYUSD cannot pay the premium, so nothing is locked.
     function test_lock_tokenPausedReverts() public {
         Vector memory v = _at(WEBAUTHN);
