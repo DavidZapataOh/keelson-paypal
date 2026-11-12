@@ -359,7 +359,8 @@ Where a path cannot meet its design target without changing a deployed contract,
 | `recordOutcome`, transaction                                     | —                      | 76,199                 | 76,199                      |
 | `rateCoverage` first / later feedback, transaction               | —                      | 267,221 / 185,377      | 267,221 / 185,377           |
 | Nitro leaf certificate cache / attestation document, transaction | 8,000,000 / 16,000,000 | 8,000,000 / 16,000,000 | 6,034,801 / 13,243,089      |
-| `LogBond.proveEquivocation`, two conformance checkpoints         | 600,000                | 2,150,000              | 2,080,235                   |
+| `LogBond.proveEquivocation`, two conformance checkpoints         | 600,000                | 2,150,000              | 2,078,860                   |
+| `LogBond.proveInconsistency`, checkpoints of sizes 16 and 8      | 600,000                | 2,310,000              | 2,092,921                   |
 
 Why the misses stand:
 
