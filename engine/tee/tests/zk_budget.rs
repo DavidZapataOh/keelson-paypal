@@ -8,11 +8,14 @@ use std::time::Instant;
 
 use zk_demo::{demo, prover};
 
+static ONE: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 /// The budget is 200 ms per proof, witness and `bb` included: 400 ms for one statement's two
 /// proofs, EVM and recursive.
 #[test]
 #[ignore = "times the release build; run with --release"]
 fn proving_is_within_budget() {
+    let _one = ONE.lock().unwrap_or_else(|e| e.into_inner());
     let d = demo();
     prover()
         .prove(&d.statement, &d.opening, &d.merchant)
@@ -35,6 +38,7 @@ fn proving_is_within_budget() {
 #[test]
 #[ignore = "lever measurement"]
 fn levers() {
+    let _one = ONE.lock().unwrap_or_else(|e| e.into_inner());
     let d = demo();
     let bb = std::env::var("KEELSON_BB").unwrap();
     let stat = |mut ms: Vec<f64>| {
