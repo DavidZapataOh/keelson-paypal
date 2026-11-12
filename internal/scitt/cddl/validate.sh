@@ -5,7 +5,9 @@ set -euo pipefail
 dir="$(cd "$(dirname "$0")" && pwd)"
 schema="$(mktemp)"
 trap 'rm -f "$schema"' EXIT
-{ echo "start = $2"; cat "$dir/$1"; } > "$schema"
+# The cddl CLI ends a byte string at an escaped quote (RFC 8610 SESC), so the ABNF literals "\'"
+# and "\\" of RFC 9999's Content-Type-ABNF are given as the same characters in ABNF's %x form.
+{ echo "start = $2"; sed -e "s/\"\\\\'\"/%x27/g" -e 's/"\\\\"/%x5C/g' "$dir/$1"; } > "$schema"
 case "$3" in
   *.json) input=--json ;;
   *) input=--cbor ;;
