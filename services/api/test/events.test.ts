@@ -1,5 +1,7 @@
+import type { Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { serve } from "@hono/node-server";
+import { Keelson } from "@keelson-finance/sdk";
 import type { MiddlewareHandler } from "hono";
 import { pino } from "pino";
 import { expect, test } from "vitest";
@@ -267,5 +269,48 @@ test("keeps a stream with no events open past two minutes, over HTTP and past th
   }
   expect(heartbeats).toBeGreaterThanOrEqual(8);
   await sse.close();
+  await new Promise((resolve) => served.close(resolve));
+});
+
+test("the SDK follows a stream across a dropped connection, after the server's retry, and loses or repeats nothing", {
+  timeout: 20_000,
+}, async () => {
+  // The SDK's bearer token stands for the user here.
+  const byToken: MiddlewareHandler = async (c, next) => {
+    const subject = c.req.header("authorization")?.replace(/^Bearer /, "");
+    if (subject) c.set("principal", { kind: "user", subject });
+    await next();
+  };
+  const served = serve({
+    fetch: createApp({ db: testDb, kv: testKv, log, authenticate: byToken }).fetch,
+    port: 0,
+    hostname: "127.0.0.1",
+  });
+  await new Promise<void>((resolve) => served.once("listening", () => resolve()));
+  const keelson = new Keelson({
+    baseUrl: `http://127.0.0.1:${(served.address() as AddressInfo).port}`,
+    auth: { token: async () => "u1" },
+  });
+  const name = channel();
+  const abort = new AbortController();
+  const events = keelson.events.stream(name, { signal: abort.signal });
+
+  const first = events.next();
+  // The stream is open once the server holds its subscriber.
+  while (Number((await testKv.pubSubNumSub(`events:${name}`))[`events:${name}`]) === 0) {
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+  const one = await publishEvent(deps, name, "m1", { n: 1 });
+  expect((await first).value).toEqual({ id: String(one), event: name, data: '{"n":1}' });
+
+  (served as unknown as Server).closeAllConnections();
+  const dropped = Date.now();
+  const two = await publishEvent(deps, name, "m1", { n: 2 });
+  const next = await events.next();
+  expect(next.value).toEqual({ id: String(two), event: name, data: '{"n":2}' });
+  expect(Date.now() - dropped).toBeGreaterThanOrEqual(3_000);
+
+  await events.return(undefined);
+  abort.abort();
   await new Promise((resolve) => served.close(resolve));
 });
