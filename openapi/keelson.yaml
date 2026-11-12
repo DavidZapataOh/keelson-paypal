@@ -6889,6 +6889,7 @@ paths:
                   - status
   /v1/engine/capabilities:
     get:
+      operationId: getEngineCapabilities
       tags:
         - system
       summary: What both TEEs do
@@ -6903,6 +6904,7 @@ paths:
                 $ref: "#/components/schemas/Capabilities"
   /status/v1/mandates/2026-1:
     get:
+      operationId: getMandateStatusList
       tags:
         - mandates
       summary: The mandate status list
@@ -10735,9 +10737,10 @@ paths:
                 $ref: "#/components/schemas/Problem"
   /v1/alibis/{id}.cose:
     get:
+      operationId: getAlibiStatement
       tags:
         - alibis
-      summary: An alibi as an IETF SCITT transparent statement
+      summary: An Alibi as an IETF SCITT transparent statement
       description: The Alibi's COSE_Sign1 signed statement (RFC 9943) with its log
         receipt (RFC 9942, label 394) and, once stamped, its RFC 3161 token (RFC
         9921, label 270). A v1 Alibi's is the bridge statement that carries its

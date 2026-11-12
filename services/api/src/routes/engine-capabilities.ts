@@ -5,6 +5,7 @@ import { bothLegs } from "../tee/coordinator.ts";
 const route = createRoute({
   method: "get",
   path: "/v1/engine/capabilities",
+  operationId: "getEngineCapabilities",
   tags: ["system"],
   summary: "What both TEEs do",
   description:

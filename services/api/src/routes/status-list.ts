@@ -9,6 +9,7 @@ const MEDIA_TYPE = `application/${STATUS_LIST_TYP}`;
 const route = createRoute({
   method: "get",
   path: "/status/v1/mandates/2026-1",
+  operationId: "getMandateStatusList",
   tags: ["mandates"],
   summary: "The mandate status list",
   description:

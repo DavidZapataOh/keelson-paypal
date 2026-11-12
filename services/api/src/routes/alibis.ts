@@ -99,8 +99,9 @@ const ReceiptSchema = z
 const coseRoute = createRoute({
   method: "get",
   path: "/v1/alibis/{id}.cose",
+  operationId: "getAlibiStatement",
   tags: ["alibis"],
-  summary: "An alibi as an IETF SCITT transparent statement",
+  summary: "An Alibi as an IETF SCITT transparent statement",
   description:
     "The Alibi's COSE_Sign1 signed statement (RFC 9943) with its log receipt (RFC 9942, label 394) and, once stamped, its RFC 3161 token (RFC 9921, label 270). A v1 Alibi's is the bridge statement that carries its countersigned facts, once there is one. The statement holds no personal data; anyone may read it.",
   request: { params: z.object({ id: Id }) },
