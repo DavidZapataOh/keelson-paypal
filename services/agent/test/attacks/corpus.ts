@@ -638,6 +638,30 @@ const CONTROLS: [string, Partial<Entry>][] = [
       order: checkoutDetails({ value: "2.95" }),
     },
   ],
+  // PayPal's hosted checkout for a USD 129 order with its Pay Later offers, as the sandbox
+  // shows it to a signed-in US buyer: neither "$0 due today" nor "$44.88/mo" is the charge.
+  [
+    "paypal-pay-later-offers",
+    {
+      host: "paypal",
+      click: "Pay Now",
+      total: checkoutTotal("USD", { items: 12_900 }),
+      body: review([
+        "$129.00",
+        "Buy now, pay later. See offers",
+        "Pay with",
+        "CREDIT UNION 1 Checking ••••0685",
+        "$129.00",
+        "Pay in 4",
+        "4 payments of $32.25 due every 2 weeks, starting today. Learn more",
+        "Pay Monthly",
+        "$0 due today",
+        "Plans as low as $44.88/mo",
+      ]),
+      order: checkoutDetails({ value: "129.00" }),
+      plans: plans({ amount: { currencyCode: "USD", currencyValue: "129.00" } }),
+    },
+  ],
   [
     "paypal-payee",
     {
