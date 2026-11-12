@@ -7,7 +7,7 @@ runs:
   using: composite
   steps:
     - id: cache
-      uses: actions/cache@v6
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ${{ runner.temp }}/bb.js.tgz
         key: bb.js-5.3.0
@@ -19,7 +19,7 @@ runs:
     - shell: bash
       env:
         SHA256: c9c6bc37c3ffa65b22220d7c1db40f9e1086ecd4a1614a45f21603eba7ea40a4
-      run: |
+      run: | # zizmor: ignore[github-env] composite action: writes runner paths and values it derived itself
         echo "$SHA256  $RUNNER_TEMP/bb.js.tgz" | sha256sum --check --strict
         tar -xzf "$RUNNER_TEMP/bb.js.tgz" -C "$RUNNER_TEMP" package/build/amd64-linux/bb
         echo "$RUNNER_TEMP/package/build/amd64-linux" >> "$GITHUB_PATH"

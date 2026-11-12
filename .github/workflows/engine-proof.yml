@@ -36,7 +36,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   SP1_VERSION: v6.10.0
@@ -44,6 +44,8 @@ env:
 
 jobs:
   program:
+    permissions:
+      contents: write # gh release create
     # Render's native runtime is Ubuntu 22.04: the published binary must load on its glibc.
     runs-on: ubuntu-22.04
     timeout-minutes: 120
@@ -51,8 +53,10 @@ jobs:
       run:
         working-directory: engine/zkvm
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v6
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version: "1.24"
       - name: Install protoc
@@ -62,7 +66,7 @@ jobs:
           curl -L https://sp1up.succinct.xyz | bash
           ~/.sp1/bin/sp1up -v "$SP1_VERSION"
           echo "$HOME/.sp1/bin" >> "$GITHUB_PATH"
-      - uses: actions/cache/restore@v6
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -74,7 +78,7 @@ jobs:
       - name: Build the program and the prover
         run: cargo build --release --locked -p keelson-engine-proof
       # Keep the crate sources even when the program fails.
-      - uses: actions/cache/save@v6
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         if: always()
         with:
           path: |
@@ -86,7 +90,7 @@ jobs:
           elf=$(find target -path '*riscv64im-succinct-zkvm-elf/release/keelson-engine-program' | head -1)
           cp "$elf" keelson-engine-program.elf
           echo "ELF: $(stat -c %s "$elf") bytes, sha256 $(sha256sum "$elf" | cut -d' ' -f1)" | tee -a "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: keelson-engine-program
           path: engine/zkvm/keelson-engine-program.elf
@@ -103,7 +107,7 @@ jobs:
           vkey=$(./target/release/keelson-engine-proof vkey)
           echo "$vkey" | tee -a "$GITHUB_STEP_SUMMARY"
           test "$vkey" = "$(jq -r .vkey "$GITHUB_WORKSPACE/contracts/test/vectors/engine-program.json")"
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: keelson-engine-proof
           path: engine/zkvm/target/release/keelson-engine-proof
@@ -124,14 +128,16 @@ jobs:
     runs-on: ubuntu-22.04
     timeout-minutes: 300
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Free disk and add swap for the Groth16 wrap
         run: |
           sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
           sudo swapoff -a || true
           sudo fallocate -l 24G /swapfile2 && sudo chmod 600 /swapfile2 && sudo mkswap /swapfile2 && sudo swapon /swapfile2
           free -g && df -h /
-      - uses: actions/download-artifact@v6
+      - uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6.0.0
         with:
           name: keelson-engine-proof
       - name: Prove
@@ -141,7 +147,7 @@ jobs:
           /usr/bin/time -v ./keelson-engine-proof prove input.json proof.json 2> time.txt | tail -c 2000
           grep -E "Maximum resident|Elapsed" time.txt | tee -a "$GITHUB_STEP_SUMMARY"
           jq -r '"Cycles: \(.cycles), prove: \(.prove_ms) ms, proof: \(.proof_bytes) bytes, circuit \(.sp1_version), vkey \(.vkey)"' proof.json | tee -a "$GITHUB_STEP_SUMMARY"
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: engine-proof
           path: proof.json

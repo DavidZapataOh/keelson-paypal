@@ -33,7 +33,9 @@ jobs:
       noir: ${{ github.event_name != 'pull_request' || steps.filter.outputs.noir == 'true' }}
       docs: ${{ github.event_name != 'pull_request' || steps.filter.outputs.docs == 'true' }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - id: filter
         if: github.event_name == 'pull_request'
         uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
@@ -124,9 +126,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
           cache: pnpm
@@ -139,18 +143,18 @@ jobs:
       - name: Layout, tokens, accessibility and the synced code panel
         run: pnpm --filter @keelson/docs e2e
       - if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6.0.0
         with:
           name: docs-screens
           path: apps/docs/test/e2e/__screens__
           if-no-files-found: ignore
       - name: Every internal link and anchor of the built site
-        uses: lycheeverse/lychee-action@v2.9.0
+        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
         with:
           args: --offline --include-fragments=full --index-files index.html --root-dir ${{ github.workspace }}/apps/docs/dist apps/docs/dist
           fail: true
       - name: Every link in the sources
-        uses: lycheeverse/lychee-action@v2.9.0
+        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
         with:
           args: --config .lychee.toml README.md docs apps/docs/src/content
           fail: true
@@ -161,16 +165,18 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
           cache: pnpm
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - uses: ./.github/actions/setup-foundry
+      - uses: $/.github/actions/setup-foundry
         with:
           version: v1.9.0
       - run: pnpm install --frozen-lockfile
@@ -184,13 +190,15 @@ jobs:
     if: needs.changes.outputs.ts == 'true'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
           cache: pnpm
-      - uses: actions/cache@v6
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .turbo
           key: ${{ runner.os }}-turbo-${{ github.sha }}
@@ -237,9 +245,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
           cache: pnpm
@@ -266,9 +276,11 @@ jobs:
     if: needs.changes.outputs.ts == 'true'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
           cache: pnpm
@@ -276,12 +288,12 @@ jobs:
       - id: image
         run: echo "version=$ImageVersion" >> "$GITHUB_OUTPUT"
       - id: debs
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/debs
           key: debs-poppler-utils-zbar-tools-${{ runner.os }}-${{ runner.arch }}-${{ steps.image.outputs.version }}
       - if: steps.debs.outputs.cache-hit != 'true'
-        uses: ./.github/actions/apt-update
+        uses: $/.github/actions/apt-update
       - if: steps.debs.outputs.cache-hit != 'true'
         run: |
           sudo apt-get clean
@@ -313,13 +325,15 @@ jobs:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
           cache: pnpm
-      - uses: astral-sh/setup-uv@v10.3.3
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
       - run: pnpm install --frozen-lockfile
       - run: pnpm turbo run build --filter=@keelson-finance/sdk... --filter=@keelson-finance/verifier... --filter=@keelson-finance/context...
       - name: Types, models, tools and the collection are generated from openapi/keelson.public.json
@@ -360,13 +374,15 @@ jobs:
       PAYPAL_SANDBOX_BUYER_EMAIL: ${{ secrets.PAYPAL_SANDBOX_BUYER_EMAIL }}
       PAYPAL_SANDBOX_BUYER_PASSWORD: ${{ secrets.PAYPAL_SANDBOX_BUYER_PASSWORD }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
           cache: pnpm
-      - uses: astral-sh/setup-uv@v10.3.3
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
       - run: pnpm install --frozen-lockfile
       - run: pnpm turbo run build --filter=@keelson-finance/sdk... --filter=@keelson-finance/verifier... --filter=@keelson/paypal...
       - run: pnpm --filter @keelson-finance/sdk exec playwright install --with-deps chromium
@@ -400,13 +416,15 @@ jobs:
     env:
       KEELSON_LIVE: "1"
     steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/select-rpc
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: $/.github/actions/select-rpc
         with:
           alchemy-api-key: ${{ secrets.ALCHEMY_API_KEY }}
           drpc-arbitrum-sepolia-url: ${{ secrets.DRPC_ARBITRUM_SEPOLIA_URL }}
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
           cache: pnpm
@@ -427,9 +445,11 @@ jobs:
         ports:
           - 8080:8080
     steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
           cache: pnpm
@@ -454,9 +474,11 @@ jobs:
       PAYPAL_SANDBOX_BUYER_NAME: ${{ secrets.PAYPAL_SANDBOX_BUYER_NAME }}
       PAYPAL_SANDBOX_BUYER_ADDRESS: ${{ secrets.PAYPAL_SANDBOX_BUYER_ADDRESS }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
           cache: pnpm
@@ -501,19 +523,21 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/select-rpc
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: $/.github/actions/select-rpc
         with:
           alchemy-api-key: ${{ secrets.ALCHEMY_API_KEY }}
           drpc-arbitrum-sepolia-url: ${{ secrets.DRPC_ARBITRUM_SEPOLIA_URL }}
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @keelson/api exec playwright install chromium
-      - uses: ./.github/actions/setup-foundry
+      - uses: $/.github/actions/setup-foundry
         with:
           version: v1.9.0
           cache-key: relayer-${{ hashFiles('packages/relayer/test/fork.ts') }}
@@ -548,17 +572,19 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/select-rpc
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: $/.github/actions/select-rpc
         with:
           alchemy-api-key: ${{ secrets.ALCHEMY_API_KEY }}
           drpc-arbitrum-sepolia-url: ${{ secrets.DRPC_ARBITRUM_SEPOLIA_URL }}
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
           cache: pnpm
-      - uses: ./.github/actions/setup-foundry
+      - uses: $/.github/actions/setup-foundry
         with:
           version: v1.9.0
           cache-key: relayer-${{ hashFiles('packages/relayer/test/fork.ts') }}
@@ -586,8 +612,10 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
       - run: test -z "$(gofmt -l $(go list -f '{{.Dir}}' ./...))"
@@ -602,17 +630,19 @@ jobs:
     if: needs.changes.outputs.go == 'true' || needs.changes.outputs.ts == 'true'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
           cache: pnpm
       - id: tinygo
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.local/tinygo
           key: tinygo-0.44.0-binaryen-133-${{ runner.os }}
@@ -649,7 +679,9 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Build and run the monitor as its README says
         run: |
           docker build -f services/monitor/Dockerfile -t keelson-monitor .
@@ -676,14 +708,15 @@ jobs:
       run:
         working-directory: contracts
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           submodules: recursive
-      - uses: ./.github/actions/select-rpc
+      - uses: $/.github/actions/select-rpc
         with:
           alchemy-api-key: ${{ secrets.ALCHEMY_API_KEY }}
           drpc-arbitrum-sepolia-url: ${{ secrets.DRPC_ARBITRUM_SEPOLIA_URL }}
-      - uses: ./.github/actions/setup-foundry
+      - uses: $/.github/actions/setup-foundry
         with:
           version: v1.9.0
           # Fork tests pin their blocks in the registry, so the RPC cache stays valid until a block moves.
@@ -699,8 +732,8 @@ jobs:
       # Each budgeted path asserts its budget from budgets.json; the values it records must match the commit.
       - run: git diff --exit-code snapshots/
       - run: forge snapshot --check --no-match-path 'test/**/*.{fork,live}.t.sol'
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
           cache: pnpm
@@ -720,12 +753,13 @@ jobs:
       run:
         working-directory: contracts/stylus/ed25519-verifier
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           submodules: recursive
       # rust-toolchain.toml pins the toolchain and the wasm32 target cargo-stylus builds with.
       - run: rustup toolchain install
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: contracts/stylus/ed25519-verifier
       - run: cargo fmt --check
@@ -743,14 +777,15 @@ jobs:
       run:
         working-directory: contracts
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           submodules: recursive
-      - uses: ./.github/actions/select-rpc
+      - uses: $/.github/actions/select-rpc
         with:
           alchemy-api-key: ${{ secrets.ALCHEMY_API_KEY }}
           drpc-arbitrum-sepolia-url: ${{ secrets.DRPC_ARBITRUM_SEPOLIA_URL }}
-      - uses: ./.github/actions/setup-foundry
+      - uses: $/.github/actions/setup-foundry
         with:
           version: v1.9.0
       - run: forge build --root lib/nitro-validator
@@ -777,8 +812,10 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
       - run: go test -tags live -run Live -v ./services/log/
@@ -790,8 +827,9 @@ jobs:
   secrets:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           fetch-depth: 0
       # Each event is scanned on its own commits: a pull request on the commits it adds, a push on
       # the commits it pushed. A finding on another branch fails only that branch's pull request.
@@ -800,16 +838,35 @@ jobs:
           LOG_OPTS: ${{ github.event_name == 'pull_request' && format('origin/{0}..HEAD', github.base_ref) || (github.event.before != '0000000000000000000000000000000000000000' && format('{0}..{1}', github.event.before, github.sha)) || format('-1 {0}', github.sha) }}
         run: docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f detect --source /repo --log-opts="$LOG_OPTS" --redact --no-banner
 
+  # Every action pinned to a commit, no template injection or persisted credentials, and deploy
+  # credentials readable only inside protected environments.
+  workflow-security:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: zizmorcore/zizmor-action@45d7276c9ca790aabd705e31ca99c6185c3e76dd # v0.8.1
+        with:
+          version: 1.32.0
+          config: .github/zizmor.yml
+          persona: regular
+          min-severity: low
+          advanced-security: false
+      - run: bash .github/scripts/deploy-secrets-in-env.sh
+
   rust:
     needs: changes
     if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - run: rustup toolchain install
-      - uses: Swatinem/rust-cache@v2
-      - uses: ./.github/actions/setup-cvc5
-      - uses: ./.github/actions/setup-bb
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - uses: $/.github/actions/setup-cvc5
+      - uses: $/.github/actions/setup-bb
       - run: cargo fmt --check
       - run: cargo install cargo-audit --locked --version 0.22.2
       - run: cargo audit
@@ -836,14 +893,17 @@ jobs:
     if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
           repository: Dstack-TEE/dstack
           ref: 7f143148cc49f4a09799958835d310e050137cb3 # v0.6.1
           path: dstack
       - run: rustup toolchain install
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: |
             .
@@ -865,10 +925,12 @@ jobs:
     if: needs.changes.outputs.rust == 'true'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - run: rustup toolchain install
-      - uses: Swatinem/rust-cache@v2
-      - uses: ./.github/actions/setup-cvc5
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - uses: $/.github/actions/setup-cvc5
       - name: The committed proof bundle is fresh
         run: |
           cargo run -p keelson-policy --bin prove -- --out engine/policy/proofs/proof-bundle.json
@@ -907,9 +969,11 @@ jobs:
     if: (needs.changes.outputs.rust == 'true') && (github.event_name == 'push' && github.ref == 'refs/heads/main')
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - run: rustup toolchain install
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
       - name: Session time with MPC-TLS and Proxy-TLS
         run: |
           set -o pipefail
@@ -926,8 +990,10 @@ jobs:
       attestations: write
       artifact-metadata: write
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/attest-build-provenance@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: |
             engine/policy/proofs/proof-bundle.json
@@ -941,11 +1007,13 @@ jobs:
       matrix:
         seed: [1, 2]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - run: rustup toolchain install
-      - uses: Swatinem/rust-cache@v2
-      - uses: pnpm/action-setup@v6
-      - uses: actions/setup-node@v7
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - uses: pnpm/action-setup@73e46992e05b19abd31f2f3c20e0e7370d762115 # v6.1.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version-file: .node-version
           cache: pnpm
@@ -967,9 +1035,11 @@ jobs:
     if: needs.changes.outputs.noir == 'true'
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - id: nargo
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.nargo/bin
           key: nargo-1.0.0-${{ runner.os }}
@@ -980,7 +1050,7 @@ jobs:
             https://github.com/noir-lang/noir/releases/download/v1.0.0/noir-x86_64-unknown-linux-gnu.tar.gz \
             | tar -xz -C ~/.nargo/bin
       - run: echo "$HOME/.nargo/bin" >> "$GITHUB_PATH"
-      - uses: ./.github/actions/setup-bb
+      - uses: $/.github/actions/setup-bb
       - run: nargo test
         working-directory: circuits/vectors
       - run: nargo test

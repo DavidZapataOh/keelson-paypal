@@ -20,7 +20,7 @@ runs:
   using: composite
   steps:
     - id: bin
-      uses: actions/cache@v6
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/.foundry/bin
         key: foundry-bin-${{ inputs.version }}-${{ runner.os }}-${{ runner.arch }}
@@ -42,11 +42,11 @@ runs:
     - shell: bash
       env:
         VERSION: ${{ inputs.version }}
-      run: |
+      run: | # zizmor: ignore[github-env] composite action: writes runner paths and values it derived itself
         echo "$HOME/.foundry/bin" >> "$GITHUB_PATH"
         ~/.foundry/bin/forge --version | grep -q "${VERSION#v}" || { ~/.foundry/bin/forge --version; exit 1; }
         ~/.foundry/bin/forge --version | head -1
-    - uses: actions/cache@v6
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/.foundry/cache/rpc
         key: foundry-rpc-${{ inputs.cache-key }}-${{ github.run_id }}-${{ github.run_attempt }}

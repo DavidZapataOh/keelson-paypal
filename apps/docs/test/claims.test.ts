@@ -141,7 +141,7 @@ describe("the specification's claims hold in code", () => {
       "cargo run -p keelson-policy --bin prove -- --out engine/policy/proofs/proof-bundle.json\n          git diff --exit-code engine/policy/proofs",
     );
     expect(ci).toMatch(
-      /attest-build-provenance@v\d+\s+with:\s+subject-path: \|\s+engine\/policy\/proofs\/proof-bundle\.json/,
+      /attest-build-provenance@[0-9a-f]{40} # v\d+\.\d+\.\d+\s+with:\s+subject-path: \|\s+engine\/policy\/proofs\/proof-bundle\.json/,
     );
     expect(jobs(".github/workflows/ci.yml")).toEqual(
       expect.arrayContaining(["proofs", "attest-proofs", "policy-parity"]),

@@ -1,0 +1,40 @@
+---
+title: Supply chain
+description: Where each service image is built, how to check its build provenance, and how the CI that builds it is locked down.
+section: Security
+order: 6
+---
+
+Every image Keelson runs is built by a workflow in [the repository](https://github.com/DavidZapataOh/keelson-paypal), and each build pushed from `main` carries a [GitHub artifact attestation](https://docs.github.com/en/actions/security-for-github-actions/using-artifact-attestations): a signed SLSA provenance statement that names the workflow, the commit and the runner that produced the digest. The workflows themselves are pinned and checked, so the build cannot be changed by a retagged action.
+
+## Images {% #images %}
+
+| Image | Built by | Runs on | Also checked by |
+| --- | --- | --- | --- |
+| `ghcr.io/davidzapataoh/keelson-engine` | [tee-image](https://github.com/DavidZapataOh/keelson-paypal/blob/main/.github/workflows/tee-image.yml) | TEE leg A (Phala Cloud, Intel TDX) | A reproducible build: its digest is bound into the TDX quote, see [engine/tee](https://github.com/DavidZapataOh/keelson-paypal/tree/main/engine/tee#readme) |
+| `ghcr.io/davidzapataoh/keelson-witness` | [witness-image](https://github.com/DavidZapataOh/keelson-paypal/blob/main/.github/workflows/witness-image.yml) | Witnesses 1 to 3 (Render, Railway, AWS), deployed by digest | Provenance and SBOM attached to the image |
+| `ghcr.io/davidzapataoh/keelson-log` | [log-image](https://github.com/DavidZapataOh/keelson-paypal/blob/main/.github/workflows/log-image.yml) | `log.keelson.finance` (Render, which builds the same Dockerfile from `main`) | Provenance and SBOM attached to the image |
+| `ghcr.io/davidzapataoh/keelson-monitor` | [monitor-image](https://github.com/DavidZapataOh/keelson-paypal/blob/main/.github/workflows/monitor-image.yml) | The public monitor (Railway, which builds the same Dockerfile from `main`) | Provenance and SBOM attached to the image |
+
+## Check an image's provenance {% #provenance %}
+
+With the [GitHub CLI](https://cli.github.com), for any digest one of the workflows printed in its run summary:
+
+```sh
+gh attestation verify oci://ghcr.io/davidzapataoh/keelson-witness@sha256:<digest> --repo DavidZapataOh/keelson-paypal
+```
+
+It prints `✓ Verification succeeded!` when the digest was built by a workflow of this repository, and names the workflow and commit. The SLSA predicate BuildKit attached to the image itself, with its build arguments and base images, reads with:
+
+```sh
+docker buildx imagetools inspect ghcr.io/davidzapataoh/keelson-witness@sha256:<digest> --format '{{json .Provenance}}'
+```
+
+The engine image is built without BuildKit attestations on purpose: they would change the OCI digest that the TDX quote binds. Anyone can rebuild it to the same digest instead, as [provenance-check.sh](https://github.com/DavidZapataOh/keelson-paypal/blob/main/engine/tee/scripts/provenance-check.sh) does.
+
+## The CI that builds them {% #ci %}
+
+- Every third-party action is pinned to a full commit SHA, with its version in a comment. [Dependabot](https://github.com/DavidZapataOh/keelson-paypal/blob/main/.github/dependabot.yml) proposes new pins weekly, a week after each release.
+- The `workflow-security` job runs [zizmor](https://docs.zizmor.sh) on every change to the workflows, with the [hash-pin policy](https://github.com/DavidZapataOh/keelson-paypal/blob/main/.github/zizmor.yml), and fails on any finding.
+- Checkouts do not persist the job's token, and each job holds only the permissions it uses.
+- The Phala, Render, Railway and AWS deploy credentials are read only by jobs that run in a GitHub environment (`phala`, `production` or `operations`). [A guard](https://github.com/DavidZapataOh/keelson-paypal/blob/main/.github/scripts/deploy-secrets-in-env.sh) fails any job that reads one of them outside an environment.

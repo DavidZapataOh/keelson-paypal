@@ -1,0 +1,107 @@
+name: log-image
+
+on:
+  push:
+    paths:
+      - services/log/**
+      - internal/**
+      - go.mod
+      - go.sum
+      - .github/workflows/log-image.yml
+  workflow_dispatch:
+
+concurrency:
+  group: log-image-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/davidzapataoh/keelson-log
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: keelson
+          POSTGRES_DB: keelson
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d keelson"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        if: github.ref == 'refs/heads/main'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build
+        run: |
+          docker buildx build -f services/log/Dockerfile . \
+            --platform linux/amd64 \
+            --label "org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
+            --provenance=false --sbom=false \
+            --load -t keelson-log:test
+      # Fresh keys and witness-free policies, so the smoke run never talks to the production witnesses.
+      - name: The image serves both origins
+        run: |
+          keys="$RUNNER_TEMP/keys"; policy="$RUNNER_TEMP/policy"; mkdir -p "$keys" "$policy"
+          : > "$RUNNER_TEMP/log.env"
+          for spec in "alibi/2026-1 SANDBOX" "alibi-live/2026-1 LIVE"; do
+            read -r path env <<< "$spec"
+            name="${path//\//-}"
+            go run ./services/log/cmd/keygen -origin "log.keelson.finance/$path" -env "$env" -dir "$keys" -name "$name" >> "$RUNNER_TEMP/log.env"
+            printf 'log %s\nlog %s\nquorum none\n' "$(cat "$keys/$name.vkey")" "$(cat "$keys/$name.mldsa.vkey")" > "$policy/$name.policy"
+          done
+          {
+            echo "LOG_DATA_DIR=/data"
+            echo "LOG_POLICY_DIR=/policy"
+            echo "DATABASE_URL=postgres://postgres:keelson@127.0.0.1:5432/keelson"
+            echo "KEELSON_VERIFYING_CONTRACT=0x0000000000000000000000000000000000000000"
+            echo "LOG_WRITE_TOKEN_SHA256=$(head -c 32 /dev/urandom | sha256sum | cut -d' ' -f1)"
+          } >> "$RUNNER_TEMP/log.env"
+          docker run -d --name log --network host --env-file "$RUNNER_TEMP/log.env" \
+            -v "$policy:/policy:ro" --tmpfs /data:uid=65532 keelson-log:test
+          for _ in $(seq 30); do curl -fsS -o "$RUNNER_TEMP/health.json" http://127.0.0.1:10000/health && break; sleep 1; done
+          docker logs log
+          jq -e '.origins | length == 2' "$RUNNER_TEMP/health.json"
+          docker image inspect keelson-log:test --format 'size: {{.Size}} B' >> "$GITHUB_STEP_SUMMARY"
+      - name: Push
+        id: push
+        if: github.ref == 'refs/heads/main'
+        run: |
+          docker buildx build -f services/log/Dockerfile . \
+            --platform linux/amd64 \
+            --label "org.opencontainers.image.source=https://github.com/${{ github.repository }}" \
+            --provenance=mode=max --sbom=true \
+            --push -t "$IMAGE:$GITHUB_SHA" --metadata-file "$RUNNER_TEMP/metadata.json"
+          digest="$(jq -r '."containerimage.digest"' "$RUNNER_TEMP/metadata.json")"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "\`$IMAGE@$digest\`" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        if: github.ref == 'refs/heads/main'
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+          push-to-registry: true
