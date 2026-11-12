@@ -15,6 +15,8 @@ const RESULTS = process.env.ATTACK_RESULTS;
 const env = process.env;
 const ready = Boolean(env.PAYPAL_SANDBOX_BUYER_EMAIL && env.PAYPAL_SANDBOX_BUYER_PASSWORD);
 const HOSTS = ["www.sandbox.paypal.com"];
+/** The demo store's PayPal sandbox merchant id: the payee its mandates name. */
+const STORE_PAYEE = env.STORE_PAYPAL_MERCHANT_ID ?? "A4WCRYD5EYDF2";
 
 /** Signs the sandbox buyer in on PayPal's checkout and waits for its Pay control. */
 async function signIn(page: Page, approve: string): Promise<Locator> {
@@ -62,9 +64,9 @@ describe.skipIf(!ready)(
       const through = async (
         pay: Locator,
         total = checkoutTotal("USD", { items: 12_900 }),
-        payee?: string,
+        payees: readonly string[] = [STORE_PAYEE],
       ) => {
-        const gate = new PayGate({ checkoutHosts: HOSTS, ...(payee ? { payee } : {}) });
+        const gate = new PayGate({ checkoutHosts: HOSTS, payees });
         gate.allow(total);
         const ok = await gate.check(page, { kind: "click", target: pay }).then(
           () => true,
@@ -76,8 +78,8 @@ describe.skipIf(!ready)(
         const pay = await signIn(page, `https://www.sandbox.paypal.com/checkoutnow?token=${id}`);
         const control = await through(pay);
         expect(control.ok, JSON.stringify(control.gate.held)).toBe(true);
-        const payee = control.gate.paid?.charge.payee as string;
-        expect(payee).toMatch(/^[A-Z0-9]{13}$/);
+        expect(control.gate.paid?.charge.payee).toBe(STORE_PAYEE);
+        const payee = STORE_PAYEE;
         outcomes.push({
           id: "control-sandbox-store-order",
           class: "control",
@@ -106,18 +108,17 @@ describe.skipIf(!ready)(
             "look-alike",
             async () =>
               (
-                await through(
-                  pay,
-                  undefined,
+                await through(pay, undefined, [
                   `${payee.slice(0, -1)}${payee.endsWith("Z") ? "2" : "Z"}`,
-                )
+                ])
               ).ok,
           ],
           [
             "payee",
             "lowercase",
-            async () => (await through(pay, undefined, payee.toLowerCase())).ok,
+            async () => (await through(pay, undefined, [payee.toLowerCase()])).ok,
           ],
+          ["payee", "mandate-names-none", async () => (await through(pay, undefined, [])).ok],
         ];
         const dom: [string, string, string][] = [
           ["fee", "drip-pricing", `<p>Service fee $0.99</p>`],

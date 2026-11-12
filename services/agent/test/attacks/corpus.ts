@@ -54,8 +54,8 @@ export interface Entry {
   /** On PayPal: the order and its funding, as PayPal's checkout answers them. */
   order?: unknown;
   plans?: unknown;
-  /** The PayPal merchant id the mandate names. */
-  payee?: string;
+  /** The PayPal merchant ids the mandate names; the fixtures' sandbox payee unless set. */
+  payees?: readonly string[];
 }
 
 const USD_295 = checkoutTotal("USD", { items: 295 });
@@ -426,9 +426,22 @@ for (const [technique, order] of PAYEES) {
     click: "Pay Now",
     body: review(["Pay RunFast", ...ORDER_LINES]),
     order,
-    payee: PAYEE,
+    payees: [PAYEE],
   });
 }
+
+add({
+  id: "payee-mandate-names-none",
+  class: "payee",
+  technique: "no-payee-named",
+  source: SRC.paypal,
+  truth: "the mandate names no payee, so no PayPal order may be paid",
+  host: "paypal",
+  click: "Pay Now",
+  body: review(ORDER_LINES),
+  order: checkoutDetails({ value: "2.95" }),
+  payees: [],
+});
 
 // Conversion: PayPal charges the buyer in their currency at a rate over the mandate's spread.
 for (const buyer of BUYERS) {
@@ -669,7 +682,7 @@ const CONTROLS: [string, Partial<Entry>][] = [
       click: "Pay Now",
       body: review(["Pay RunFast", ...ORDER_LINES]),
       order: checkoutDetails({ value: "2.95", payee: PAYEE }),
-      payee: PAYEE,
+      payees: [PAYEE],
     },
   ],
   ...BUYERS.map((buyer): [string, Partial<Entry>] => {

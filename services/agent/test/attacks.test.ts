@@ -90,7 +90,7 @@ describe("the checkout-attack corpus against the pay-click gate", () => {
             }),
           }
         : {}),
-      ...(e.payee ? { payee: e.payee } : {}),
+      payees: e.payees ?? ["SANDBOXPAYEE01"],
     });
     const driver = await StoreBrowser.attach(context, tab, { hosts: ["127.0.0.1"], gate });
     if (total) gate.allow(total, reference());
