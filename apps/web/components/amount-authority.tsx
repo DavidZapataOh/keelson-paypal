@@ -7,7 +7,10 @@ export interface AmountAuthority {
   crossCheck: "agrees" | "unavailable";
 }
 
-/** The line a live purchase shows for what decided its amount, and its detail. */
+/**
+ * The line a live purchase shows for what decided its amount, and its detail.
+ * @internal
+ */
 export function authorityLabel(
   a: AmountAuthority,
   store = "the store",
