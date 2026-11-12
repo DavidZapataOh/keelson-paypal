@@ -47,6 +47,7 @@ import { registerChargebacks } from "./routes/chargebacks.ts";
 import { type CompileSources, registerCompile } from "./routes/compile.ts";
 import { registerConnections } from "./routes/connections.ts";
 import { registerCountersign } from "./routes/countersign.ts";
+import { registerCredentialIssuer } from "./routes/credential-issuer.ts";
 import { registerDisputes } from "./routes/disputes.ts";
 import { registerEmbed } from "./routes/embed.ts";
 import { noFraming, registerEmbedPage } from "./routes/embed-page.ts";
@@ -436,6 +437,7 @@ export function createApp(deps: Deps): OpenAPIHono {
   registerMandateRequests(app, deps);
   registerProblems(app);
   registerAuthzen(app, deps);
+  registerCredentialIssuer(app, deps);
   registerEmbed(app, deps);
   registerEmbedSigning(app, deps);
   if (deps.embedPage) registerEmbedPage(app, deps, deps.embedPage);
