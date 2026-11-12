@@ -128,7 +128,12 @@ export interface AuthEnv {
   PAYPAL_ENV: PayPalEnv;
   /** Overrides the WebAuthn RP ID; only for tests served from `localhost`. */
   PASSKEY_RP_ID?: string | undefined;
+  /** Overrides the signing key's 30-day rotation, in seconds; only for tests. */
+  jwks?: { rotationInterval: number; gracePeriod: number } | undefined;
 }
+
+/** The access token signing key rotates every 30 days; tokens it signed verify 30 days more. */
+const JWKS_ROTATION = { rotationInterval: 30 * 86_400, gracePeriod: 30 * 86_400 };
 
 export function createAuth(
   db: Db,
@@ -253,7 +258,7 @@ export function createAuth(
       },
     },
     plugins: [
-      jwt(),
+      jwt({ jwks: env.jwks ?? JWKS_ROTATION }),
       // Agents act for themselves with client credentials. MCP clients act for a user with the
       // authorization code grant and PKCE (S256 only, required of public clients), named by a
       // Client ID Metadata Document or else registering themselves (RFC 7591), as the MCP
