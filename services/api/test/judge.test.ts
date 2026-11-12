@@ -3,6 +3,7 @@ import type { AddressInfo } from "node:net";
 import { drizzleAdapter } from "@better-auth/drizzle-adapter";
 import { serve } from "@hono/node-server";
 import type { OpenAPIHono } from "@hono/zod-openapi";
+import { failedFieldsMask } from "@keelson/core/eip712";
 import {
   alibis,
   disputes,
@@ -93,6 +94,7 @@ let shopperCookie = "";
 let mandateId = "";
 let capturedId = "";
 let deniedId = "";
+let canonDeniedId = "";
 let disputeId = "";
 let campaignId = "";
 
@@ -137,6 +139,21 @@ beforeAll(async () => {
         { id: "merchant", color: "green", pass: true },
       ],
     },
+  });
+  // Denied before Cedar ran: the trace has no fields, only the signed mask says why.
+  canonDeniedId = ulid();
+  await testDb.insert(purchases).values({
+    id: canonDeniedId,
+    mandateId,
+    merchantId: "mrc_runfast",
+    currency: "USD",
+    amountMinor: 47_900n,
+    cartHash: randomBytes(32),
+    state: "DENIED",
+    logIndex: BigInt(Date.now()) + 1_000n,
+    decision: 2,
+    failedFieldsMask: failedFieldsMask(["amount"], { canon: true }),
+    evalTrace: { decision: "deny", errors: ["unit price differs from the store's listing"] },
   });
   capturedId = ulid();
   await testDb.insert(purchases).values({
@@ -309,6 +326,10 @@ describe("tour", () => {
     expect(byId[deniedId]?.checks.filter((c) => !c.pass).map((c) => c.field)).toEqual([
       "amount",
       "line_items",
+    ]);
+    expect(byId[canonDeniedId]?.checks.filter((c) => !c.pass).map((c) => c.field)).toEqual([
+      "amount",
+      "cart",
     ]);
   });
 
