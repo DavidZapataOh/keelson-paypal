@@ -3,7 +3,7 @@ import { createDb, type Db, migrate } from "@keelson/db";
 import pg from "pg";
 import { pino } from "pino";
 import type { RedisClientType } from "redis";
-import { afterAll } from "vitest";
+import { afterAll, inject } from "vitest";
 import type { AuthEnv } from "../src/auth.ts";
 import { createKv } from "../src/kv.ts";
 
@@ -26,58 +26,7 @@ async function admin(sql: string): Promise<void> {
   }
 }
 
-/**
- * Drops a test database once the server holds no connection to it. `pool.end()` resolves before the server has
- * closed the pool's connections, and a forced drop would terminate those still closing, which then report `57P01`.
- */
-async function dropDatabase(name: string): Promise<void> {
-  const client = new pg.Client({ connectionString: baseUrl });
-  await client.connect();
-  try {
-    for (let i = 0; i < 200; i++) {
-      const { rows } = await client.query<{ n: number }>(
-        "select count(*)::int as n from pg_stat_activity where datname = $1",
-        [name],
-      );
-      if (rows[0]?.n === 0) break;
-      await new Promise((resolve) => setTimeout(resolve, 25));
-    }
-    await client.query(`DROP DATABASE ${name} WITH (FORCE)`);
-  } finally {
-    await client.end();
-  }
-}
-
-/** Whether a process with this id is running. */
-function alive(pid: number): boolean {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (err) {
-    return (err as NodeJS.ErrnoException).code === "EPERM";
-  }
-}
-
-/** Drops the databases of earlier runs whose process is gone: runs killed before their `afterAll`. */
-async function dropOrphans(prefix: string): Promise<void> {
-  const client = new pg.Client({ connectionString: baseUrl });
-  await client.connect();
-  try {
-    const { rows } = await client.query<{ datname: string }>(
-      "select datname from pg_database where starts_with(datname, $1)",
-      [prefix],
-    );
-    for (const { datname } of rows) {
-      if (alive(Number(datname.slice(prefix.length).split("_")[0]))) continue;
-      await client.query(`DROP DATABASE IF EXISTS "${datname}" WITH (FORCE)`);
-    }
-  } finally {
-    await client.end();
-  }
-}
-
-await dropOrphans("keelson_api_test_");
-const name = `keelson_api_test_${process.pid}_${randomBytes(4).toString("hex")}`;
+const name = `${inject("databasePrefix")}${randomBytes(4).toString("hex")}`;
 await admin(`CREATE DATABASE ${name}`);
 const url = urlFor(name);
 const handle = createDb(url);
@@ -89,7 +38,6 @@ export const testKv: RedisClientType = await createKv(
 afterAll(async () => {
   await handle.pool.end();
   await testKv.close();
-  await dropDatabase(name);
 });
 
 await migrate(url);
