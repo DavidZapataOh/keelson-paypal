@@ -119,6 +119,7 @@ const SettlementObservationSchema = z.strictObject({
   card: z.base64(),
   observed_at: z.number(),
 });
+/** @internal */
 export type SettlementObservation = z.infer<typeof SettlementObservationSchema>;
 
 const CardSettledSchema = z.strictObject({
@@ -217,6 +218,8 @@ const HealthSchema = z.looseObject({
   decoys: z.number().optional(),
   /** 1 on a leg that checks the mandate status list. */
   status_list: z.number().optional(),
+  /** 1 on leg B when it reads PayPal itself. */
+  paypal_reads: z.number().optional(),
   /** On the TDX leg: whether its clock was set from authenticated time at boot. */
   clock: z.enum(["verified", "unverified"]).optional(),
 });
@@ -416,6 +419,7 @@ export class LegClient {
       const timedOut = err instanceof DOMException && err.name === "TimeoutError";
       throw new LegError(this.leg, timedOut ? "timeout" : "unreachable");
     }
+    if (res.status === 204) return undefined;
     let json: unknown;
     try {
       json = await res.json();
@@ -486,6 +490,11 @@ export class LegClient {
 
   async cardSettlement(req: CardSettlementRequest): Promise<CardSettled> {
     return this.parse(CardSettledSchema, await this.call("POST", "/v1/card/settlement", req));
+  }
+
+  /** `POST /v1/paypal/prefetch` on leg B: it reads the authorization now, for the countersign next. */
+  async prefetch(req: { authorization_id: string }): Promise<void> {
+    await this.call("POST", "/v1/paypal/prefetch", req);
   }
 
   /** `POST /v1/status/sign` on leg A: the status list token over `lst`. */

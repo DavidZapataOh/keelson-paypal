@@ -1,3 +1,5 @@
+// Loads reflect-metadata before @keelson/alibi/verify pulls in @keelson/attest.
+import "../src/tee/attest.ts";
 import { bridgeBundle, decodeAlibi } from "@keelson/alibi";
 import { verifyAlibi } from "@keelson/alibi/verify";
 import { LOG_ORIGINS, LogClient, leafHash, parseStatementLeaf } from "@keelson/log";
@@ -19,15 +21,18 @@ describe.skipIf(!live)(
   "bridging sandbox Alibis with the deployed leg A",
   { timeout: 60_000 },
   () => {
-    const tee = createTee(liveEnv());
-    const origin = LOG_ORIGINS[421614] as string;
-    const client = new LogClient(
-      process.env.LOG_URL ?? "https://log.keelson.finance",
-      process.env.LOG_WRITE_TOKEN as string,
-      origin,
-    );
+    // Built in the test, so a skipped suite needs no leg configuration.
+    const legs = () => ({
+      tee: createTee(liveEnv()),
+      client: new LogClient(
+        process.env.LOG_URL ?? "https://log.keelson.finance",
+        process.env.LOG_WRITE_TOKEN as string,
+        LOG_ORIGINS[421614] as string,
+      ),
+    });
 
     test.each(fixtures)("the $mode fixture", async (f) => {
+      const { tee, client } = legs();
       const res = await fetch(`${API}/v1/alibis/${f.id}`);
       const v1 = res.ok ? decodeAlibi(new Uint8Array(await res.arrayBuffer())) : f.bundle;
       const index = BigInt(v1.tlog_proof.split("\n")[1]?.split(" ")[1] ?? "");

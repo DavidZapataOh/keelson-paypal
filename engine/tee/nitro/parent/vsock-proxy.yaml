@@ -1,0 +1,6 @@
+# The only hosts the enclave may reach through the parent: PayPal's REST API (sandbox and live)
+# and AWS KMS. The enclave terminates TLS itself, so the parent relays bytes it cannot read.
+allowlist:
+  - { address: api-m.sandbox.paypal.com, port: 443 }
+  - { address: api-m.paypal.com, port: 443 }
+  - { address: kms.us-west-2.amazonaws.com, port: 443 }

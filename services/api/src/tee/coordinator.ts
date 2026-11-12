@@ -35,7 +35,8 @@ type CoordinatorSlug =
   | "tee-divergence"
   | "tee-unregistered-signer"
   | "tee-contradiction"
-  | "clock-unverified";
+  | "clock-unverified"
+  | "paypal-disagree";
 
 /** A refusal to countersign; it never carries a signature. */
 export class CoordinatorError extends Error {
@@ -91,7 +92,7 @@ const health = new Map<Leg, { capabilities: Capabilities; at: number }>();
  * What a leg's engine does, from its `/v1/health` (cached a minute, read again after any
  * failure): a leg on an older engine refuses a request carrying a field it does not know.
  */
-export async function legCapabilities(
+async function legCapabilities(
   deps: { tee: Pick<TeeConfig, "client"> },
   leg: Leg,
 ): Promise<Capabilities> {
@@ -115,13 +116,21 @@ export async function legSupportsStatements(
   return (await legCapabilities(deps, leg)).statements;
 }
 
+/**
+ * Whether the SP1 program the deployed `EngineProofVerifier` pins reads decoy salts. It does not:
+ * that verifier is immutable, so a mandate with decoys could not have its countersign proven, and
+ * decoys stay off until a verifier of a program that reads them is deployed.
+ */
+const ENGINE_PROOF_READS_DECOYS = false;
+
 /** What both legs do: a feature is used only once each leg reports it. */
 export async function bothLegs(deps: { tee: Pick<TeeConfig, "client"> }): Promise<Capabilities> {
   const [a, b] = await Promise.all([legCapabilities(deps, "a"), legCapabilities(deps, "b")]);
   return {
     statements: a.statements && b.statements,
-    decoys: a.decoys && b.decoys,
+    decoys: a.decoys && b.decoys && ENGINE_PROOF_READS_DECOYS,
     status_list: a.status_list && b.status_list,
+    paypal_reads: b.paypal_reads,
   };
 }
 
@@ -375,10 +384,18 @@ export async function countersign2of2(
     tdx: measurementHex(signerA.measurement),
     nitro: measurementHex(signerB?.measurement),
   };
-  const [statementsA, statementsB] = await Promise.all([
+  const [statementsA, capabilitiesB] = await Promise.all([
     legSupportsStatements(deps, "a"),
-    legSupportsStatements(deps, "b"),
+    legCapabilities(deps, "b"),
   ]);
+  const statementsB = capabilitiesB.statements;
+  const readsB = capabilitiesB.paypal_reads;
+  // Leg B reads the authorization while leg A countersigns, so its own read adds no wait.
+  if (readsB && req.authorization_id) {
+    void deps.tee.client.b
+      .prefetch({ authorization_id: req.authorization_id })
+      .catch((err: unknown) => deps.log.warn({ err }, "leg b prefetch failed"));
+  }
   const askA =
     measurements.tdx === null
       ? undefined
@@ -407,8 +424,10 @@ export async function countersign2of2(
   }
   const first = await checked(deps, "a", a, req, want);
 
-  // Leg B has no root to open the salt with.
-  const { authorization_id: _read, sealed_salt: _salt, ...forB } = req;
+  // Leg B has no root to open the salt with; it reads the authorization itself only on an
+  // engine that does.
+  const { authorization_id: authorizationId, sealed_salt: _salt, ...rest } = req;
+  const forB = readsB && authorizationId ? { ...rest, authorization_id: authorizationId } : rest;
   let b: Countersigned | undefined;
   if (signerB) {
     const askB =
@@ -439,6 +458,15 @@ export async function countersign2of2(
           "leg b did not countersign",
         );
         if (notJudged(err)) throw unavailable();
+        // Leg B read PayPal itself and saw another state (a capture landed between the reads):
+        // nothing is signed, and the same request may be driven again.
+        if (code === "paypal_disagree") {
+          throw new CoordinatorError(
+            "paypal-disagree",
+            "The two TEEs read different PayPal states; try again.",
+            503,
+          );
+        }
         emit(deps, "tee.divergence", req.request_id, { digests: [first.digest, null], code });
         throw divergence();
       }

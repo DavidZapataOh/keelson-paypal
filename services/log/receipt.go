@@ -12,12 +12,13 @@ import (
 )
 
 // COSE labels and values of an RFC 9942 inclusion receipt.
+const algEd25519 cose.Algorithm = -19
+
 const (
-	algEd25519          cose.Algorithm = -19
-	headerVDS                          = 395
-	headerVDP                          = 396
-	vdsRFC9162SHA256                   = 1
-	inclusionProofLabel                = -1
+	headerVDS           = 395
+	headerVDP           = 396
+	vdsRFC9162SHA256    = 1
+	inclusionProofLabel = -1
 )
 
 var detEnc, _ = cbor.CoreDetEncOptions().EncMode()

@@ -403,3 +403,26 @@ fn reads_back_the_purchase_claims_it_wrote() {
         assert_eq!(read.chain_id, v["inputs"]["chain_id"].as_u64().unwrap());
     }
 }
+
+#[test]
+fn reads_back_a_bridge_statement_with_its_predecessor() {
+    for name in ["bridge-2of2", "bridge-degraded"] {
+        let raw = std::fs::read_to_string(format!(
+            "{}/../../internal/alibilog/testdata/statement-v2/{name}.json",
+            env!("CARGO_MANIFEST_DIR")
+        ))
+        .unwrap();
+        let v: Value = serde_json::from_str(&raw).unwrap();
+        let read = keelson_core::statement::read_purchase(&hex_bytes(
+            v["statement_hex"].as_str().unwrap(),
+        ))
+        .expect(name);
+        assert_eq!(hex_of(&read.claims_bytes), v["claims_hex"], "{name}");
+        assert_eq!(
+            format!("0x{}", hex_of(&read.predecessor.unwrap())),
+            v["inputs"]["predecessor"],
+            "{name}"
+        );
+        assert!(read.pay_ref.is_none());
+    }
+}

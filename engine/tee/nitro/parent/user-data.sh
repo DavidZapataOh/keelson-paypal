@@ -29,11 +29,12 @@ if ! /usr/local/bin/node --version 2>/dev/null | grep -qx "v$NODE_VERSION"; then
 fi
 
 install -m 0644 "$here/allocator.yaml" /etc/nitro_enclaves/allocator.yaml
+install -m 0644 "$here/vsock-proxy.yaml" /etc/nitro_enclaves/vsock-proxy.yaml
 install -D -m 0644 "$here/Caddyfile" /etc/caddy/Caddyfile
-for unit in keelson-vsock keelson-enclave caddy; do
+for unit in keelson-vsock keelson-vsock-proxy keelson-enclave caddy; do
   install -m 0644 "$here/$unit.service" "/etc/systemd/system/$unit.service"
 done
 systemctl daemon-reload
 
 usermod -aG ne,docker ec2-user
-systemctl enable --now docker nitro-enclaves-allocator.service keelson-vsock.service
+systemctl enable --now docker nitro-enclaves-allocator.service keelson-vsock.service keelson-vsock-proxy.service

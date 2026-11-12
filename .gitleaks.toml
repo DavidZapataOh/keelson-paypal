@@ -117,3 +117,10 @@ description = "Lithic's published OpenAPI examples of a card and a settled trans
 paths = [
   '''engine/tee/tests/vectors/lithic/.*\.json''',
 ]
+
+[[allowlists]]
+description = "A throwaway RSA key and certificate made with OpenSSL for the CMS envelope test, and an AWS SigV4 vector with AWS's documented example credentials"
+paths = [
+  '''engine/tee/tests/fixtures/cms/.*''',
+  '''engine/tee/tests/vectors/sigv4/.*\.json''',
+]

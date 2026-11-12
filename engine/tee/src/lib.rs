@@ -14,6 +14,8 @@ mod exports;
 pub mod issuer;
 mod keys;
 pub mod kms;
+#[cfg(feature = "nitro")]
+pub mod kmsseal;
 pub mod logsign;
 #[cfg(feature = "nitro")]
 pub mod nitro;
@@ -30,6 +32,8 @@ mod signer;
 pub mod status;
 #[cfg(feature = "tdx")]
 pub mod tdx;
+#[cfg(any(feature = "tdx", feature = "nitro"))]
+pub mod tls_client;
 pub mod wire;
 pub mod zk;
 

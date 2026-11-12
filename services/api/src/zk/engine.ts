@@ -48,7 +48,6 @@ interface CountersignInput {
   verifying_contract: string;
   oci_digest: string;
   canonicalizer: string;
-  decoy_salts?: string[];
 }
 
 /**
@@ -70,7 +69,6 @@ export async function engineInputOf(
       trace: purchases.evalTrace,
       payloadSd: mandates.payloadSd,
       disclosures: mandates.disclosures,
-      decoySalts: mandates.decoySalts,
     })
     .from(purchases)
     .innerJoin(mandates, eq(mandates.id, purchases.mandateId))
@@ -107,7 +105,6 @@ export async function engineInputOf(
       verifying_contract,
       oci_digest: engine.oci_digest,
       canonicalizer: engine.canonicalizer,
-      ...(row.decoySalts.length > 0 ? { decoy_salts: row.decoySalts } : {}),
     },
     evalHash: c.evalHash as Hex,
     digest: bytesToHex(row.digest),

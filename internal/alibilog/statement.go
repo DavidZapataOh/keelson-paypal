@@ -28,7 +28,7 @@ var (
 	strictDec, _ = cbor.DecOptions{
 		DupMapKey:   cbor.DupMapKeyEnforcedAPF,
 		IndefLength: cbor.IndefLengthForbidden,
-		IntDec:      cbor.IntDecConvertSigned,
+		IntDec:      cbor.IntDecConvertSignedOrFail,
 	}.DecMode()
 	detEnc, _ = cbor.CoreDetEncOptions().EncMode()
 )
