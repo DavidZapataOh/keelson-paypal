@@ -43,6 +43,9 @@ type origin struct {
 	Verifier note.Verifier
 	// Retired are the Ed25519 keys the log signed with before Verifier.
 	Retired []RetiredKey
+	// Chain is where the origin anchors, or nil for an origin the monitor
+	// checks against no chain.
+	Chain *chainTrust
 }
 
 // RetiredKey is a key an origin signed with until its tree reached UntilSize
@@ -106,11 +109,16 @@ func loadConfig(getenv func(string) string) (*config, error) {
 		return nil, errors.New("MONITOR_DATA_DIR is required")
 	}
 	logURL := strings.TrimSuffix(cmp.Or(getenv("LOG_URL"), "https://"+logHost), "/")
+	chains := map[string]*chainTrust{
+		"alibi/2026-1":      arbitrumSepolia(getenv),
+		"alibi-live/2026-1": arbitrumOne,
+	}
 	for _, path := range []string{"alibi/2026-1", "alibi-live/2026-1"} {
 		o, err := pinnedOrigin(logHost+"/"+path, logURL+"/"+path+"/")
 		if err != nil {
 			return nil, err
 		}
+		o.Chain = chains[path]
 		c.Origins = append(c.Origins, o)
 	}
 	var err error
