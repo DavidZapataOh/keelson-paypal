@@ -1,0 +1,42 @@
+{
+  "c1": {
+    "artifact": "mandate_predicate",
+    "vk": "../engine/tee/zk/mandate_predicate.vk",
+    "witness": "mandate_predicate",
+    "gates": 4000,
+    "acir_opcodes": 183,
+    "prove_ms": { "ci": 400 }
+  },
+  "c2a": {
+    "artifact": "mandate_violation",
+    "vk": "c2a/mandate_violation.vk",
+    "witness": "amount",
+    "gates": 5042,
+    "acir_opcodes": 435,
+    "prove_ms": { "ci": 100 }
+  },
+  "c2b": {
+    "artifact": "amber_contradiction",
+    "vk": "c2b/amber_contradiction.vk",
+    "witness": "size",
+    "gates": 126245,
+    "acir_opcodes": 55629,
+    "prove_ms": { "ci": 4000 }
+  },
+  "c3": {
+    "artifact": "anonymous_mandate",
+    "vk": "c3/anonymous_mandate.vk",
+    "witness": "payment",
+    "gates": 152589,
+    "acir_opcodes": 9483,
+    "prove_ms": { "ci": 8000 }
+  },
+  "c1c3": {
+    "artifact": "anonymous_purchase",
+    "vk": "c1c3/anonymous_purchase.vk",
+    "witness": "anonymous_purchase",
+    "gates": 1470002,
+    "acir_opcodes": 5,
+    "prove_ms": { "ci": 45000 }
+  }
+}

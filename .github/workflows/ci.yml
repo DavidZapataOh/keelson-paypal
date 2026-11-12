@@ -983,7 +983,11 @@ jobs:
       - name: bb proves and verifies the demo mandate
         run: |
           circuits/c1/prove.sh "$RUNNER_TEMP/c1-proof.json"
-          bb gates -b circuits/c1/target/mandate_predicate.json | tee -a "$GITHUB_STEP_SUMMARY"
+          circuits/tamper.sh c1 circuits/c1/target engine/tee/zk/mandate_predicate.vk
+          if TAMPER_SELFTEST=1 circuits/tamper.sh c1 circuits/c1/target engine/tee/zk/mandate_predicate.vk; then
+            echo "tamper.sh passed a proof whose public inputs were left as they are" >&2
+            exit 1
+          fi
       - run: nargo test
         working-directory: circuits/c2a
       - name: The C2a key and Solidity verifiers are what the circuit compiles to
@@ -994,8 +998,8 @@ jobs:
         run: |
           for class in amount currency category expiry merchant; do
             circuits/c2a/prove.sh "$class" "$RUNNER_TEMP/c2a-$class.json"
+            circuits/tamper.sh "c2a/$class" "circuits/c2a/target/$class" circuits/c2a/mandate_violation.vk
           done
-          bb gates -b circuits/c2a/target/mandate_violation.json | tee -a "$GITHUB_STEP_SUMMARY"
       - run: nargo test
         working-directory: circuits/c3
       - name: The C3 program, key and Solidity verifiers are what the circuit compiles to
@@ -1006,8 +1010,8 @@ jobs:
         run: |
           for type in payment webauthn; do
             circuits/c3/prove.sh "$type" "$RUNNER_TEMP/c3-$type.json"
+            circuits/tamper.sh "c3/$type" "circuits/c3/target/$type" circuits/c3/anonymous_mandate.vk
           done
-          bb gates -b circuits/c3/target/anonymous_mandate.json | tee -a "$GITHUB_STEP_SUMMARY"
       - name: The composed program, key and Solidity verifiers are what the circuit compiles to
         run: |
           circuits/c1c3/build.sh
@@ -1015,8 +1019,8 @@ jobs:
       - name: bb composes C1 and C3 of the anonymous demo purchase by recursion
         run: |
           circuits/c1c3/prove.sh "$RUNNER_TEMP/c1c3.json"
+          circuits/tamper.sh c1c3 circuits/c1c3/target circuits/c1c3/anonymous_purchase.vk
           circuits/c1c3/refuses.sh
-          bb gates -b circuits/c1c3/target/anonymous_purchase.json | tee -a "$GITHUB_STEP_SUMMARY"
       - run: nargo test
         working-directory: circuits/c2b
       - name: The C2b key and Solidity verifiers are what the circuit compiles to
@@ -1027,5 +1031,11 @@ jobs:
         run: |
           for field in size color unitPrice returnsFree; do
             circuits/c2b/prove.sh "$field" "$RUNNER_TEMP/c2b-$field.json"
+            circuits/tamper.sh "c2b/$field" "circuits/c2b/target/$field" circuits/c2b/amber_contradiction.vk
           done
-          bb gates -b circuits/c2b/target/amber_contradiction.json | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Each circuit proves within its time budget
+        shell: bash
+        run: circuits/bench.sh | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: No circuit grows past its gate budget
+        if: ${{ !cancelled() }}
+        run: circuits/gates.sh
