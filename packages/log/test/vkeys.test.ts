@@ -7,6 +7,7 @@ import {
   LOG_VKEYS,
   LOG_WITNESSES,
   parseWitnessPolicy,
+  receiptKeyMap,
 } from "../src/index.ts";
 
 const read = (name: string) =>
@@ -76,4 +77,12 @@ test("no retired key set still waits for its cutover size", () => {
     sets.filter((s) => s.untilSize === CUTOVER_PENDING).map(() => origin),
   );
   expect(pending).toEqual([]);
+});
+
+test("the pinned receipt keys are the ones leg A signs receipts with", () => {
+  expect([...receiptKeyMap().keys()].sort()).toEqual([
+    // receipt_kid of each origin in leg A's /v1/health: the SHA-256 of its receipt key.
+    "1b9e874e85938d350bfb77e541bb2b465255dc1478b31325332cf9f52553c80d",
+    "3470cd852e6d2195ccf31d99622472cfea51d989687609f5170d681715a4395c",
+  ]);
 });
