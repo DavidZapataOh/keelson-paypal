@@ -9,8 +9,10 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strconv"
+	"sync"
 	"testing"
 
 	"github.com/DavidZapataOh/keelson-paypal/internal/conformance"
@@ -67,6 +69,8 @@ func TestPageFixture(t *testing.T) {
 		}
 	}
 
+	prodURL := productionMonitor(t, ctx)
+
 	stop := make(chan struct{})
 	control := http.NewServeMux()
 	control.HandleFunc("POST /append", func(w http.ResponseWriter, r *http.Request) {
@@ -81,7 +85,49 @@ func TestPageFixture(t *testing.T) {
 	controlSrv := httptest.NewServer(control)
 	t.Cleanup(controlSrv.Close)
 
-	out, _ := json.Marshal(map[string]string{"monitor": monitorSrv.URL, "log": logSrv.URL, "control": controlSrv.URL})
+	out, _ := json.Marshal(map[string]string{"monitor": monitorSrv.URL, "log": logSrv.URL, "control": controlSrv.URL, "production": prodURL})
 	fmt.Printf("PAGE_FIXTURE %s\n", out)
 	<-stop
+}
+
+// productionMonitor serves a monitor of the production origins, as deployed:
+// it follows log.keelson.finance and checks it against the chain.
+func productionMonitor(t *testing.T, ctx context.Context) string {
+	dataDir := t.TempDir()
+	cfg, err := loadConfig(func(k string) string {
+		if k == "MONITOR_DATA_DIR" {
+			return dataDir
+		}
+		return os.Getenv(k)
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	st, err := openState(dataDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	eqs, err := openEquivocations(filepath.Join(dataDir, "equivocations"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	hc := newLogClient()
+	m := newMonitor(cfg, st, eqs, hc, slog.New(slog.DiscardHandler))
+	if m.page, err = newPage(cfg); err != nil {
+		t.Fatal(err)
+	}
+	srv := httptest.NewServer(m.handler())
+	t.Cleanup(srv.Close)
+	events := make(chan Event, 64)
+	go func() {
+		for range events {
+		}
+	}()
+	ctx, cancel := context.WithCancel(ctx)
+	var wg sync.WaitGroup
+	t.Cleanup(func() { cancel(); wg.Wait() })
+	for _, o := range cfg.Origins {
+		wg.Go(func() { Follow(ctx, o, st, cfg.Poll, cfg.Sigsum, hc, events, slog.New(slog.DiscardHandler)) })
+	}
+	return srv.URL
 }

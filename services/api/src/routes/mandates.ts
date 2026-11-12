@@ -76,6 +76,9 @@ const Assertion = z
     description: "A WebAuthn or Secure Payment Confirmation assertion, base64url fields.",
   });
 
+/** Leg A's code for a user credential it cannot open: issued under an earlier issuer key. */
+const STALE_USER_CREDENTIAL = "auth.open_user_credential";
+
 export const CreateMandate = z
   .object({
     payloadSd: z.record(z.string(), z.unknown()).openapi({
@@ -656,8 +659,9 @@ export async function storeMandate(
       );
     }
     issuerThumbprint = await currentIssuer(deps.db);
-    try {
-      issued = await deps.tee.client.a.registerMandate({
+    const legA = deps.tee.client.a;
+    const register = (userCredential: string | null) =>
+      legA.registerMandate({
         sub: userId,
         payload_sd: body.payloadSd,
         disclosures: body.disclosures,
@@ -669,8 +673,21 @@ export async function storeMandate(
           signature: assertion.signature,
         },
         salt: body.salt as `0x${string}`,
-        ...(key.userCredential ? { user_credential: key.userCredential } : {}),
+        ...(userCredential ? { user_credential: userCredential } : {}),
       });
+    try {
+      try {
+        issued = await register(key.userCredential);
+      } catch (err) {
+        // A user credential leg A issued under its previous issuer key no longer opens after the
+        // key moves; leg A issues a new one, still bound to this passkey's verified assertion.
+        if (
+          !(err instanceof LegError && err.code === STALE_USER_CREDENTIAL && key.userCredential)
+        ) {
+          throw err;
+        }
+        issued = await register(null);
+      }
     } catch (err) {
       if (!(err instanceof LegError)) throw err;
       if (err.kind !== "problem" || (err.status ?? 0) >= 500) {

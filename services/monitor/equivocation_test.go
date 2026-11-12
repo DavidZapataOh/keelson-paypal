@@ -280,7 +280,7 @@ func TestGossipedCheckpointsAreCheckedAgainstTheView(t *testing.T) {
 	}
 	var r FullReport
 	getJSON(t, srv.URL+"/report", &r)
-	if len(r.Origins) != 1 || r.Origins[0].Size != 20 || len(r.Equivocations) != 3 || r.Checks.TEESigners != "not-enabled" || r.Checks.Anchors != "not-enabled" {
+	if len(r.Origins) != 1 || r.Origins[0].Size != 20 || len(r.Equivocations) != 3 || r.Checks.TEESigners != "enabled" || r.Checks.Anchors != "enabled" {
 		t.Fatalf("report: %+v", r)
 	}
 

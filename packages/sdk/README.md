@@ -10,7 +10,7 @@ Runs on the PayPal sandbox and Arbitrum Sepolia: no real money moves.
 
 ```sh
 npm install @keelson-finance/sdk @keelson-finance/verifier
-npx keelson login
+npx @keelson-finance/sdk login
 ```
 
 To work on the SDK from this repository:
@@ -30,7 +30,7 @@ the sign-in to `~/.config/keelson/credentials.json`, readable by you only. No fo
 import { Keelson, quote } from "@keelson-finance/sdk";
 import { verifyAlibi } from "@keelson-finance/verifier";
 
-const keelson = new Keelson(); // signed in with `npx keelson login`
+const keelson = new Keelson(); // signed in with `npx @keelson-finance/sdk login`
 const req = await keelson.mandates.request({
   name: "Quickstart",
   reason:
@@ -60,7 +60,7 @@ The same file is [`examples/quickstart.mjs`](examples/quickstart.mjs).
 
 | Who                      | How                                                                                                                                                       |
 | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| You, building an app     | `npx keelson login`; `new Keelson()` reads the saved sign-in and refreshes it                                                                             |
+| You, building an app     | `npx @keelson-finance/sdk login`; `new Keelson()` reads the saved sign-in and refreshes it                                                                |
 | An operator's own agent  | `KEELSON_CLIENT_ID`, `KEELSON_CLIENT_SECRET` (client credentials) and `KEELSON_AGENT_KEY`, its private P-256 JWK, which closes each mandate it buys under |
 | A token you already hold | `KEELSON_TOKEN`, or `new Keelson({ auth: staticToken(token) })`                                                                                           |
 
@@ -95,7 +95,7 @@ attempt times out after 60 s.
 
 | Error                                   | When                                                   | What to do                                              |
 | --------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------- |
-| `AuthenticationError`                   | No sign-in, or it was revoked                          | Run `npx keelson login` again                           |
+| `AuthenticationError`                   | No sign-in, or it was revoked                          | Run `npx @keelson-finance/sdk login` again              |
 | `PermissionDeniedError`                 | The token lacks the scope                              | Sign in with the scope the method needs                 |
 | `UnprocessableEntityError`              | `invalid-limits`, `hosted-cap`, `evidence-pii`...      | Read `err.type` and `err.detail`, fix the input         |
 | `ConflictError`                         | `purchase-exists` is answered for you by `countersign` | Nothing                                                 |
@@ -127,7 +127,7 @@ https://verify.keelson.finance: both TEE signatures, the evidence and the log in
 `verifyAlibi(bytes, { chain: true })` also reads the anchor on Arbitrum Sepolia.
 
 ```sh
-npx keelson-verify 01M75ZQSJDFE8K76ZKZT08X1B2 --chain
+npx @keelson-finance/verifier 01M75ZQSJDFE8K76ZKZT08X1B2 --chain
 ```
 
 ## AI coding assistants
