@@ -10,8 +10,8 @@ Two packages do the work: the SDK, which asks for mandates and buys under them, 
 
 | Package | Language | Requires |
 | --- | --- | --- |
-| `@keelson/sdk` | TypeScript and JavaScript | Node.js 20 or later |
-| `@keelson/verifier` | TypeScript and JavaScript, and the `keelson-verify` command | Node.js 20 or later |
+| `@keelson-finance/sdk` | TypeScript and JavaScript | Node.js 20 or later |
+| `@keelson-finance/verifier` | TypeScript and JavaScript, and the `keelson-verify` command | Node.js 20 or later |
 | `keelson-finance` (`import keelson`) | Python | Python 3.11 or later; Node.js 20 for `verify_alibi` |
 
 ## From the repository
@@ -22,13 +22,13 @@ The packages are not on npm or PyPI yet. Until they are, build them from the rep
 git clone https://github.com/DavidZapataOh/keelson-paypal.git
 cd keelson-paypal
 pnpm install
-pnpm --filter "@keelson/sdk..." --filter "@keelson/verifier..." build
+pnpm --filter "@keelson-finance/sdk..." --filter "@keelson-finance/verifier..." build
 ```
 
 Check the verifier against a real Alibi kept in this site:
 
 ```sh {% check="sdk-verifier-from-repo" %}
-pnpm --filter "@keelson/verifier..." build > /dev/null
+pnpm --filter "@keelson-finance/verifier..." build > /dev/null
 node packages/verify/dist/cli.js apps/docs/public/samples/01M6ZWZJHWRRHQEYNJAT7NMSV8.alibi 2> /dev/null | head -1
 # expect: ^verified-offline
 ```
@@ -51,8 +51,8 @@ uv run --project packages/sdk-python python packages/sdk-python/examples/quickst
 
 {% languages label="Quickstart" %}
 ```ts
-import { Keelson, quote } from "@keelson/sdk";
-import { verifyAlibi } from "@keelson/verifier";
+import { Keelson, quote } from "@keelson-finance/sdk";
+import { verifyAlibi } from "@keelson-finance/verifier";
 
 const keelson = new Keelson(); // signed in with `keelson login`
 const req = await keelson.mandates.request({
@@ -103,10 +103,10 @@ The SDKs give a model Keelson's tools under the names and answers of Keelson's M
 
 {% languages label="Agent frameworks" %}
 ```ts
-import { aiSdkTools } from "@keelson/sdk/ai-sdk"; // Vercel AI SDK
-import { openAiAgentsTools } from "@keelson/sdk/openai-agents"; // OpenAI Agents SDK
-import { langchainTools } from "@keelson/sdk/langchain"; // LangChain, LangGraph
-import { keelsonMcpServer } from "@keelson/sdk/claude-agent-sdk"; // Claude Agent SDK
+import { aiSdkTools } from "@keelson-finance/sdk/ai-sdk"; // Vercel AI SDK
+import { openAiAgentsTools } from "@keelson-finance/sdk/openai-agents"; // OpenAI Agents SDK
+import { langchainTools } from "@keelson-finance/sdk/langchain"; // LangChain, LangGraph
+import { keelsonMcpServer } from "@keelson-finance/sdk/claude-agent-sdk"; // Claude Agent SDK
 ```
 
 ```python

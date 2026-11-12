@@ -27,7 +27,7 @@ describe("budgets", () => {
     });
     const bytes = out.outputFiles[0]?.contents as Uint8Array;
     const gz = gzipSync(bytes, { level: 9 }).byteLength;
-    console.log(`@keelson/sdk core: ${bytes.byteLength} B min, ${gz} B min+gz`);
+    console.log(`@keelson-finance/sdk core: ${bytes.byteLength} B min, ${gz} B min+gz`);
     expect(gz).toBeLessThanOrEqual(30 * 1024);
     const inputs = Object.keys(out.metafile.inputs).join(" ");
     expect(inputs).not.toMatch(/@aztec|cedar|viem|zod|jose|@langchain|@openai|claude-agent|\bai\//);
@@ -55,7 +55,7 @@ describe("budgets", () => {
         ? readdirSync(p).reduce((s, n) => s + size(join(p, n)), 0)
         : statSync(p).size;
     const installed = size(join(tmp, "node_modules"));
-    console.log(`@keelson/sdk installed: ${installed} B`);
+    console.log(`@keelson-finance/sdk installed: ${installed} B`);
     expect(installed).toBeLessThanOrEqual(2 * 1024 * 1024);
   }, 120_000);
 

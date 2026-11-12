@@ -12,7 +12,7 @@ from typing import Any
 from ._errors import KeelsonError, VerifierUnavailable
 from ._jcs import canonical_bytes
 
-VERIFIER = "@keelson/verifier@0.1.0"
+VERIFIER = "@keelson-finance/verifier@0.1.0"
 
 
 _NEEDS_NODE = f"Verifying an Alibi offline runs `npx {VERIFIER}`, which needs Node.js 20 or later."

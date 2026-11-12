@@ -56,7 +56,7 @@ export function createContextServer(): McpServer {
     },
     {
       instructions:
-        "Docs for building with Keelson's SDKs (@keelson/sdk for TypeScript, keelson-finance for Python). Start with the integrate_keelson prompt, then search_docs and get_operation for exact calls.",
+        "Docs for building with Keelson's SDKs (@keelson-finance/sdk for TypeScript, keelson-finance for Python). Start with the integrate_keelson prompt, then search_docs and get_operation for exact calls.",
     },
   );
 
@@ -190,7 +190,7 @@ export function createContextServer(): McpServer {
       const py = language === "python";
       const install = py
         ? "pip install keelson-finance\nkeelson login"
-        : "npm install @keelson/sdk @keelson/verifier\nnpx keelson login";
+        : "npm install @keelson-finance/sdk @keelson-finance/verifier\nnpx keelson login";
       const auth =
         role === "operator"
           ? "Set KEELSON_CLIENT_ID, KEELSON_CLIENT_SECRET (client credentials) and KEELSON_AGENT_KEY (the agent's private P-256 JWK): the client closes every mandate with that key."

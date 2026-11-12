@@ -90,7 +90,7 @@ const CALLS: Record<string, [string, string]> = {
     "purchase = client.purchases.wait_for(signed.purchase_id)",
   ],
   getAlibi: [
-    "const report = await verifyAlibi(await keelson.alibis.retrieve(purchaseId)); // @keelson/verifier",
+    "const report = await verifyAlibi(await keelson.alibis.retrieve(purchaseId)); // @keelson-finance/verifier",
     "report = verify_alibi(client.alibis.retrieve(purchase.id))",
   ],
   getAlibiReceipt: [

@@ -29,7 +29,7 @@ mandate = keelson.mandates.wait_for_approval(req.id)`;
 const FROM_REPO = `git clone https://github.com/DavidZapataOh/keelson-paypal.git
 cd keelson-paypal
 pnpm install
-pnpm --filter "@keelson/sdk..." --filter "@keelson/verifier..." build`;
+pnpm --filter "@keelson-finance/sdk..." --filter "@keelson-finance/verifier..." build`;
 
 /** The five steps from an empty folder to a verified purchase, in both languages. */
 export const STEPS: Step[] = [

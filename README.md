@@ -144,10 +144,10 @@ is a subjective wish only the user can judge. Keelson is not insurance; the rule
 
 | Package                                                               | What it is                                                                                                                                                                                        |
 | --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [`@keelson/sdk`](packages/sdk/README.md)                              | TypeScript client: typed errors, one idempotency key per call kept across retries, `npx keelson login`, and adapters for the Vercel AI SDK, OpenAI Agents SDK, LangChain and the Claude Agent SDK |
+| [`@keelson-finance/sdk`](packages/sdk/README.md)                      | TypeScript client: typed errors, one idempotency key per call kept across retries, `npx keelson login`, and adapters for the Vercel AI SDK, OpenAI Agents SDK, LangChain and the Claude Agent SDK |
 | [`keelson-finance`](packages/sdk-python/README.md)                    | The same client for Python (`import keelson`), blocking and asyncio                                                                                                                               |
-| [`@keelson/verifier`](packages/verify/README.md)                      | Offline Alibi verifier and `keelson-verify` CLI, the code of verify.keelson.finance                                                                                                               |
-| [`@keelson/context`](packages/context/src/index.ts)                   | Keelson Context Plugin: the SDK docs, every operation and its schema, over MCP at `https://api.keelson.finance/context/mcp`                                                                       |
+| [`@keelson-finance/verifier`](packages/verify/README.md)              | Offline Alibi verifier and `keelson-verify` CLI, the code of verify.keelson.finance                                                                                                               |
+| [`@keelson-finance/context`](packages/context/src/index.ts)           | Keelson Context Plugin: the SDK docs, every operation and its schema, over MCP at `https://api.keelson.finance/context/mcp`                                                                       |
 | [Postman collection](openapi/postman/keelson.postman_collection.json) | Every developer operation, signed in with OAuth 2.0 and PKCE                                                                                                                                      |
 
 The clients are written by hand; their types are generated from
@@ -156,7 +156,7 @@ CI fails if they drift. `app.keelson.finance/developers` walks from install to a
 purchase and ticks each step as your code runs. From this repository:
 
 ```sh
-pnpm install && pnpm turbo run build --filter=@keelson/sdk... --filter=@keelson/verifier...
+pnpm install && pnpm turbo run build --filter=@keelson-finance/sdk... --filter=@keelson-finance/verifier...
 node packages/sdk/dist/cli.js login
 node packages/sdk/examples/quickstart.mjs
 ```

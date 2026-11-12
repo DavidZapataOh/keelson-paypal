@@ -276,10 +276,10 @@ jobs:
           cache: pnpm
       - uses: astral-sh/setup-uv@v10.3.3
       - run: pnpm install --frozen-lockfile
-      - run: pnpm turbo run build --filter=@keelson/sdk... --filter=@keelson/verifier... --filter=@keelson/context...
+      - run: pnpm turbo run build --filter=@keelson-finance/sdk... --filter=@keelson-finance/verifier... --filter=@keelson-finance/context...
       - name: Types, models, tools and the collection are generated from openapi/keelson.public.json
         run: |
-          pnpm --filter @keelson/sdk types
+          pnpm --filter @keelson-finance/sdk types
           node services/api/scripts/postman.ts
           (cd packages/sdk && node scripts/vectors.ts)
           packages/sdk-python/scripts/models.sh
@@ -317,8 +317,8 @@ jobs:
           cache: pnpm
       - uses: astral-sh/setup-uv@v10.3.3
       - run: pnpm install --frozen-lockfile
-      - run: pnpm turbo run build --filter=@keelson/sdk... --filter=@keelson/verifier... --filter=@keelson/paypal...
-      - run: pnpm --filter @keelson/sdk exec playwright install --with-deps chromium
+      - run: pnpm turbo run build --filter=@keelson-finance/sdk... --filter=@keelson-finance/verifier... --filter=@keelson/paypal...
+      - run: pnpm --filter @keelson-finance/sdk exec playwright install --with-deps chromium
       # One Judge Mode user for the whole run, which makes one purchase; the suite that buys
       # rotates with the run number, so four runs cover all four.
       - name: Pick this run's purchase
@@ -327,8 +327,8 @@ jobs:
           echo "KEELSON_LIVE_BUY=${suites[$((GITHUB_RUN_NUMBER % 4))]}" >> "$GITHUB_ENV"
       - name: TypeScript SDK and verifier
         run: |
-          pnpm --filter @keelson/sdk exec vitest run --no-file-parallelism --reporter=verbose test/live | tee -a "$GITHUB_STEP_SUMMARY"
-          pnpm --filter @keelson/verifier exec vitest run --reporter=verbose | tee -a "$GITHUB_STEP_SUMMARY"
+          pnpm --filter @keelson-finance/sdk exec vitest run --no-file-parallelism --reporter=verbose test/live | tee -a "$GITHUB_STEP_SUMMARY"
+          pnpm --filter @keelson-finance/verifier exec vitest run --reporter=verbose | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Python SDK
         working-directory: packages/sdk-python
         env:

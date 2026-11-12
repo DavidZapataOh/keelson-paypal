@@ -36,9 +36,9 @@ Rules:
 
 ## SDKs
 
-- [TypeScript SDK](https://github.com/DavidZapataOh/keelson-paypal/blob/main/packages/sdk/README.md): `@keelson/sdk`, sign in with `npx keelson login`, mandates, evidence, countersign, Alibis, agent-framework adapters
+- [TypeScript SDK](https://github.com/DavidZapataOh/keelson-paypal/blob/main/packages/sdk/README.md): `@keelson-finance/sdk`, sign in with `npx keelson login`, mandates, evidence, countersign, Alibis, agent-framework adapters
 - [Python SDK](https://github.com/DavidZapataOh/keelson-paypal/blob/main/packages/sdk-python/README.md): `keelson-finance`, the same client, blocking and asyncio
-- [Offline verifier](https://github.com/DavidZapataOh/keelson-paypal/blob/main/packages/verify/README.md): `@keelson/verifier` and `keelson-verify`
+- [Offline verifier](https://github.com/DavidZapataOh/keelson-paypal/blob/main/packages/verify/README.md): `@keelson-finance/verifier` and `keelson-verify`
 - [Developer OpenAPI](https://github.com/DavidZapataOh/keelson-paypal/blob/main/openapi/keelson.public.json): the 22 operations an app or an operator's agent calls
 - [Context Plugin](https://api.keelson.finance/context/mcp): Keelson's SDK docs, operations and schemas over MCP, no sign-in
 
