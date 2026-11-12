@@ -27,8 +27,9 @@ interface IDstackKms {
     ) external returns (address appId);
 }
 
-/// @notice One app's boot policy: its allowed compose hashes and devices (Dstack-TEE/dstack `DstackApp`,
-/// `Ownable2StepUpgradeable`).
+/// @notice One app's boot policy: its allowed compose hashes and devices (Dstack-TEE/dstack `DstackApp`). The
+/// implementation Phala's KMS deploys on Base is single-step `OwnableUpgradeable`; `pendingOwner` and
+/// `acceptOwnership` exist only on a two-step one.
 interface IDstackApp {
     function addComposeHash(bytes32 composeHash) external;
     function removeComposeHash(bytes32 composeHash) external;
