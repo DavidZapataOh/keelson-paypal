@@ -509,7 +509,10 @@ describe("signing and going live", () => {
     await page
       .getByText("Same limits as your approval. Sign it again to keep it working.")
       .waitFor();
-    expect(await page.getByLabel("Store name").inputValue()).toBe("RunFast");
+    // The limits load after the page: the note shows first.
+    await expect
+      .poll(() => page.getByLabel("Store name").inputValue(), { timeout: 10_000 })
+      .toBe("RunFast");
     await page.getByRole("button", { name: "Review rules" }).click();
     await page.getByRole("heading", { level: 1, name: "Check it, then sign" }).waitFor();
     expect(prompt).toMatch(/^Trail running shoe, under \$100, from RunFast, by /);
