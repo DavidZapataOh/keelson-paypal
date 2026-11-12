@@ -22,11 +22,12 @@ export {
 } from "./checkout.ts";
 export { injectedListing, injectionText, storeMandate } from "./demo.ts";
 export { StoreBrowser, type StoreBrowserOptions } from "./driver.ts";
-export { type PayAction, PayGate } from "./gate.ts";
+export { type Authority, type AuthorityAnswer, type PayAction, PayGate } from "./gate.ts";
 export {
   type ApiClientOptions,
   accessToken,
   agentKey,
+  amountAuthority,
   announceRun,
   apiClient,
   type OperatorMandate,

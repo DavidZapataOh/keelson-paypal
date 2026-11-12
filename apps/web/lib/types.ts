@@ -1,4 +1,5 @@
 import type { Card, FieldId, Mandate } from "@keelson/mandate/browser";
+import type { AmountAuthority } from "../components/amount-authority";
 
 export type MandateState =
   | "DRAFT"
@@ -56,6 +57,8 @@ export interface Purchase {
   disputes: { id: string; state: "OPEN" | "ATTRIBUTED" | "RESOLVED" }[];
   /** A card purchase: its single-use card, never its number, and each network authorization. */
   card?: PurchaseCard;
+  /** A purchase paid at the store's own checkout: the store, and what decided the amount. */
+  live?: { store: string; transactionId: string | null; amountAuthority?: AmountAuthority };
 }
 
 /** One card network authorization of a purchase's single-use card, as both enclaves decided it. */

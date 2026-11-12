@@ -549,6 +549,15 @@ export interface components {
         } | null;
       } | null;
     } | null;
+    /** @description `paypal_order`: PayPal's Orders API returned the order at the countersigned total. `user_confirmed`: the user confirmed it with the passkey that signed the mandate. `crossCheck` is whether PayPal's checkout stated the same order. */
+    AmountAuthority: {
+      /** @enum {string} */
+      authority: "paypal_order" | "merchant_signed_cart" | "user_confirmed" | "checkout_page";
+      /** @enum {string} */
+      via?: "own" | "partner" | "ucp";
+      /** @enum {string} */
+      crossCheck: "agrees" | "unavailable";
+    };
     Cart: {
       merchant: string;
       currency: string;
@@ -808,10 +817,11 @@ export interface components {
           at: string;
         }[];
       };
-      /** @description A purchase the buyer pays at the store's own checkout: the store's origin and the PayPal transaction id once the agent recorded it. Never covered nor captured. */
+      /** @description A purchase the buyer pays at the store's own checkout: the store's origin, what decided the amount at the pay click, and the PayPal transaction id once the agent recorded it. Never covered nor captured. */
       live?: {
         store: string;
         transactionId: string | null;
+        amountAuthority?: components["schemas"]["AmountAuthority"];
       };
     };
     /** @description RFC 8628 §3.2. Show `user_code` and `verification_uri` to the user, then poll `POST /v1/connections/token` every `interval` seconds. */
@@ -1096,10 +1106,11 @@ export interface components {
           at: string;
         }[];
       };
-      /** @description A purchase the buyer pays at the store's own checkout: the store's origin and the PayPal transaction id once the agent recorded it. Never covered nor captured. */
+      /** @description A purchase the buyer pays at the store's own checkout: the store's origin, what decided the amount at the pay click, and the PayPal transaction id once the agent recorded it. Never covered nor captured. */
       live?: {
         store: string;
         transactionId: string | null;
+        amountAuthority?: components["schemas"]["AmountAuthority"];
       };
     };
     TeeLeg: {

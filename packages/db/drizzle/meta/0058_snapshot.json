@@ -1,5 +1,5 @@
 {
-  "id": "b1eec60c-5e31-48aa-91ca-d6e3cef185b4",
+  "id": "bdee8aa3-9387-443f-8cdc-2ee25d9a5e68",
   "prevId": "a5247b5d-0f86-4b88-b488-99c96bb28f97",
   "version": "7",
   "dialect": "postgresql",
@@ -5590,6 +5590,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "amount_check": {
+          "name": "amount_check",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "amount_confirm": {
+          "name": "amount_confirm",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
         "paypal_ref_salt": {
           "name": "paypal_ref_salt",
           "type": "bytea",
@@ -5985,13 +5997,6 @@
         },
         "revoked": {
           "name": "revoked",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "default": 0
-        },
-        "cards_closed": {
-          "name": "cards_closed",
           "type": "integer",
           "primaryKey": false,
           "notNull": true,

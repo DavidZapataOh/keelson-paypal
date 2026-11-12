@@ -411,8 +411,15 @@
     {
       "idx": 58,
       "version": "7",
-      "when": 1794474098295,
-      "tag": "0058_stop_cards",
+      "when": 1794473704412,
+      "tag": "0058_live_amount_check",
+      "breakpoints": true
+    },
+    {
+      "idx": 59,
+      "version": "7",
+      "when": 1794489330180,
+      "tag": "0059_stop_cards",
       "breakpoints": true
     }
   ]

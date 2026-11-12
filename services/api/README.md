@@ -338,6 +338,33 @@ mandate, so `POST /v1/countersign` refuses an authorization that is the hold of 
 or another request, and, for a per-purchase mandate, one that is not a hold Keelson created
 (`422 authorization-not-held`).
 
+## Live checkout amounts
+
+On a live checkout the agent pays the store's PayPal order. Before each pay action on PayPal, the
+pay-click gate asks `POST /v1/purchases/{id}/amount-check` what decides that order's amount, and
+pays only on its answer:
+
+1. **PayPal's Orders API** (`paypal_order`). Keelson reads the order with
+   `GET /v2/checkout/orders/{id}` and its own credentials, which PayPal answers only for orders
+   Keelson's PayPal app created (the demo store's, for example; any other answers `404`). The order
+   must have one purchase unit, be payable (`CREATED`, `SAVED`, `APPROVED` or
+   `PAYER_ACTION_REQUIRED`), and charge exactly the countersigned currency and total, its
+   breakdown when PayPal holds one, to a payee the mandate's `payment.allowed_payees` names.
+2. **The user's passkey** (`user_confirmed`), for an order Keelson cannot read. The first call
+   answers `202`, and the user gets a push and an email that open the confirmation in the app. They
+   confirm with the passkey that signed the mandate, over
+   `SHA-256("keelson/amount-confirm/v1" || 0x00 || JCS({purchase_id, order_id_hash, currency, minor, payee}))`,
+   as WebAuthn or Secure Payment Confirmation; or they decline. The gate waits up to three minutes;
+   the confirmation expires after ten, and then the agent stops.
+
+PayPal's checkout session (`GetCheckoutDetails`, below) is a cross-check: it never decides alone,
+and when it disagrees with the countersign or the authority, the gate holds. The decision must name
+the page's order (`order_id_hash`), is stored once per purchase, and is shown on the purchase, in
+`GET /v1/live-purchases` and in the Alibi as `paypal.amount_authority`, which the verifier checks
+(`paypal.amount_authority`): a passkey confirmation verifies offline with the mandate's passkey;
+`paypal_order` is stated as read by Keelson's API, since the TEE legs do not read the store's
+order. The user confirms the amount for stores whose orders another PayPal app creates.
+
 ## Live checkouts in another currency
 
 At a store's own checkout, the mandate, the countersign and PayPal's order stay in the store's
@@ -346,7 +373,8 @@ its rate on the funding side and shows the converted total on its review page. T
 pay-click gate (`services/agent/src/gate.ts`) decides on PayPal's order itself:
 
 1. **Order.** Right before each pay action on PayPal, the page asks PayPal's own GraphQL for
-   `GetCheckoutDetails`, the query PayPal's Smart Payment Buttons send. The total's
+   `GetCheckoutDetails`, the query PayPal's Smart Payment Buttons send, as a cross-check of the
+   amount authority above. The total's
    `currencyValue` and `currencyCode` must be the countersigned total exactly; its `subtotal`,
    `shippingAndHandling` and `tax`, when PayPal holds them, the countersigned breakdown (a
    breakdown that adds tax or shipping to the countersigned items is re-quoted). The intent must

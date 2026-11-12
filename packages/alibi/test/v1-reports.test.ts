@@ -23,7 +23,14 @@ test.each(
   const r = await verifyAlibi(kind === "bundle" ? f.bundle : receiptOf(f.bundle), { now });
   const got = r.checks
     .filter(
-      (c) => !["scitt.statement", "scitt.receipt", "rats.cmw", "card.statements"].includes(c.id),
+      (c) =>
+        ![
+          "scitt.statement",
+          "scitt.receipt",
+          "rats.cmw",
+          "card.statements",
+          "paypal.amount_authority",
+        ].includes(c.id),
     )
     .map((c) => ({ id: c.id, status: c.status, reads: c.reads, reason: c.reason ?? null }));
   expect(got).toEqual(snapshot[`${id}/${kind}`]);
