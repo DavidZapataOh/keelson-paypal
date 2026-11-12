@@ -299,7 +299,12 @@ export function createApp(deps: Deps): OpenAPIHono {
         origin: deps.appOrigin,
         credentials: true,
         allowHeaders: ["content-type", "idempotency-key", "keelson-device"],
-        exposeHeaders: ["location", "idempotent-replayed", "keelson-model"],
+        exposeHeaders: [
+          "location",
+          "idempotent-replayed",
+          "keelson-model",
+          "x-keelson-pdf-signature",
+        ],
       })
     : undefined;
   // The verifier reads only public receipts, timestamps and public Alibis, never with credentials,

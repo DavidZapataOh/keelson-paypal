@@ -138,6 +138,15 @@ set; the API runs disputes when it has the legs and the log. Without either the 
 | Merchant          | R11, R21, R35, R40, R50 | same                                                    | `ORDER_DETAILS` with the Alibi PDF                                                                                                                   |
 | Operator, Keelson | R00, R30, R31, R60, R61 | `accept-claim` (refund to the buyer)                    | none                                                                                                                                                 |
 
+The Alibi PDF that PayPal, the card issuer and `GET /v1/alibis/{id}.pdf` receive is signed with
+PAdES baseline B-T when `KEELSON_PDF_SIGNING_KEY` and `KEELSON_PDF_SIGNING_CHAIN` are set: an
+incremental `ETSI.CAdES.detached` signature over the file as rendered, signed attributes
+`contentType`, `messageDigest` and `signingCertificateV2`, and a DigiCert RFC 3161 timestamp of the
+signature value. The embedded `.alibi` is untouched. The chain is Keelson's own
+(`packages/alibi/scripts/pdf-cert.sh`), so a reader shows the signer as unknown until it trusts
+Keelson's root; any change after signing still shows. If the TSA is down, the PDF is sent unsigned
+(`X-Keelson-Pdf-Signature: unavailable`), never failed.
+
 The rule fixes the call and the evidence type; each submission carries one evidence, because
 PayPal requires an `item_id` on each of several evidences. With `ANTHROPIC_API_KEY` set, the notes are drafted
 in two calls, because Citations cannot be combined with structured outputs: `claude-opus-5-5`
