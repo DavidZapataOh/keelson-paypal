@@ -11,7 +11,7 @@ cart before PayPal captures it, and each purchase comes with an Alibi anyone can
 Everything runs on the PayPal sandbox and Arbitrum Sepolia.
 
 1. Install: `npm install @keelson-finance/sdk @keelson-finance/verifier` (TypeScript) or `pip install keelson-finance`
-   (Python). Sign in once with `npx keelson login` / `keelson login`.
+   (Python). Sign in once with `npx @keelson-finance/sdk login` / `keelson login`.
 2. Ask for a mandate with `mandates.request(...)` and show the user `approvalUrl`. Wait with
    `mandates.waitForApproval(id)` (`wait_for_approval`).
 3. Price the cart from the store, seal what the agent saw with `evidence.seal(...)`, then

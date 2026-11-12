@@ -3,7 +3,8 @@ import { chromium, type Page } from "playwright";
 import { expect, test } from "vitest";
 
 // The judge's journey on the deployed app, from a clean browser with no keys: start Judge Mode,
-// walk every step on production data, open the merchant console as the judge and come back.
+// walk every step on production data, open the merchant console as the judge and come back,
+// then compile and sign the judge's own mandate.
 // Runs hourly; the whole tour must take under five minutes.
 const ORIGIN = process.env.JUDGE_LIVE_ORIGIN;
 const BUDGET_MS = 5 * 60_000;
@@ -89,6 +90,34 @@ test.runIf(ORIGIN)(
       await next(page, "Live status");
       await page.getByText("TEE leg A · Intel TDX").waitFor();
       mark("status");
+
+      // The tour ends on the judge's own mandate: compiled live, signed with a new passkey (a
+      // virtual authenticator, as a platform one would answer), then the PayPal hold.
+      await page.getByRole("link", { name: "Sign your own mandate" }).click();
+      const webauthn = await context.newCDPSession(page);
+      await webauthn.send("WebAuthn.enable");
+      await webauthn.send("WebAuthn.addVirtualAuthenticator", {
+        options: {
+          protocol: "ctap2",
+          transport: "internal",
+          hasResidentKey: true,
+          hasUserVerification: true,
+          isUserVerified: true,
+          automaticPresenceSimulation: true,
+        },
+      });
+      await page
+        .getByLabel("What your agent may buy")
+        .fill("Running shoes, size 10, under $100, free returns, by Friday");
+      await page.getByRole("button", { name: "Review rules" }).click();
+      await page.getByRole("button", { name: "Create passkey" }).click();
+      const sign = page.getByRole("button", { name: "Sign · up to $100.00" });
+      await sign.waitFor({ timeout: 60_000 });
+      mark("compiled");
+      await sign.click();
+      await page.getByRole("button", { name: "Sign: allow up to $100.00" }).click();
+      await page.waitForURL(/\/new\/\?hold=01[0-9A-HJKMNP-TV-Z]{24}$/, { timeout: 60_000 });
+      mark("signed");
 
       const total = Date.now() - started;
       const summary = { origin: ORIGIN, totalMs: total, marks, errors };
