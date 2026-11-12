@@ -1,3 +1,3 @@
 /** The SP1 verifying key of the engine program `EngineProofVerifier` checks proofs against. */
 export const ENGINE_PROGRAM_VKEY =
-  "0x00c4587b3359aa358e91653bb21d40ba649a31fcdc3ac0ad51f9aacaac0a615b";
+  "0x00b2289ef8373024486aab72320bbff5f27056aeaf1a9e2c99dffc10ced3ec0c";

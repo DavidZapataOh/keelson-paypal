@@ -311,7 +311,7 @@ jobs:
           - name: KeelsonReputationReporter
             tests: "test/ReputationReporter*.t.sol"
           - name: libraries
-            path: "src/{libraries,access,deploy}/*.sol"
+            path: "**/src/{libraries,access,deploy}/*.sol"
             tests: "test/**/*.t.sol"
     defaults:
       run:
@@ -331,7 +331,8 @@ jobs:
       - name: Mutate
         env:
           CONTRACT: ${{ matrix.name }}
-          MUTATE: ${{ matrix.path || format('src/{0}.sol', matrix.name) }}
+          # Forge matches the pattern against absolute source paths.
+          MUTATE: ${{ matrix.path || format('**/src/{0}.sol', matrix.name) }}
           TESTS: ${{ matrix.tests }}
         run: |
           forge test --mutate --mutate-path "$MUTATE" --match-path "$TESTS" --no-match-path 'test/**/*.live.t.sol' \

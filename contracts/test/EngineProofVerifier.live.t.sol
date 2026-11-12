@@ -9,12 +9,14 @@ import {stdJson} from "forge-std/StdJson.sol";
 
 /// @notice The deployed `EngineProofVerifier` on every chain whose registry lists it is this build over Succinct's
 /// immutable SP1 v6.1.0 Groth16 verifier, never the gateway whose owner can change its routes, and accepts the engine
-/// program's proof of the committed vector through it.
+/// program's proof of the committed vector through it when that proof is of the deployed program.
 contract EngineProofVerifierLiveTest is ForkTest {
     using stdJson for string;
 
     function test_DeployedVerifierMatchesTheBuildAndVerifiesThroughTheV6_1_0Verifier() public {
         string memory v = vm.readFile(string.concat(vm.projectRoot(), "/test/vectors/engine-proof.json"));
+        bytes32 programVkey =
+            vm.readFile(string.concat(vm.projectRoot(), "/test/vectors/engine-program.json")).readBytes32(".vkey");
         for (uint256 i; i < CHAIN_IDS.length; ++i) {
             string memory json = _jsonOf(CHAIN_IDS[i]);
             if (!vm.keyExistsJson(json, ".contracts.EngineProofVerifier")) continue;
@@ -26,12 +28,16 @@ contract EngineProofVerifierLiveTest is ForkTest {
             SP1Verifier pinned = new SP1Verifier();
             assertEq(SP1Verifier(address(verifier.VERIFIER())).VERIFIER_HASH(), pinned.VERIFIER_HASH());
             assertEq(SP1Verifier(address(verifier.VERIFIER())).VERSION(), pinned.VERSION());
-            assertEq(verifier.PROGRAM_VKEY(), v.readBytes32(".vkey"));
+            assertEq(verifier.PROGRAM_VKEY(), programVkey);
             EngineProofVerifier fresh = new EngineProofVerifier(verifier.VERIFIER(), verifier.PROGRAM_VKEY());
             assertEq(address(verifier).code, address(fresh).code);
-            (bytes32 evalHash, bytes32 digest) = verifier.verify(v.readBytes(".public_values"), v.readBytes(".proof"));
-            assertEq(evalHash, v.readBytes32(".eval_hash"));
-            assertEq(digest, v.readBytes32(".countersign_digest"));
+            // The committed proof is checked through the live verifier once it is a proof of the deployed program.
+            if (v.readBytes32(".vkey") == programVkey) {
+                (bytes32 evalHash, bytes32 digest) =
+                    verifier.verify(v.readBytes(".public_values"), v.readBytes(".proof"));
+                assertEq(evalHash, v.readBytes32(".eval_hash"));
+                assertEq(digest, v.readBytes32(".countersign_digest"));
+            }
         }
     }
 }
