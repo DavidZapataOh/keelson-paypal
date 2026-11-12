@@ -157,7 +157,7 @@ describe("Markdoc validation", () => {
     const out = mkdtempSync(join(tmpdir(), "docs-invalid-"));
     writeFileSync(
       page,
-      '---\ntitle: Invalid\ndescription: Invalid.\nsection: Start\norder: 99\n---\n\n{% callout type="danger" %}\nNo.\n{% /callout %}\n',
+      '---\ntitle: Invalid\ndescription: Invalid.\nsection: Quickstart\norder: 99\n---\n\n{% callout type="danger" %}\nNo.\n{% /callout %}\n',
     );
     try {
       expect(() =>
